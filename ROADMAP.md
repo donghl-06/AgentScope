@@ -877,7 +877,7 @@ agentscope/
 
 - [x] 先完成 Step 0.1，建立 architecture、privacy 和 ADR 骨架。
 - [ ] 并行推进 Step 0.2/0.3 的 CLI 当前版本实测，但原始样例必须脱敏（已记录部分结果；中断/TTY 补测仍待完成）。
-- [ ] 同时完成 Phase 1 工程基座，使 Phase 0 产生的 fixtures 能立即进入测试。
+- [x] 同时完成 Phase 1 工程基座，使 Phase 0 产生的 fixtures 能立即进入测试。
 - [ ] Phase 0 capability matrix 审核通过后冻结 Protocol V0，再开始 Core 实现。
 
 第一条可演示纵向切片应尽快达到：
