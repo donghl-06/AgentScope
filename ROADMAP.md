@@ -232,11 +232,11 @@ agentscope/
 
 ### Step 2.1 — 定义事件与来源模型
 
-- [ ] 实现 `AgentEventType` 的 V0 最小集合。
-- [ ] 实现 `AgentEvent<T>`、`source`、`confidence`、`rawRef`。
-- [ ] 为常用事件定义 typed payload；未知 provider 字段留在 adapter 内或 metadata。
-- [ ] 约定 timestamp 单位、id 生成、sessionId 所有权和 sequence 语义。
-- [ ] 明确 `session_finished` payload 如何表达 exitCode、reason 和 provider outcome。
+- [x] 实现 `AgentEventType` 的 V0 最小集合。
+- [x] 实现 `AgentEvent<T>`、`source`、`confidence`、`rawRef`。
+- [x] 为常用事件定义 typed payload；未知 provider 字段留在 adapter 内或 metadata。
+- [x] 约定 timestamp 单位、id 生成、sessionId 所有权和 sequence 语义。
+- [x] 明确 `session_finished` payload 如何表达 exitCode、reason 和 provider outcome。
 
 ### Step 2.2 — 定义 Adapter 契约
 
