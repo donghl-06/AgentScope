@@ -202,13 +202,11 @@ agentscope/
 
 ### Step 1.2 — 统一质量工具
 
-- [ ] 配置 formatter、linter 和 import boundary 规则（formatter/linter 已有，boundary 规则待有实际跨包依赖后补齐）。
+- [x] 配置 formatter、linter 和 import boundary 规则。
 - [x] 配置 Vitest workspace，分离 unit、integration、manual-smoke。
 - [x] 根脚本提供 `lint`、`typecheck`、`test`、`test:integration`、`build`、`dev`。
 - [x] 加入 `test:changed` 或 package-scoped 命令，缩短迭代反馈。
-- [ ] 配置覆盖率报告；优先保证 reducer、协议、估算器分支覆盖。
-
-**当前状态：** Step 1.2 基础门禁已通过；import boundary 与覆盖率报告仍待补齐，Phase 1 尚未完成。
+- [x] 配置覆盖率报告；优先保证 reducer、协议、估算器分支覆盖。
 
 ### Step 1.3 — 建立配置、日志与错误约定
 

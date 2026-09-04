@@ -27,4 +27,43 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ['packages/protocol/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@agentscope/*'],
+              message: 'Protocol must remain dependency-free from other AgentScope packages.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/core/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@agentscope/adapter-*',
+                '@agentscope/storage',
+                '@agentscope/observer-*',
+                '@agentscope/progress',
+                '@agentscope/eta',
+              ],
+              message:
+                'Core may depend on protocol/shared contracts, not provider or infrastructure packages.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

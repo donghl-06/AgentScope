@@ -15,6 +15,7 @@
     "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig*.json *.mjs scripts/**/*.mjs apps/*/package.json apps/*/tsconfig.json packages/*/package.json packages/*/tsconfig.json packages/adapters/*/package.json packages/adapters/*/tsconfig.json packages/observers/*/package.json packages/observers/*/tsconfig.json apps/**/*.ts packages/**/*.ts",
     "typecheck": "pnpm --recursive --if-present typecheck",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.mjs --passWithNoTests",
     "test:manual-smoke": "vitest run --config vitest.manual-smoke.config.mjs --passWithNoTests",
     "fixtures:check": "node scripts/check-fixtures.mjs",
