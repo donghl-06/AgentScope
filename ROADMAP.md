@@ -255,10 +255,10 @@ agentscope/
 
 ### Step 2.4 — 运行时校验与序列化
 
-- [ ] 为 API、fixture、DB 读取边界添加 runtime schema validation。
-- [ ] 测试 JSON serialize/deserialize，避免 `undefined`、Date、BigInt 等不稳定值。
-- [ ] 对未知事件类型和新增 payload 字段制定 forward-compatible 行为。
-- [ ] 加入 schema/protocol version；明确 V0 内允许的兼容演进方式。
+- [x] 为 API、fixture、DB 读取边界添加 runtime schema validation。
+- [x] 测试 JSON serialize/deserialize，避免 `undefined`、Date、BigInt 等不稳定值。
+- [x] 对未知事件类型和新增 payload 字段制定 forward-compatible 行为。
+- [x] 加入 schema/protocol version；明确 V0 内允许的兼容演进方式。
 
 ### Step 2.5 — 协议文档与测试
 

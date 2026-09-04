@@ -10,5 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@sinclair/typebox": "0.34.41"
   }
 }
