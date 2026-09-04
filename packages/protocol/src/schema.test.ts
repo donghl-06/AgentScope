@@ -4,6 +4,7 @@ import { AGENT_EVENT_TYPES, type AgentEvent } from './events.js';
 import {
   assertAgentEvent,
   assertSessionState,
+  findDuplicateEventIds,
   isAgentEvent,
   isSessionState,
   ProtocolValidationError,
@@ -55,6 +56,13 @@ describe('Protocol runtime schemas', () => {
   it('rejects missing identifiers and invalid timestamps', () => {
     expect(isAgentEvent({ ...validEvent, id: undefined })).toBe(false);
     expect(isAgentEvent({ ...validEvent, timestamp: -1 })).toBe(false);
+  });
+
+  it('identifies duplicate event ids without choosing a dedupe policy', () => {
+    expect(findDuplicateEventIds([validEvent, { ...validEvent, type: 'planning' }])).toEqual([
+      'event-1',
+    ]);
+    expect(findDuplicateEventIds([validEvent])).toEqual([]);
   });
 
   it('validates the initial SessionState shape', () => {

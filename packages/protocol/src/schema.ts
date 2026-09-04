@@ -183,3 +183,17 @@ export function assertSessionState(value: unknown): asserts value is SessionStat
     throw new ProtocolValidationError('Invalid SessionState.', details);
   }
 }
+
+/** Return duplicate producer ids in encounter order; Core decides the dedupe policy. */
+export function findDuplicateEventIds(events: readonly AgentEvent[]): readonly string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const event of events) {
+    if (seen.has(event.id)) {
+      duplicates.add(event.id);
+    } else {
+      seen.add(event.id);
+    }
+  }
+  return [...duplicates];
+}
