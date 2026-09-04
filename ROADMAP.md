@@ -284,11 +284,11 @@ agentscope/
 
 ### Step 3.2 — 实现事件接纳管线
 
-- [ ] 校验 event schema、session ownership 和 timestamp 合理性。
-- [ ] 为每个 session 分配单调递增 `seq`。
-- [ ] 按 event id 去重，定义重复事件返回结果。
-- [ ] 定义 out-of-order timestamp 的保留与 state reduction 策略。
-- [ ] 将“持久化成功后再广播”确定为一致性原则，避免 UI 看到未落库事件。
+- [x] 校验 event schema、session ownership 和 timestamp 合理性。
+- [x] 为每个 session 分配单调递增 `seq`。
+- [x] 按 event id 去重，定义重复事件返回结果。
+- [x] 定义 out-of-order timestamp 的保留与 state reduction 策略。
+- [x] 将“持久化成功后再广播”确定为一致性原则，避免 UI 看到未落库事件。
 
 ### Step 3.3 — 实现 Session reducer
 
