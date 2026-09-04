@@ -49,7 +49,14 @@ importers:
 
   packages/adapters/codex-cli: {}
 
-  packages/adapters/mock: {}
+  packages/adapters/mock:
+    dependencies:
+      '@agentscope/adapter-base':
+        specifier: workspace:*
+        version: link:../base
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
 
   packages/core:
     dependencies:

@@ -86,6 +86,37 @@ describe('EventIngestionPipeline', () => {
     expect(persist).toHaveBeenCalledTimes(2);
   });
 
+  it('isolates sequence numbers and subscriptions across sessions', async () => {
+    const bus = new EventBus();
+    const persisted: SequencedAgentEvent[] = [];
+    const received: string[] = [];
+    bus.subscribe((item) => {
+      const sequenced = item as SequencedAgentEvent;
+      received.push(`${sequenced.sessionId}:${sequenced.seq}`);
+    });
+    const pipeline = new EventIngestionPipeline({
+      bus,
+      hasSession: (sessionId) => sessionId === 'session-1' || sessionId === 'session-2',
+      persist: async (item) => {
+        persisted.push(item);
+      },
+      now: () => 1_700_000_000_000,
+    });
+
+    const [first, second] = await Promise.all([
+      pipeline.ingest({ ...event('session-1-event'), sessionId: 'session-1' }),
+      pipeline.ingest({ ...event('session-2-event'), sessionId: 'session-2' }),
+    ]);
+
+    expect(first).toMatchObject({ accepted: true, event: { sessionId: 'session-1', seq: 1 } });
+    expect(second).toMatchObject({ accepted: true, event: { sessionId: 'session-2', seq: 1 } });
+    expect(persisted.map((item) => `${item.sessionId}:${item.seq}`).sort()).toEqual([
+      'session-1:1',
+      'session-2:1',
+    ]);
+    expect(received.sort()).toEqual(['session-1:1', 'session-2:1']);
+  });
+
   it('does not reserve an id or sequence when persistence fails', async () => {
     let fail = true;
     const { pipeline, persisted } = createPipeline(async () => {

@@ -41,6 +41,25 @@ describe('reduceSessionState', () => {
     expect(failedTest.verification.overall).toBe('failed');
   });
 
+  it('covers successful, failed, and interrupted terminal outcomes', () => {
+    const completed = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('session_finished', { reason: 'completed', exitCode: 0 }, 1_700_000_001_000),
+    );
+    const failed = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('session_finished', { reason: 'failed', exitCode: 1 }, 1_700_000_001_000),
+    );
+    const interrupted = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('session_finished', { reason: 'interrupted' }, 1_700_000_001_000),
+    );
+
+    expect(completed).toMatchObject({ status: 'completed', endedAt: 1_700_000_001_000 });
+    expect(failed).toMatchObject({ status: 'failed', endedAt: 1_700_000_001_000 });
+    expect(interrupted).toMatchObject({ status: 'interrupted', endedAt: 1_700_000_001_000 });
+  });
+
   it('tracks milestones and command verification', () => {
     const active = reduceSessionState(
       base,
@@ -82,6 +101,45 @@ describe('reduceSessionState', () => {
 
     expect(state.status).toBe('blocked');
     expect(state.endedAt).toBeUndefined();
+  });
+
+  it('ignores duplicate and late events after a terminal transition', () => {
+    const finished = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('session_finished', { reason: 'completed' }, 1_700_000_001_000),
+    );
+    const duplicateFinish = reduceSessionState(
+      finished,
+      event('session_finished', { reason: 'failed', exitCode: 1 }, 1_700_000_002_000),
+    );
+    const lateActivity = reduceSessionState(
+      finished,
+      event('file_write', { path: 'late.ts' }, 1_699_999_999_000),
+    );
+
+    expect(duplicateFinish).toEqual(finished);
+    expect(lateActivity).toEqual(finished);
+  });
+
+  it('keeps milestone completion idempotent for duplicate events', () => {
+    const started = reduceSessionState(
+      base,
+      event('milestone_started', { milestoneId: 'm1', title: 'Implement' }),
+    );
+    const completed = reduceSessionState(
+      started,
+      event('milestone_completed', { milestoneId: 'm1', title: 'Implement' }, 1_700_000_001_000),
+    );
+    const duplicate = reduceSessionState(
+      completed,
+      event(
+        'milestone_completed',
+        { milestoneId: 'm1', title: 'Changed title' },
+        1_700_000_002_000,
+      ),
+    );
+
+    expect(duplicate).toEqual(completed);
   });
 
   it('is deterministic when the same event log is replayed', () => {

@@ -302,18 +302,18 @@ agentscope/
 
 ### Step 3.4 — 实现 MockAdapter 与 fixture runner
 
-- [ ] 实现 basic-success、test-failure、blocked-then-resumed、interrupted、low-signal fixtures。
-- [ ] 支持可配置速度和 deterministic timestamps。
-- [ ] fixture runner 将原始 mock step 转换为 AgentEvent stream。
-- [ ] MockAdapter 声明完整 capability，用于测试 UI 的 richer path。
-- [ ] 增加低 capability fixture，用于测试降级体验。
+- [x] 实现 basic-success、test-failure、blocked-then-resumed、interrupted、low-signal fixtures。
+- [x] 支持可配置速度和 deterministic timestamps。
+- [x] fixture runner 将原始 mock step 转换为 AgentEvent stream。
+- [x] MockAdapter 声明完整 capability，用于测试 UI 的 richer path。
+- [x] 增加低 capability fixture，用于测试降级体验。
 
 ### Step 3.5 — Core 测试
 
-- [ ] 覆盖正常完成、失败、中断、阻塞解除和 verification failed。
-- [ ] 覆盖 duplicate、out-of-order、late event、terminal 后事件。
-- [ ] 覆盖多 session 隔离和资源 cleanup。
-- [ ] 用相同事件日志重放两次，断言最终 state 完全一致。
+- [x] 覆盖正常完成、失败、中断、阻塞解除和 verification failed。
+- [x] 覆盖 duplicate、out-of-order、late event、terminal 后事件。
+- [x] 覆盖多 session 隔离和资源 cleanup。
+- [x] 用相同事件日志重放两次，断言最终 state 完全一致。
 
 **Phase 3 门禁：** Mock fixture 能驱动 session 从 start 到 terminal；reducer/lifecycle/ordering/dedupe 测试全部通过，且没有真实 CLI/DB/UI 依赖。
 
