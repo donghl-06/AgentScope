@@ -277,10 +277,10 @@ agentscope/
 
 ### Step 3.1 — 实现 EventBus
 
-- [ ] 支持按 session 发布/订阅和全局订阅。
-- [ ] 规定同步/异步 delivery、订阅者异常隔离和 backpressure 策略。
-- [ ] 返回 unsubscribe/cleanup handle，避免 listener 泄漏。
-- [ ] 测试多个 session 并发、订阅取消和单个订阅者抛错。
+- [x] 支持按 session 发布/订阅和全局订阅。
+- [x] 规定同步/异步 delivery、订阅者异常隔离和 backpressure 策略。
+- [x] 返回 unsubscribe/cleanup handle，避免 listener 泄漏。
+- [x] 测试多个 session 并发、订阅取消和单个订阅者抛错。
 
 ### Step 3.2 — 实现事件接纳管线
 

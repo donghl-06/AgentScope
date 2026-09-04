@@ -51,7 +51,11 @@ importers:
 
   packages/adapters/mock: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/eta: {}
 
