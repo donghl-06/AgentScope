@@ -77,6 +77,13 @@ describe('reduceSessionState', () => {
     expect(reopened).toEqual(failed);
   });
 
+  it('keeps a blocked finish non-terminal and without endedAt', () => {
+    const state = reduceSessionState(base, event('session_finished', { reason: 'blocked' }));
+
+    expect(state.status).toBe('blocked');
+    expect(state.endedAt).toBeUndefined();
+  });
+
   it('is deterministic when the same event log is replayed', () => {
     const events = [
       event('session_started', {}, 1_700_000_000_100),

@@ -99,7 +99,9 @@ function finishState(state: SessionState, event: ReducerEvent): SessionState {
         : payload.reason === 'blocked'
           ? 'blocked'
           : 'failed';
-  return { ...state, status, endedAt: event.timestamp };
+  return status === 'blocked'
+    ? { ...state, status }
+    : { ...state, status, endedAt: event.timestamp };
 }
 
 function reduceCommandStarted(state: SessionState, event: ReducerEvent): SessionState {
