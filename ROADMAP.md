@@ -134,11 +134,11 @@ agentscope/
 
 ### Step 0.1 — 建立基线文档与决策记录
 
-- [ ] 创建 `docs/architecture.md`，描述组件边界、数据流、依赖方向和不允许的反向依赖。
-- [ ] 创建 `docs/decisions/`，采用短 ADR 记录关键决策：HTTP framework、SQLite/ORM、运行时 schema 库、WebSocket 库、raw log 策略。
-- [ ] 创建 `docs/privacy.md`，列出允许采集、默认不采集、禁止采集的数据。
-- [ ] 记录目标运行环境：Node/pnpm 版本、Windows native/WSL/macOS/Linux 的 V0 支持级别。
-- [ ] 明确“支持”的定义：fixture test、真实 manual smoke、文档化限制三者缺一不可。
+- [x] 创建 `docs/architecture.md`，描述组件边界、数据流、依赖方向和不允许的反向依赖。
+- [x] 创建 `docs/decisions/`，采用短 ADR 记录关键决策：HTTP framework、SQLite/ORM、运行时 schema 库、WebSocket 库、raw log 策略。
+- [x] 创建 `docs/privacy.md`，列出允许采集、默认不采集、禁止采集的数据。
+- [x] 记录目标运行环境：Node/pnpm 版本、Windows native/WSL/macOS/Linux 的 V0 支持级别。
+- [x] 明确“支持”的定义：fixture test、真实 manual smoke、文档化限制三者缺一不可。
 
 **产物/验证：** 架构图、ADR、隐私边界和环境矩阵可被 code review；所有未决项有 owner 和关闭条件。
 
@@ -875,7 +875,7 @@ agentscope/
 
 ## 11. 下一步（从这里开始执行）
 
-- [ ] 先完成 Step 0.1，建立 architecture、privacy 和 ADR 骨架。
+- [x] 先完成 Step 0.1，建立 architecture、privacy 和 ADR 骨架。
 - [ ] 并行推进 Step 0.2/0.3 的 CLI 当前版本实测，但原始样例必须脱敏。
 - [ ] 同时完成 Phase 1 工程基座，使 Phase 0 产生的 fixtures 能立即进入测试。
 - [ ] Phase 0 capability matrix 审核通过后冻结 Protocol V0，再开始 Core 实现。
