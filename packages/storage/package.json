@@ -7,8 +7,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "migrate": "node scripts/migrate.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@agentscope/protocol": "workspace:*",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13"
   }
 }

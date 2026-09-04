@@ -325,12 +325,13 @@ agentscope/
 
 ### Step 4.1 — 设计 schema 与 migration
 
-- [ ] 建立 sessions、events、milestones、eta_snapshots 表。
-- [ ] events 添加 `(session_id, seq)` unique constraint。
-- [ ] 为 `session_id/seq/timestamp/type` 和 session status/project 建索引。
-- [ ] payload/metadata/reasons 使用 JSON text，读取时做协议校验。
-- [ ] 配置 SQLite WAL、busy timeout 和外键。
-- [ ] 建立 migration 命令及空库/旧库升级测试。
+- [x] 完成 SQLite driver spike：选择 `better-sqlite3`，证据记录在 `docs/findings/sqlite-driver.md`。
+- [x] 建立 sessions、events、milestones、eta_snapshots 表。
+- [x] events 添加 `(session_id, seq)` unique constraint。
+- [x] 为 `session_id/seq/timestamp/type` 和 session status/project 建索引。
+- [ ] payload/metadata/reasons 使用 JSON text，读取时做协议校验（JSON 列已建，读取校验待 repository 层）。
+- [x] 配置 SQLite WAL、busy timeout 和外键。
+- [ ] 建立 migration 命令及空库/旧库升级测试（命令与空库幂等测试已完成，旧库升级测试待补）。
 
 ### Step 4.2 — 实现 repositories 与事务
 
