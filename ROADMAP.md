@@ -212,10 +212,10 @@ agentscope/
 
 ### Step 1.3 — 建立配置、日志与错误约定
 
-- [ ] 定义结构化日志接口、level 和敏感字段 redact 规则。
-- [ ] 定义 typed error/code，区分用户输入错误、provider 错误、存储错误和内部错误。
-- [ ] 定义配置加载优先级：CLI flag > 环境变量 > config file > defaults。
-- [ ] 创建 `packages/shared`，只放真正跨层的最小工具，防止变成杂物包。
+- [x] 定义结构化日志接口、level 和敏感字段 redact 规则。
+- [x] 定义 typed error/code，区分用户输入错误、provider 错误、存储错误和内部错误。
+- [x] 定义配置加载优先级：CLI flag > 环境变量 > config file > defaults。
+- [x] 创建 `packages/shared`，只放真正跨层的最小工具，防止变成杂物包。
 
 ### Step 1.4 — 建立 CI 基线
 

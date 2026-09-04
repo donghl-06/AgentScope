@@ -20,6 +20,7 @@
     "dev": "pnpm --parallel --recursive --if-present dev"
   },
   "devDependencies": {
+    "@types/node": "^22.15.0",
     "@eslint/js": "^9.39.1",
     "@vitest/coverage-v8": "^4.0.15",
     "eslint": "^9.39.1",
