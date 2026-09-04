@@ -169,11 +169,11 @@ agentscope/
 
 ### Step 0.4 — 跨平台进程与路径 Spike
 
-- [ ] 验证 Windows native 下 direct spawn、`.cmd`/`.exe` 解析、Ctrl+C 和 process tree 清理。
-- [ ] 验证至少一个第二目标环境（优先 WSL 或 Linux/macOS）。
-- [ ] 定义 `nativePath`、`canonicalPath`、`displayPath` 的职责与转换边界。
-- [ ] 明确 WSL/Windows 路径只在 platform package 中转换。
-- [ ] 记录 PTY 是否为 V0 必需；若延后，清楚写明 non-interactive path 的限制。
+- [x] 验证 Windows native 下 direct spawn、`.cmd`/`.exe` 解析和 process tree 清理；Ctrl+C/ Ctrl+Break 仍待 wrapper 实验。
+- [x] 验证至少一个第二目标环境（WSL2）。
+- [x] 定义 `nativePath`、`canonicalPath`、`displayPath` 的职责与转换边界。
+- [x] 明确 WSL/Windows 路径只在 platform package 中转换。
+- [ ] 记录 PTY 是否为 V0 必需；当前仅明确 non-interactive structured path 可先行，交互式 passthrough 待 Claude/Codex TTY 实验。
 
 **产物/验证：** `docs/findings/process-platform.md`；选定可实现且不会破坏原 CLI 语义的 V0 wrapper 策略。
 
