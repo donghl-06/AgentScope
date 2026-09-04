@@ -1,0 +1,31 @@
+{
+  "name": "agentscope",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first observability for agent coding sessions",
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig*.json *.mjs apps/*/package.json apps/*/tsconfig.json packages/*/package.json packages/*/tsconfig.json packages/adapters/*/package.json packages/adapters/*/tsconfig.json packages/observers/*/package.json packages/observers/*/tsconfig.json apps/**/*.ts packages/**/*.ts",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.mjs --passWithNoTests",
+    "build": "pnpm --recursive --if-present build",
+    "dev": "pnpm --parallel --recursive --if-present dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@vitest/coverage-v8": "^4.0.15",
+    "eslint": "^9.39.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3",
+    "vitest": "^4.0.15"
+  }
+}

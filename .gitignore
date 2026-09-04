@@ -5,6 +5,8 @@ coverage/
 .vite/
 .turbo/
 *.log
+*.tsbuildinfo
+.eslintcache
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+tests/fixtures/raw/
+pnpm-lock.yaml
+*.md

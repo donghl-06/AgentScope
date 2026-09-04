@@ -194,19 +194,21 @@ agentscope/
 
 ### Step 1.1 — 初始化 workspace
 
-- [ ] 初始化根 `package.json`、`pnpm-workspace.yaml` 和 lockfile。
-- [ ] 建立 `apps/*`、`packages/*`、`docs/*`、`tests/fixtures/*` 目录。
-- [ ] 设置 Node.js 22+ 与 pnpm 版本约束。
-- [ ] 配置统一 TypeScript base config，开启 strict、noUncheckedIndexedAccess 等安全选项。
-- [ ] 统一 ESM/CJS 策略、package exports 和内部包引用规则。
+- [x] 初始化根 `package.json`、`pnpm-workspace.yaml` 和 lockfile。
+- [x] 建立 `apps/*`、`packages/*`、`docs/*`、`tests/fixtures/*` 目录。
+- [x] 设置 Node.js 22+ 与 pnpm 版本约束。
+- [x] 配置统一 TypeScript base config，开启 strict、noUncheckedIndexedAccess 等安全选项。
+- [x] 统一 ESM/CJS 策略、package exports 和内部包引用规则。
 
 ### Step 1.2 — 统一质量工具
 
-- [ ] 配置 formatter、linter 和 import boundary 规则。
-- [ ] 配置 Vitest workspace，分离 unit、integration、manual-smoke。
-- [ ] 根脚本提供 `lint`、`typecheck`、`test`、`test:integration`、`build`、`dev`。
-- [ ] 加入 `test:changed` 或 package-scoped 命令，缩短迭代反馈。
+- [ ] 配置 formatter、linter 和 import boundary 规则（formatter/linter 已有，boundary 规则待有实际跨包依赖后补齐）。
+- [x] 配置 Vitest workspace，分离 unit、integration、manual-smoke。
+- [x] 根脚本提供 `lint`、`typecheck`、`test`、`test:integration`、`build`、`dev`。
+- [x] 加入 `test:changed` 或 package-scoped 命令，缩短迭代反馈。
 - [ ] 配置覆盖率报告；优先保证 reducer、协议、估算器分支覆盖。
+
+**当前状态：** Step 1.2 基础门禁已通过；import boundary 与覆盖率报告仍待补齐，Phase 1 尚未完成。
 
 ### Step 1.3 — 建立配置、日志与错误约定
 
