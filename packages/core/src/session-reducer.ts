@@ -1,0 +1,219 @@
+import type {
+  AgentEvent,
+  CommandFinishedPayload,
+  CommandStartedPayload,
+  MilestonePayload,
+  Milestone,
+  SessionFinishedPayload,
+  SessionStatus,
+  TestFailedPayload,
+  TestPassedPayload,
+  TestStartedPayload,
+  VerificationState,
+} from '@agentscope/protocol';
+import { isTerminalSessionStatus } from '@agentscope/protocol';
+
+import type { SessionState } from '@agentscope/protocol';
+
+type ReducerEvent = AgentEvent;
+
+function activity(
+  kind: SessionState['currentActivity'] extends infer T
+    ? T extends { kind: infer K }
+      ? K
+      : never
+    : never,
+  label: string,
+  event: ReducerEvent,
+): NonNullable<SessionState['currentActivity']> {
+  return { kind, label, startedAt: event.timestamp, source: event.source.adapter };
+}
+
+function updateVerification(
+  state: SessionState,
+  patch: Partial<Omit<VerificationState, 'overall'>>,
+): SessionState {
+  const verification = { ...state.verification, ...patch };
+  const values = [verification.tests, verification.build, verification.typecheck];
+  const overall: VerificationState['overall'] = values.includes('failed')
+    ? 'failed'
+    : values.every((value) => value === 'passed')
+      ? 'passed'
+      : values.some((value) => value === 'pending' || value === 'passed')
+        ? 'pending'
+        : 'unknown';
+  return { ...state, verification: { ...verification, overall } };
+}
+
+function updateMilestone(
+  state: SessionState,
+  event: ReducerEvent,
+  status: 'active' | 'completed',
+): SessionState {
+  const payload = event.payload as MilestonePayload;
+  const existingIndex = state.milestones.findIndex(
+    (milestone) => milestone.id === payload.milestoneId,
+  );
+  const existing = existingIndex < 0 ? undefined : state.milestones[existingIndex];
+  if (existing?.status === 'completed') {
+    return state;
+  }
+
+  const nextMilestone: Milestone =
+    status === 'active'
+      ? {
+          id: payload.milestoneId,
+          title: payload.title ?? existing?.title ?? payload.milestoneId,
+          status,
+          startedAt: existing?.startedAt ?? event.timestamp,
+        }
+      : {
+          id: payload.milestoneId,
+          title: payload.title ?? existing?.title ?? payload.milestoneId,
+          status,
+          ...(existing?.startedAt === undefined ? {} : { startedAt: existing.startedAt }),
+          completedAt: event.timestamp,
+        };
+  const milestones = [...state.milestones];
+  if (existingIndex < 0) {
+    milestones.push(nextMilestone);
+  } else {
+    milestones[existingIndex] = nextMilestone;
+  }
+  return { ...state, milestones };
+}
+
+function finishState(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as SessionFinishedPayload;
+  if (isTerminalSessionStatus(state.status)) {
+    return state;
+  }
+
+  const status: SessionStatus =
+    payload.reason === 'completed'
+      ? state.verification.overall === 'failed'
+        ? 'failed'
+        : 'completed'
+      : payload.reason === 'interrupted'
+        ? 'interrupted'
+        : payload.reason === 'blocked'
+          ? 'blocked'
+          : 'failed';
+  return { ...state, status, endedAt: event.timestamp };
+}
+
+function reduceCommandStarted(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as CommandStartedPayload;
+  const kind = payload.commandKind?.toLowerCase();
+  if (kind === 'test' || kind === 'unit' || kind === 'integration') {
+    return updateVerification(
+      { ...state, currentActivity: activity('test', payload.commandName ?? 'test', event) },
+      { tests: 'pending' },
+    );
+  }
+  if (kind === 'build') {
+    return updateVerification(
+      { ...state, currentActivity: activity('command', payload.commandName ?? 'build', event) },
+      { build: 'pending' },
+    );
+  }
+  if (kind === 'typecheck') {
+    return updateVerification(
+      { ...state, currentActivity: activity('command', payload.commandName ?? 'typecheck', event) },
+      { typecheck: 'pending' },
+    );
+  }
+  return {
+    ...state,
+    currentActivity: activity('command', payload.commandName ?? 'command', event),
+  };
+}
+
+function reduceCommandFinished(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as CommandFinishedPayload;
+  const kind = payload.commandKind?.toLowerCase();
+  const status = payload.exitCode === 0 ? 'passed' : 'failed';
+  if (kind === 'test' || kind === 'unit' || kind === 'integration') {
+    return updateVerification(state, { tests: status });
+  }
+  if (kind === 'build') {
+    return updateVerification(state, { build: status });
+  }
+  if (kind === 'typecheck') {
+    return updateVerification(state, { typecheck: status });
+  }
+  return state;
+}
+
+/** Pure, deterministic projection from one normalized event into SessionState. */
+export function reduceSessionState(state: SessionState, event: AgentEvent): SessionState {
+  if (isTerminalSessionStatus(state.status) && event.type !== 'session_finished') {
+    return state;
+  }
+
+  switch (event.type) {
+    case 'session_started':
+      return state.status === 'starting' ? { ...state, status: 'running' } : state;
+    case 'planning':
+      return {
+        ...state,
+        status: state.status === 'blocked' ? state.status : 'running',
+        currentActivity: activity('planning', 'planning', event),
+      };
+    case 'agent_message':
+      return {
+        ...state,
+        status: state.status === 'blocked' ? state.status : 'running',
+        currentActivity: activity('implementation', 'agent message', event),
+      };
+    case 'tool_call_started':
+      return { ...state, currentActivity: activity('implementation', 'tool call', event) };
+    case 'tool_call_finished':
+      return { ...state, currentActivity: activity('implementation', 'tool call finished', event) };
+    case 'file_read':
+      return { ...state, currentActivity: activity('file', 'read file', event) };
+    case 'file_write':
+      return { ...state, currentActivity: activity('file', 'write file', event) };
+    case 'command_started':
+      return reduceCommandStarted(state, event);
+    case 'command_finished':
+      return reduceCommandFinished(state, event);
+    case 'test_started': {
+      const payload = event.payload as TestStartedPayload;
+      return updateVerification(
+        { ...state, currentActivity: activity('test', payload.testKind ?? 'test', event) },
+        { tests: 'pending' },
+      );
+    }
+    case 'test_passed': {
+      const payload = event.payload as TestPassedPayload;
+      return updateVerification(
+        { ...state, currentActivity: activity('test', payload.testKind ?? 'test passed', event) },
+        { tests: 'passed' },
+      );
+    }
+    case 'test_failed': {
+      const payload = event.payload as TestFailedPayload;
+      return updateVerification(
+        { ...state, currentActivity: activity('test', payload.testKind ?? 'test failed', event) },
+        { tests: 'failed' },
+      );
+    }
+    case 'milestone_started':
+      return updateMilestone(state, event, 'active');
+    case 'milestone_completed':
+      return updateMilestone(state, event, 'completed');
+    case 'blocked': {
+      const reason = (event.payload as { reason: string }).reason;
+      return { ...state, status: 'blocked', currentActivity: activity('blocked', reason, event) };
+    }
+    case 'unblocked':
+      return state.status === 'blocked' ? { ...state, status: 'running' } : state;
+    case 'error':
+      return { ...state, status: 'failed', endedAt: event.timestamp };
+    case 'session_finished':
+      return finishState(state, event);
+    default:
+      return state;
+  }
+}

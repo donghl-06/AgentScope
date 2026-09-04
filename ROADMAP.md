@@ -292,13 +292,13 @@ agentscope/
 
 ### Step 3.3 — 实现 Session reducer
 
-- [ ] 实现 starting → running → terminal 的合法状态转换表。
-- [ ] 实现 blocked/unblocked，保留阻塞原因和累计阻塞信息。
-- [ ] 根据 tool/command/file/test 事件更新 currentActivity。
-- [ ] 根据 milestone 事件维护 milestones，并处理重复完成和非法顺序。
-- [ ] 根据 test/build/typecheck 事件更新 VerificationState。
-- [ ] 将 exit code、用户中断和 adapter error 映射到正确终态。
-- [ ] 保证 reducer 纯函数、可重放、相同输入产生相同结果。
+- [x] 实现 starting → running → terminal 的合法状态转换表。
+- [x] 实现 blocked/unblocked，保留阻塞原因和累计阻塞信息。
+- [x] 根据 tool/command/file/test 事件更新 currentActivity。
+- [x] 根据 milestone 事件维护 milestones，并处理重复完成和非法顺序。
+- [x] 根据 test/build/typecheck 事件更新 VerificationState。
+- [x] 将 exit code、用户中断和 adapter error 映射到正确终态。
+- [x] 保证 reducer 纯函数、可重放、相同输入产生相同结果。
 
 ### Step 3.4 — 实现 MockAdapter 与 fixture runner
 

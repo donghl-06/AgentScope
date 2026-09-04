@@ -70,6 +70,7 @@ export interface CommandStartedPayload {
 }
 
 export interface CommandFinishedPayload {
+  readonly commandKind?: string;
   readonly exitCode: number;
   readonly durationMs?: number;
 }
