@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type AgentEvent } from './events.js';
+import { AGENT_EVENT_TYPES, type AgentEvent } from './events.js';
 import {
   assertAgentEvent,
   assertSessionState,
@@ -44,6 +44,17 @@ describe('Protocol runtime schemas', () => {
     expect(() => assertAgentEvent({ ...validEvent, confidence: -0.1 })).toThrow(
       ProtocolValidationError,
     );
+  });
+
+  it('accepts every V0 event type with a payload envelope', () => {
+    for (const type of AGENT_EVENT_TYPES) {
+      expect(isAgentEvent({ ...validEvent, type, payload: {} })).toBe(true);
+    }
+  });
+
+  it('rejects missing identifiers and invalid timestamps', () => {
+    expect(isAgentEvent({ ...validEvent, id: undefined })).toBe(false);
+    expect(isAgentEvent({ ...validEvent, timestamp: -1 })).toBe(false);
   });
 
   it('validates the initial SessionState shape', () => {

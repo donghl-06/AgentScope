@@ -262,10 +262,10 @@ agentscope/
 
 ### Step 2.5 — 协议文档与测试
 
-- [ ] 编写 `docs/event-protocol.md`，包含事件表、payload 示例、状态不变量。
-- [ ] 为每类核心事件加入合法/非法样例测试。
-- [ ] 测试 confidence 边界、缺失字段、非法 timestamp、重复 id。
-- [ ] 建立 golden JSON，防止无意破坏公开协议。
+- [x] 编写 `docs/event-protocol.md`，包含事件表、payload 示例、状态不变量。
+- [x] 为每类核心事件加入合法/非法样例测试。
+- [ ] 测试 confidence 边界、缺失字段、非法 timestamp、重复 id（跨事件去重语义由 Phase 3 Core 负责）。
+- [x] 建立 golden JSON，防止无意破坏公开协议。
 
 **Phase 2 门禁：** 协议包可独立构建；Core 不需要 provider 类型即可消费事件；schema validation、serialization 和 basic compatibility 测试通过。
 

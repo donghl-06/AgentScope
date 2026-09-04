@@ -1,0 +1,22 @@
+{
+  "sessionId": "session-golden-1",
+  "status": "starting",
+  "startedAt": 1700000000000,
+  "milestones": [],
+  "progress": {
+    "value": 0,
+    "confidence": 0,
+    "reasons": [
+      {
+        "code": "no_signal",
+        "message": "No agent activity has been observed yet."
+      }
+    ]
+  },
+  "verification": {
+    "tests": "unknown",
+    "build": "unknown",
+    "typecheck": "unknown",
+    "overall": "unknown"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "event-golden-1",
+  "sessionId": "session-golden-1",
+  "timestamp": 1700000000000,
+  "source": {
+    "provider": "mock",
+    "client": "agentscope",
+    "environment": "test",
+    "adapter": "mock"
+  },
+  "type": "session_started",
+  "payload": {},
+  "confidence": 1
+}

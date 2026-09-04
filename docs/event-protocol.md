@@ -33,6 +33,8 @@ The protocol does not contain provider-specific event names or payload fields. U
 
 `SessionState` is the provider-neutral projection maintained by Core. It uses `starting`, `running`, `blocked`, `completed`, `failed`, and `interrupted` statuses. Only terminal statuses may carry `endedAt`; a terminal state cannot be reopened by an ordinary activity event. Progress and ETA results expose a numeric value/range, confidence, and structured `{code, message}` reasons. Verification starts as `unknown` and is updated by objective test/build/typecheck signals.
 
+The canonical normalized fixtures under `tests/fixtures/normalized/protocol/` are validated in the protocol test suite. V0 compatibility is additive: new optional payload fields are accepted, while unknown event types and malformed envelopes are rejected with `ProtocolValidationError`.
+
 ## Sequence and ownership
 
 The adapter owns provider correlation identifiers only as optional payload metadata. AgentScope creates its own session id. Core/Storage assign the persisted monotonic sequence later; event timestamps may arrive out of order and must not be used as the sequence key.
