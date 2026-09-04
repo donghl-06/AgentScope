@@ -32,7 +32,7 @@ The command-failure run emitted a completed command item with `status=failed` an
 | Session info | observed | `thread.started.thread_id` is available | AgentScope generates its own session id |
 | Resume/session id | CLI surface present | `exec resume` and `fork` subcommands are documented; detailed compatibility needs a separate spike | provider id as optional metadata |
 | Token/cost | observed-but-out-of-scope | `turn.completed.usage` contains counters; no cost contract assumed | ignore by default |
-| User interruption | pending | no reliable structured Ctrl+C fixture was captured in this spike | process signal handling in Phase 5 |
+| User interruption | observed | Ctrl+C during an in-progress command terminated the CLI with process exit code 1; no JSONL terminal event was emitted | process signal handling in Phase 5 |
 | TTY/resize | unavailable | this spike used non-interactive exec; interactive resize behavior remains unverified | document non-interactive V0 path |
 
 ## I/O and lifecycle observations
@@ -40,9 +40,9 @@ The command-failure run emitted a completed command item with `status=failed` an
 - `--json` is suitable for machine-readable stdout capture; stderr contained host/runtime warnings and must not be parsed as protocol events.
 - `--ephemeral` avoids persisting the provider session during the spike; production resume policy remains an AgentScope decision.
 - The CLI can report a command failure at item level without making the enclosing turn fail. Adapter normalization therefore needs separate provider-outcome and workspace-verification signals.
+- During a real Ctrl+C experiment, the process exited with code 1 while the JSONL stream ended after an in-progress command item. Absence of `turn.completed` is therefore not itself a provider failure; the wrapper must combine signal/exit evidence with the partial stream and normalize `interrupted`.
 - Codex CLI help exposed a stable `exec` command and an experimental `app-server` command; V0 uses `exec` and does not depend on app-server.
 
 ## Fixture policy
 
-`tests/fixtures/raw/codex-cli/` contains redacted representative event shapes only. It excludes prompts, command text, absolute paths, thread UUIDs, usage values, and full agent messages. A real interrupted fixture remains a Phase 0 follow-up item.
-
+`tests/fixtures/raw/codex-cli/` contains redacted representative event shapes only. It excludes prompts, command text, absolute paths, thread UUIDs, usage values, and full agent messages. The interrupted fixture intentionally ends at an in-progress command because no provider terminal record was emitted.

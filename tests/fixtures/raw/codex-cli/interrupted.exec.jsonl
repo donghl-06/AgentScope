@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"<provider-thread-id>"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"<item-id>","type":"agent_message","text":"<redacted>"}}
+{"type":"item.started","item":{"id":"<item-id>","type":"command_execution","status":"in_progress","command":"<redacted>"}}

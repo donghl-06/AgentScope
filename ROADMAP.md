@@ -161,7 +161,7 @@ agentscope/
 - [x] 枚举 JSON/structured events、日志、session id、非交互/exec 模式和恢复能力。
 - [ ] 区分官方稳定输出与内部实现细节；内部事件不得成为唯一契约。
 - [ ] 用与 Claude 相同的场景采集输出，便于后续做归一化对照。
-- [ ] 验证 TTY、stdin/stdout/stderr、退出码、Ctrl+C、终端 resize 和编码行为。
+- [ ] 验证 TTY、stdin/stdout/stderr、退出码、Ctrl+C、终端 resize 和编码行为（Ctrl+C/退出码已观察；TTY/resize/编码仍待补测）。
 - [x] 将脱敏样例保存到 `tests/fixtures/raw/codex-cli/`。
 - [x] 形成 `docs/findings/codex-cli.md` 和 capability matrix 条目。
 
