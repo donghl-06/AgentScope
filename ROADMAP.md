@@ -240,11 +240,11 @@ agentscope/
 
 ### Step 2.2 — 定义 Adapter 契约
 
-- [ ] 实现 `AgentCapabilities`、`DetectionResult`、Start/Attach request。
-- [ ] `AttachedSession` 提供 async event stream 或一致的 subscribe API。
-- [ ] 定义 `stop`、`detach`、正常结束、异常结束和重复 cleanup 的语义。
-- [ ] 规定 adapter 不直接写 DB、不直接修改 SessionState。
-- [ ] 定义 capability 与单个事件 confidence 的区别。
+- [x] 实现 `AgentCapabilities`、`DetectionResult`、Start/Attach request。
+- [x] `AttachedSession` 提供 async event stream 或一致的 subscribe API。
+- [x] 定义 `stop`、`detach`、正常结束、异常结束和重复 cleanup 的语义。
+- [x] 规定 adapter 不直接写 DB、不直接修改 SessionState。
+- [x] 定义 capability 与单个事件 confidence 的区别。
 
 ### Step 2.3 — 定义 SessionState
 

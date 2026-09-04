@@ -39,7 +39,11 @@ importers:
 
   apps/server: {}
 
-  packages/adapters/base: {}
+  packages/adapters/base:
+    dependencies:
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
 
   packages/adapters/claude-code: {}
 
