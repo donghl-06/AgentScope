@@ -248,10 +248,10 @@ agentscope/
 
 ### Step 2.3 — 定义 SessionState
 
-- [ ] 实现 starting/running/blocked/completed/failed/interrupted 状态联合类型。
-- [ ] 定义 Activity、Milestone、WorkspaceState、VerificationState。
-- [ ] 定义 ProgressResult 和 ETAResult，统一 reasons 的机器可读 code 与人类可读 message。
-- [ ] 定义状态不变量：endedAt 只用于终态、终态不可被普通活动事件重新打开等。
+- [x] 实现 starting/running/blocked/completed/failed/interrupted 状态联合类型。
+- [x] 定义 Activity、Milestone、WorkspaceState、VerificationState。
+- [x] 定义 ProgressResult 和 ETAResult，统一 reasons 的机器可读 code 与人类可读 message。
+- [x] 定义状态不变量：endedAt 只用于终态、终态不可被普通活动事件重新打开等。
 
 ### Step 2.4 — 运行时校验与序列化
 

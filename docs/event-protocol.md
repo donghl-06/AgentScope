@@ -29,7 +29,10 @@ The protocol does not contain provider-specific event names or payload fields. U
 
 `session_finished` always includes a normalized `reason`. An adapter may additionally provide an exit code and a short provider outcome label; full stdout, prompts, secrets, and token data are not part of the default payload.
 
+## Session state
+
+`SessionState` is the provider-neutral projection maintained by Core. It uses `starting`, `running`, `blocked`, `completed`, `failed`, and `interrupted` statuses. Only terminal statuses may carry `endedAt`; a terminal state cannot be reopened by an ordinary activity event. Progress and ETA results expose a numeric value/range, confidence, and structured `{code, message}` reasons. Verification starts as `unknown` and is updated by objective test/build/typecheck signals.
+
 ## Sequence and ownership
 
 The adapter owns provider correlation identifiers only as optional payload metadata. AgentScope creates its own session id. Core/Storage assign the persisted monotonic sequence later; event timestamps may arrive out of order and must not be used as the sequence key.
-
