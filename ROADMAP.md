@@ -219,10 +219,10 @@ agentscope/
 
 ### Step 1.4 — 建立 CI 基线
 
-- [ ] CI 在无真实 Claude/Codex 的环境安装、lint、typecheck、unit test、build。
-- [ ] 默认 CI 禁止调用真实 Agent；真实 CLI smoke 使用显式 opt-in job。
-- [ ] fixture 中加入敏感信息扫描或审查脚本。
-- [ ] 缓存 pnpm store，但不缓存本地数据库或原始日志。
+- [x] CI 在无真实 Claude/Codex 的环境安装、lint、typecheck、unit test、build。
+- [x] 默认 CI 禁止调用真实 Agent；真实 CLI smoke 使用显式 opt-in job。
+- [x] fixture 中加入敏感信息扫描或审查脚本。
+- [x] 缓存 pnpm store，但不缓存本地数据库或原始日志。
 
 **Phase 1 门禁：** 全新 clone 后可用文档化命令安装和验证；空实现的 lint、typecheck、test、build 全部通过。
 

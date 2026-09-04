@@ -12,11 +12,13 @@
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig*.json *.mjs apps/*/package.json apps/*/tsconfig.json packages/*/package.json packages/*/tsconfig.json packages/adapters/*/package.json packages/adapters/*/tsconfig.json packages/observers/*/package.json packages/observers/*/tsconfig.json apps/**/*.ts packages/**/*.ts",
+    "format:check": "prettier --check package.json pnpm-workspace.yaml tsconfig*.json *.mjs scripts/**/*.mjs apps/*/package.json apps/*/tsconfig.json packages/*/package.json packages/*/tsconfig.json packages/adapters/*/package.json packages/adapters/*/tsconfig.json packages/observers/*/package.json packages/observers/*/tsconfig.json apps/**/*.ts packages/**/*.ts",
     "typecheck": "pnpm --recursive --if-present typecheck",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.mjs --passWithNoTests",
-    "build": "pnpm --recursive --if-present build",
+    "test:manual-smoke": "vitest run --config vitest.manual-smoke.config.mjs --passWithNoTests",
+    "fixtures:check": "node scripts/check-fixtures.mjs",
+    "build": "pnpm typecheck && node scripts/check-workspace.mjs",
     "dev": "pnpm --parallel --recursive --if-present dev"
   },
   "devDependencies": {
