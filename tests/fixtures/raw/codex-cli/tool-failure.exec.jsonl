@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"<provider-thread-id>"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"<item-id>","type":"command_execution","status":"in_progress","command":"<redacted>"}}
+{"type":"item.completed","item":{"id":"<item-id>","type":"command_execution","status":"completed","exit_code":0}}
+{"type":"item.started","item":{"id":"<item-id>","type":"command_execution","status":"in_progress","command":"<redacted>"}}
+{"type":"item.completed","item":{"id":"<item-id>","type":"command_execution","status":"failed","exit_code":1}}
+{"type":"turn.completed","usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0}}

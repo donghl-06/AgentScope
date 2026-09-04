@@ -144,28 +144,28 @@ agentscope/
 
 ### Step 0.2 — 实测 Claude Code CLI
 
-- [ ] 记录当前安装版本、`--help` 和可用的官方文档入口。
-- [ ] 枚举 machine-readable/structured output、hooks、非交互模式、resume/session id 等公开能力。
+- [x] 记录当前安装版本、`--help` 和可用的官方文档入口。
+- [x] 枚举 machine-readable/structured output、hooks、非交互模式、resume/session id 等公开能力。
 - [ ] 用最小无敏感仓库运行成功、失败、工具调用、文件修改、测试命令、用户中断等场景。
 - [ ] 比较 interactive TTY 与 structured/non-interactive 模式是否兼容。
 - [ ] 验证 stdout/stderr 的通道、刷新行为、编码、退出码和 signal forwarding。
-- [ ] 仅保存脱敏后的原始输出到 `tests/fixtures/raw/claude-code/`。
-- [ ] 标记每个字段为 stable/public、observed-but-unstable 或 unavailable。
-- [ ] 形成 `docs/findings/claude-code.md` 和 capability matrix 条目。
+- [x] 仅保存脱敏后的原始输出到 `tests/fixtures/raw/claude-code/`。
+- [x] 标记每个字段为 stable/public、observed-but-unstable 或 unavailable。
+- [x] 形成 `docs/findings/claude-code.md` 和 capability matrix 条目。
 
-**产物/验证：** 至少覆盖 success、failure、interrupted 三类 fixture；能够明确首选采集路径和 fallback。
+**产物/验证：** 已覆盖 success、tool/test failure 和 fallback 证据；interactive trust-screen 取消已观察，但可靠的 structured Ctrl+C fixture、TTY 兼容性和 signal forwarding 仍待补测，因此本 Step 尚未完成。
 
 ### Step 0.3 — 实测 Codex CLI
 
-- [ ] 记录当前安装版本、`--help` 和官方文档入口。
-- [ ] 枚举 JSON/structured events、日志、session id、非交互/exec 模式和恢复能力。
+- [x] 记录当前安装版本、`--help` 和官方文档入口。
+- [x] 枚举 JSON/structured events、日志、session id、非交互/exec 模式和恢复能力。
 - [ ] 区分官方稳定输出与内部实现细节；内部事件不得成为唯一契约。
 - [ ] 用与 Claude 相同的场景采集输出，便于后续做归一化对照。
 - [ ] 验证 TTY、stdin/stdout/stderr、退出码、Ctrl+C、终端 resize 和编码行为。
-- [ ] 将脱敏样例保存到 `tests/fixtures/raw/codex-cli/`。
-- [ ] 形成 `docs/findings/codex-cli.md` 和 capability matrix 条目。
+- [x] 将脱敏样例保存到 `tests/fixtures/raw/codex-cli/`。
+- [x] 形成 `docs/findings/codex-cli.md` 和 capability matrix 条目。
 
-**产物/验证：** 至少覆盖 success、failure、interrupted 三类 fixture；明确 structured 首选路径、文本 fallback 和不可依赖字段。
+**产物/验证：** 已覆盖 success、command failure 和 structured fallback 证据；Ctrl+C、TTY/resize、编码和跨场景一致性仍待补测，因此本 Step 尚未完成。
 
 ### Step 0.4 — 跨平台进程与路径 Spike
 
@@ -876,7 +876,7 @@ agentscope/
 ## 11. 下一步（从这里开始执行）
 
 - [x] 先完成 Step 0.1，建立 architecture、privacy 和 ADR 骨架。
-- [ ] 并行推进 Step 0.2/0.3 的 CLI 当前版本实测，但原始样例必须脱敏。
+- [ ] 并行推进 Step 0.2/0.3 的 CLI 当前版本实测，但原始样例必须脱敏（已记录部分结果；中断/TTY 补测仍待完成）。
 - [ ] 同时完成 Phase 1 工程基座，使 Phase 0 产生的 fixtures 能立即进入测试。
 - [ ] Phase 0 capability matrix 审核通过后冻结 Protocol V0，再开始 Core 实现。
 

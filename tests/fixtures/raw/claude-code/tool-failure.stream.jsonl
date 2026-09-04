@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"<provider-session-id>","model":"<configured-model>","permissionMode":"acceptEdits","claude_code_version":"2.1.259"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"<redacted>"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"<redacted>"}]}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"duration_ms":10633}
