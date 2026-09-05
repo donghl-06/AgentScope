@@ -329,9 +329,9 @@ agentscope/
 - [x] 建立 sessions、events、milestones、eta_snapshots 表。
 - [x] events 添加 `(session_id, seq)` unique constraint。
 - [x] 为 `session_id/seq/timestamp/type` 和 session status/project 建索引。
-- [ ] payload/metadata/reasons 使用 JSON text，读取时做协议校验（JSON 列已建，读取校验待 repository 层）。
+- [x] payload/metadata/reasons 使用 JSON text，读取时做协议校验。
 - [x] 配置 SQLite WAL、busy timeout 和外键。
-- [ ] 建立 migration 命令及空库/旧库升级测试（命令与空库幂等测试已完成，旧库升级测试待补）。
+- [x] 建立 migration 命令及空库/旧库升级测试。
 
 ### Step 4.2 — 实现 repositories 与事务
 
@@ -343,9 +343,9 @@ agentscope/
 
 ### Step 4.3 — 实现服务启动恢复
 
-- [ ] 启动时加载非终态 session，并按事件重放或 projection 校验。
+- [x] 启动时加载非终态 session，并按事件重放或 projection 校验。
 - [x] 对服务崩溃遗留的 starting/running session 标记为 `interrupted`；blocked session 保留等待用户动作。
-- [ ] 比较持久化 projection 与 replay 结果，发现不一致时记录诊断信息。
+- [x] 比较持久化 projection 与 replay 结果，并通过启动回调报告不一致诊断。
 - [ ] 优雅关机时停止接受新事件、flush 写入、关闭 DB。
 
 ### Step 4.4 — 实现 HTTP API

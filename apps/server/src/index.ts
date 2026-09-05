@@ -3,7 +3,9 @@ import { Type } from '@sinclair/typebox';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 import type { SessionStatus } from '@agentscope/protocol';
+import { reduceSessionState } from '@agentscope/core';
 import {
+  type ProjectionVerification,
   StorageError,
   StorageNotFoundError,
   type SessionListFilter,
@@ -47,6 +49,7 @@ export interface ServerOptions {
   readonly recoverOnStart?: boolean;
   readonly heartbeatIntervalMs?: number;
   readonly maxWebSocketPayloadBytes?: number;
+  readonly onProjectionMismatch?: (diagnostic: ProjectionVerification) => void;
 }
 
 export function createServer(options: ServerOptions): FastifyInstance {
@@ -57,6 +60,9 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const maxWebSocketPayloadBytes = options.maxWebSocketPayloadBytes ?? 64 * 1024;
   if (!Number.isFinite(maxWebSocketPayloadBytes) || maxWebSocketPayloadBytes <= 0) {
     throw new RangeError('maxWebSocketPayloadBytes must be positive.');
+  }
+  for (const diagnostic of options.repository.verifyNonTerminalProjections(reduceSessionState)) {
+    if (!diagnostic.matches) options.onProjectionMismatch?.(diagnostic);
   }
   if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
   const unsubscribeRepository = options.repository.subscribe((notification) => {

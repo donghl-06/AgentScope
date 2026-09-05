@@ -162,4 +162,34 @@ describe('server HTTP API', () => {
       state: { status: 'interrupted' },
     });
   });
+
+  it('reports projection drift before recovering in-flight sessions', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const state = createInitialSessionState('session-1', 1_700_000_000_000);
+    repository.createSession({
+      id: 'session-1',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state: { ...state, status: 'running' },
+    });
+    const diagnostics: string[] = [];
+    const app = createServer({
+      repository,
+      onProjectionMismatch: (diagnostic) => diagnostics.push(diagnostic.sessionId),
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect(diagnostics).toEqual(['session-1']);
+    expect((await app.inject('/api/sessions/session-1')).json()).toMatchObject({
+      status: 'interrupted',
+    });
+  });
 });

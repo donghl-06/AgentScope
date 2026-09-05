@@ -45,6 +45,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@agentscope/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@agentscope/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

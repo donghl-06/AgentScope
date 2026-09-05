@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import {
   assertAgentEvent,
   assertSessionState,
+  createInitialSessionState,
   type AgentEvent,
   type EtaResult,
   type Milestone,
@@ -116,6 +117,16 @@ export interface AppendEventResult {
   readonly session: StoredSession;
 }
 
+export type SessionProjectionReducer = (state: SessionState, event: AgentEvent) => SessionState;
+
+export interface ProjectionVerification {
+  readonly sessionId: string;
+  readonly matches: boolean;
+  readonly replayed: SessionState;
+  readonly persisted: SessionState;
+  readonly differences: readonly string[];
+}
+
 export type RepositoryNotification =
   | { readonly type: 'session.created'; readonly session: StoredSession }
   | { readonly type: 'session.updated'; readonly session: StoredSession }
@@ -179,6 +190,42 @@ export class StorageRepository {
       SessionRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Session not found: ${id}`);
     return decodeSession(row);
+  }
+
+  verifySessionProjection(id: string, reduce: SessionProjectionReducer): ProjectionVerification {
+    const session = this.getSession(id);
+    const replayed = this.listEvents(id).items.reduce(
+      (current, stored) => reduce(current, stored.event),
+      createInitialSessionState(id, session.startedAt),
+    );
+    const fields: readonly (keyof SessionState)[] = [
+      'status',
+      'endedAt',
+      'currentActivity',
+      'milestones',
+      'verification',
+    ];
+    const differences = fields.filter(
+      (field) => JSON.stringify(replayed[field]) !== JSON.stringify(session.state[field]),
+    );
+    return {
+      sessionId: id,
+      matches: differences.length === 0,
+      replayed,
+      persisted: session.state,
+      differences,
+    };
+  }
+
+  verifyNonTerminalProjections(
+    reduce: SessionProjectionReducer,
+  ): readonly ProjectionVerification[] {
+    const rows = this.client
+      .prepare(
+        "SELECT id FROM sessions WHERE status NOT IN ('completed', 'failed', 'interrupted') ORDER BY started_at, id",
+      )
+      .all() as Array<{ id: string }>;
+    return rows.map((row) => this.verifySessionProjection(row.id, reduce));
   }
 
   listSessions(filter: SessionListFilter = {}): Page<StoredSession> {

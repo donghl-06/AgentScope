@@ -220,4 +220,36 @@ describe('StorageRepository', () => {
       expect(repository.getSession('blocked-session').status).toBe('blocked');
     });
   });
+
+  it('replays non-terminal projections and reports persisted drift', () => {
+    withRepository((repository, client) => {
+      repository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+      const reduce = (current: SessionState, next: AgentEvent): SessionState =>
+        next.type === 'session_started' ? { ...current, status: 'running' } : current;
+      repository.appendEvent(
+        event('event-1', 'session-1', 'session_started'),
+        state('session-1', 'running'),
+      );
+
+      expect(repository.verifySessionProjection('session-1', reduce)).toMatchObject({
+        matches: true,
+        differences: [],
+      });
+
+      client
+        .prepare('UPDATE sessions SET state_json = ? WHERE id = ?')
+        .run(JSON.stringify(state('session-1', 'blocked')), 'session-1');
+      const drift = repository.verifySessionProjection('session-1', reduce);
+      expect(drift.matches).toBe(false);
+      expect(drift.differences).toContain('status');
+      expect(repository.verifyNonTerminalProjections(reduce)).toHaveLength(1);
+    });
+  });
 });
