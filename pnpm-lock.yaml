@@ -86,7 +86,14 @@ importers:
         specifier: workspace:*
         version: link:../../protocol
 
-  packages/adapters/claude-code: {}
+  packages/adapters/claude-code:
+    dependencies:
+      '@agentscope/adapter-base':
+        specifier: workspace:*
+        version: link:../base
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
 
   packages/adapters/codex-cli: {}
 

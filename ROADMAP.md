@@ -492,9 +492,9 @@ agentscope/
 
 - [ ] 构造参数数组，选择 Phase 0 确认的 structured 首选模式。
 - [ ] 增量解析 chunk/line，正确处理跨 chunk JSON、CRLF、Unicode 和 malformed record。
-- [ ] 将公开稳定事件映射为 AgentEvent。
+- [x] 将已观测的 Claude JSONL 事件映射为安全的 AgentEvent；provider-specific 字段留在 adapter 边界。
 - [ ] structured 不可用时降级为 lifecycle + stdout/stderr 文本提示 + workspace signals。
-- [ ] 未知 provider 事件安全忽略或记录低敏诊断，不让 adapter 崩溃。
+- [x] 未知 provider 事件安全忽略，malformed record 返回可诊断结果且不让 adapter 崩溃。
 
 ### Step 7.3 — 生命周期与隐私
 
@@ -505,7 +505,7 @@ agentscope/
 
 ### Step 7.4 — 测试与文档
 
-- [ ] raw fixture → normalized events golden tests。
+- [x] raw fixture → normalized events fixture tests，验证不保存 assistant 文本和命令内容。
 - [ ] 覆盖 malformed、未知事件、部分输出、非零退出和中断。
 - [ ] 运行真实 manual smoke，并记录版本、命令、结果和限制。
 - [ ] 更新 capability matrix 和用户文档。
