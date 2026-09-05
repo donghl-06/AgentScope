@@ -350,16 +350,16 @@ agentscope/
 
 ### Step 4.4 — 实现 HTTP API
 
-- [ ] `GET /api/sessions`：过滤 project/status、稳定分页和摘要。
-- [ ] `GET /api/sessions/:id`：返回 state、capability、workspace 和 verification。
-- [ ] `GET /api/sessions/:id/events?after=<cursor>`：按 seq 返回事件与 next cursor。
-- [ ] `GET /api/projects/:id/overview`：聚合 active/blocked/completed counts。
-- [ ] 为 400/404/409/500 定义一致错误 envelope。
+- [x] `GET /api/sessions`：过滤 project/status、稳定分页和摘要。
+- [x] `GET /api/sessions/:id`：返回 state、capability、workspace 和 verification。
+- [x] `GET /api/sessions/:id/events?after=<cursor>`：按 seq 返回事件与 next cursor。
+- [x] `GET /api/projects/:id/overview`：聚合 active/blocked/completed counts。
+- [x] 为 400/404/409/500 定义一致错误 envelope。
 - [ ] 对 request/response 做 schema 校验并生成或维护 API 文档。
 
 ### Step 4.5 — 实现 WebSocket 协议
 
-- [ ] 提供 `/ws`，定义 connection hello/protocol version。
+- [x] 提供 `/ws`，定义 connection hello/protocol version。
 - [ ] 广播 `session.created/session.updated/event.appended/project.updated`。
 - [ ] 每条消息携带 sessionId、seq/cursor 和必要的轻量 payload。
 - [ ] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
@@ -368,7 +368,8 @@ agentscope/
 
 ### Step 4.6 — Server 集成测试
 
-- [ ] 临时 SQLite 中写入事件，重启 server 后仍能查询。
+- [x] 临时 SQLite 中写入事件并通过 HTTP 查询。
+- [ ] 重启 server 后仍能查询。
 - [ ] 测试并发 append 的 seq 唯一和顺序。
 - [ ] 测试 WS 收到实时事件，断开期间写入后通过 HTTP 补齐。
 - [ ] 测试 malformed payload、未知 session、DB failure 和优雅关闭。

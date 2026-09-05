@@ -62,6 +62,16 @@ export interface EventPage {
   readonly nextCursor?: string;
 }
 
+export interface ProjectOverview {
+  readonly projectId: string;
+  readonly active: number;
+  readonly blocked: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly interrupted: number;
+  readonly total: number;
+}
+
 export class StorageError extends Error {
   constructor(
     message: string,
@@ -183,6 +193,25 @@ export class StorageRepository {
       ...(rows.length > limit && pageRows.length > 0
         ? { nextCursor: encodeSessionCursor(pageRows.at(-1)!) }
         : {}),
+    };
+  }
+
+  getProjectOverview(projectId: string): ProjectOverview {
+    const rows = this.client
+      .prepare(
+        'SELECT status, count(*) AS count FROM sessions WHERE project_id = ? GROUP BY status',
+      )
+      .all(projectId) as Array<{ status: string; count: number }>;
+    const counts = new Map(rows.map((row) => [row.status, row.count]));
+    const active = (counts.get('starting') ?? 0) + (counts.get('running') ?? 0);
+    return {
+      projectId,
+      active,
+      blocked: counts.get('blocked') ?? 0,
+      completed: counts.get('completed') ?? 0,
+      failed: counts.get('failed') ?? 0,
+      interrupted: counts.get('interrupted') ?? 0,
+      total: rows.reduce((sum, row) => sum + row.count, 0),
     };
   }
 

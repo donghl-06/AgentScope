@@ -10,5 +10,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@agentscope/protocol": "workspace:*",
+    "@agentscope/storage": "workspace:*",
+    "@fastify/websocket": "11.3.0",
+    "fastify": "5.12.3"
   }
 }

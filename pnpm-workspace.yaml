@@ -5,3 +5,5 @@ packages:
   - packages/observers/*
 allowBuilds:
   better-sqlite3: true
+minimumReleaseAgeExclude:
+  - fastify@5.12.3
