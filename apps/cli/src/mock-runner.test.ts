@@ -54,7 +54,15 @@ describe('mock CLI runner', () => {
       });
       const storage = openStorage({ filename, migrate: true });
       const repository = new StorageRepository(storage.client);
-      expect(repository.getSession('session-1')).toMatchObject({ status: 'completed' });
+      const session = repository.getSession('session-1');
+      expect(session).toMatchObject({ status: 'completed' });
+      expect(session.state.progress.value).toBeLessThanOrEqual(0.6);
+      expect(session.state.progress.reasons.map((reason) => reason.code)).toContain(
+        'completion_unverified',
+      );
+      const snapshots = repository.listEtaSnapshots('session-1');
+      expect(snapshots.length).toBeGreaterThan(0);
+      expect(snapshots.length).toBeLessThan(8);
       storage.client.close();
     } finally {
       for (const suffix of ['', '-wal', '-shm']) {

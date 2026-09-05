@@ -672,13 +672,13 @@ agentscope/
 - [x] center 只作为内部值，不在 UI 伪装为精确 ETA。
 - [x] confidence 越低，min/max 区间越宽。
 - [x] 输出 min/max 顺序、最小显示粒度和最大可显示范围。
-- [ ] 终态返回 zero/not_applicable，而不是残留旧 ETA。
+- [x] 终态返回 zero/not_applicable，而不是残留旧 ETA；terminal ETA 已在 engine 与 CLI 回归测试覆盖。
 - [ ] reasons 至少覆盖 failed tests、blocked、no native events、verification pending、insufficient data。
 
 ### Step 11.4 — Snapshot 与展示
 
-- [ ] 在显著变化、关键事件或合理节流间隔写入 eta_snapshots。
-- [ ] 避免每个 file event 都写 snapshot 造成数据库膨胀。
+- [x] 在显著变化、关键事件或合理节流间隔写入 eta_snapshots；CLI 运行器已保存初始、验证、阻塞、里程碑和终态快照。
+- [x] 避免每个 file event 都写 snapshot 造成数据库膨胀；普通工具/文件事件不写快照。
 - [ ] API 返回当前 ETA 和可选历史；V0 UI 先展示当前区间与原因。
 - [ ] 预留后续曲线接口，但不在 V0 优先做复杂图表。
 

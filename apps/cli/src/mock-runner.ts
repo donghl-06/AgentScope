@@ -1,7 +1,11 @@
 import { reduceSessionState } from '@agentscope/core';
 import { MockAdapter, type MockFixtureName } from '@agentscope/adapter-mock';
+import { estimateEta } from '@agentscope/eta';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
+import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
+
+import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
 
 export interface MockRunOptions {
   readonly filename: string;
@@ -38,6 +42,7 @@ export async function runMockFixture(options: MockRunOptions): Promise<MockRunRe
   });
 
   let eventCount = 0;
+  let lastEtaSnapshot: SessionState['eta'];
   const adapter = new MockAdapter({
     fixture: options.fixture,
     ...(options.speed === undefined ? {} : { speed: options.speed }),
@@ -52,7 +57,26 @@ export async function runMockFixture(options: MockRunOptions): Promise<MockRunRe
     });
     for await (const event of attached.events()) {
       state = reduceSessionState(state, event);
+      const progress = computeProgress({
+        state,
+        capabilities: adapter.capabilities(),
+        now: event.timestamp,
+        lastSignalAt: event.timestamp,
+      });
+      state = {
+        ...state,
+        progress,
+        eta: estimateEta({
+          state,
+          progress,
+          elapsedSeconds: Math.max(0, (event.timestamp - startedAt) / 1_000),
+        }),
+      };
       repository.appendEvent(event, state, event.timestamp);
+      if (state.eta !== undefined && shouldPersistEtaSnapshot(event.type, lastEtaSnapshot)) {
+        repository.saveEtaSnapshot(options.sessionId, state.eta, event.timestamp);
+        lastEtaSnapshot = state.eta;
+      }
       eventCount += 1;
     }
     const exitCode = state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1;

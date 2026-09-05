@@ -87,12 +87,14 @@ describe('provider runner', () => {
         sessionId: 'session-progress',
       });
       const storage = openStorage({ filename, migrate: false });
-      const session = new StorageRepository(storage.client).getSession('session-progress');
+      const repository = new StorageRepository(storage.client);
+      const session = repository.getSession('session-progress');
       expect(session.state.progress.reasons.map((reason) => reason.code)).toContain(
         'completion_unverified',
       );
       expect(session.state.progress.value).toBeLessThanOrEqual(0.6);
       expect(session.state.eta).toMatchObject({ minSeconds: 0, maxSeconds: 0 });
+      expect(repository.listEtaSnapshots('session-progress').length).toBeGreaterThan(0);
       storage.client.close();
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

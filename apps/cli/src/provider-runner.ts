@@ -9,6 +9,8 @@ import { createInitialSessionState, type SessionState } from '@agentscope/protoc
 import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
+import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
+
 export interface ProviderRunOptions {
   readonly adapter: 'claude';
   readonly args: readonly string[];
@@ -62,6 +64,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   });
 
   let eventCount = 0;
+  let lastEtaSnapshot: SessionState['eta'];
   let attached: Awaited<ReturnType<NonNullable<ClaudeCodeAdapter['start']>>> | undefined;
   const signals = options.signals ?? process;
   const handleSignal = () => {
@@ -93,6 +96,10 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
         }),
       };
       repository.appendEvent(event, state, event.timestamp);
+      if (state.eta !== undefined && shouldPersistEtaSnapshot(event.type, lastEtaSnapshot)) {
+        repository.saveEtaSnapshot(sessionId, state.eta, event.timestamp);
+        lastEtaSnapshot = state.eta;
+      }
       eventCount += 1;
     }
     return {
