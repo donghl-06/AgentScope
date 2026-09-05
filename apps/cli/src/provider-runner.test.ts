@@ -1,4 +1,10 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
+
+import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { runProvider } from './provider-runner.js';
 import type { ProviderRunSignals } from './provider-runner.js';
@@ -60,6 +66,37 @@ describe('provider runner', () => {
     });
 
     expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
+  });
+
+  it('persists explainable progress and terminal ETA after provider events', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-progress-'));
+    const filename = path.join(directory, 'session.db');
+    try {
+      await runProvider({
+        adapter: 'claude',
+        executable: process.execPath,
+        args: [
+          '-e',
+          script(
+            '{"type":"system","subtype":"init","session_id":"provider-progress"}\n{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}\n{"type":"result","subtype":"success","is_error":false}',
+            0,
+          ),
+        ],
+        filename,
+        workspacePath,
+        sessionId: 'session-progress',
+      });
+      const storage = openStorage({ filename, migrate: false });
+      const session = new StorageRepository(storage.client).getSession('session-progress');
+      expect(session.state.progress.reasons.map((reason) => reason.code)).toContain(
+        'completion_unverified',
+      );
+      expect(session.state.progress.value).toBeLessThanOrEqual(0.6);
+      expect(session.state.eta).toMatchObject({ minSeconds: 0, maxSeconds: 0 });
+      storage.client.close();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('stops the child and returns interrupted when SIGINT is received', async () => {

@@ -50,6 +50,12 @@ importers:
       '@agentscope/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentscope/eta':
+        specifier: workspace:*
+        version: link:../../packages/eta
+      '@agentscope/progress':
+        specifier: workspace:*
+        version: link:../../packages/progress
       '@agentscope/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

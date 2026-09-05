@@ -4,7 +4,9 @@ import { randomUUID } from 'node:crypto';
 
 import { reduceSessionState } from '@agentscope/core';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
+import { estimateEta } from '@agentscope/eta';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
+import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
 export interface ProviderRunOptions {
@@ -75,6 +77,21 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
     signals.once('SIGTERM', handleSignal);
     for await (const event of attached.events()) {
       state = reduceSessionState(state, event);
+      const progress = computeProgress({
+        state,
+        capabilities: adapter.capabilities(),
+        now: event.timestamp,
+        lastSignalAt: event.timestamp,
+      });
+      state = {
+        ...state,
+        progress,
+        eta: estimateEta({
+          state,
+          progress,
+          elapsedSeconds: Math.max(0, (event.timestamp - startedAt) / 1_000),
+        }),
+      };
       repository.appendEvent(event, state, event.timestamp);
       eventCount += 1;
     }

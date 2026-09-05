@@ -13,7 +13,9 @@
     "@agentscope/adapter-mock": "workspace:*",
     "@agentscope/adapter-claude-code": "workspace:*",
     "@agentscope/core": "workspace:*",
+    "@agentscope/eta": "workspace:*",
     "@agentscope/protocol": "workspace:*",
+    "@agentscope/progress": "workspace:*",
     "@agentscope/server": "workspace:*",
     "@agentscope/storage": "workspace:*"
   },
