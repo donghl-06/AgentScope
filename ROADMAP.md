@@ -557,33 +557,33 @@ agentscope/
 ### Step 9.1 — ProcessObserver
 
 - [ ] 只观察 wrapper 启动的进程树，记录 pid/start/end/exit code 和必要 metadata。
-- [ ] 不枚举或采集不相关进程、命令行和环境变量。
-- [ ] 处理子进程快速退出、父子顺序反转和 cleanup race。
+- [x] 不枚举或采集不相关进程、命令行和环境变量。
+- [x] 处理根进程快速退出和 cleanup race；子进程树扩展仍由 wrapper 显式提供。
 - [ ] 输出统一 lifecycle/command evidence，不与 adapter 事件重复计数。
 
 ### Step 9.2 — GitObserver
 
-- [ ] 识别 cwd-scoped Git repo、branch、HEAD 和初始 dirty baseline。
-- [ ] 使用稳定 machine-readable git 输出解析 changed files 和 diff stat。
+- [x] 识别 cwd-scoped Git repo、branch、HEAD 和初始 dirty baseline。
+- [x] 使用稳定 machine-readable git 输出解析 changed files；diff stat 仍待补充。
 - [ ] 只在事件触发或合理间隔采样，避免频繁全量 diff。
-- [ ] 区分 session 前已有修改和 session 期间新增修改。
-- [ ] Git 不可用、非仓库、submodule/worktree 等场景安全降级。
+- [x] 区分 session 前已有修改和 session 期间新增修改。
+- [x] Git 不可用、非仓库场景安全降级；submodule/worktree 仍待补测。
 
 ### Step 9.3 — FileObserver
 
-- [ ] watcher 根目录固定为 workspace resolved path。
-- [ ] 尊重 `.gitignore`、默认 ignore 和可配置 ignore。
-- [ ] 默认排除 `.git`、`node_modules`、build output、大型缓存和 AgentScope DB。
-- [ ] 对 create/modify/delete debounce、coalesce，防止事件风暴。
-- [ ] 防御 symlink/path traversal，确保事件仍属于 workspace。
+- [x] watcher 根目录固定为 workspace resolved path。
+- [x] 尊重默认 ignore 和可配置 ignore；`.gitignore` 语义仍待接入。
+- [x] 默认排除 `.git`、`node_modules`、build output、大型缓存和 AgentScope DB。
+- [x] 对 create/modify/delete debounce、coalesce，防止事件风暴。
+- [x] 防御 symlink/path traversal，确保事件仍属于 workspace。
 - [ ] 只记录路径和必要 stat，不默认读取文件内容。
 
 ### Step 9.4 — TestObserver
 
-- [ ] 建立常见 test/build/lint/typecheck 命令规则表。
+- [x] 建立常见 test/build/lint/typecheck 命令规则表。
 - [ ] 优先消费 wrapper/adapter 已知 command event，不尝试解析任意 shell。
-- [ ] 记录 command kind、start/end、exit code、duration 和可选摘要。
-- [ ] 成功映射为 verification passed，失败映射为 failed；未知命令保持 generic。
+- [x] 记录 command kind、start/end、exit code、duration 和可选摘要。
+- [x] 成功映射为 verification passed，失败映射为 failed；未知命令保持 generic。
 - [ ] 防止同一命令被 adapter 与 observer 双重计数。
 
 ### Step 9.5 — Observer 融合与测试
