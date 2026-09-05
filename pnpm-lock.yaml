@@ -171,6 +171,24 @@ importers:
 
   packages/observers/process: {}
 
+  packages/observers/runtime:
+    dependencies:
+      '@agentscope/observer-filesystem':
+        specifier: workspace:*
+        version: link:../filesystem
+      '@agentscope/observer-fusion':
+        specifier: workspace:*
+        version: link:../fusion
+      '@agentscope/observer-git':
+        specifier: workspace:*
+        version: link:../git
+      '@agentscope/observer-process':
+        specifier: workspace:*
+        version: link:../process
+      '@agentscope/observer-tests':
+        specifier: workspace:*
+        version: link:../tests
+
   packages/observers/tests: {}
 
   packages/progress:

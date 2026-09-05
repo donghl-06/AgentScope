@@ -912,10 +912,10 @@ MockAdapter
 
 ### 12.1 — 运行时 observer 融合边界
 
-- [ ] 审核当前 `runProvider`、Mock runner、server projection 和 `packages/observers/fusion` 的连接点，写一份短 ADR，明确 observer 的启动/停止时机、证据 key、source/kind 映射和 persist-before-publish 顺序。
-- [ ] 实现一个最小 observer runtime/coordinator：只接收 wrapper 自己启动的进程、workspace 内 Git/File 信号和已知验证命令，不解析任意 shell，不读取文件内容，不改变原生 adapter 事件。
-- [ ] 用 fusion ledger 对 native、process/test、git/file、agent evidence 去重和裁决；重复 command、重复 file event 和 adapter/observer 同源事件必须有稳定测试。
-- [ ] 为 coordinator 增加 cleanup、异常隔离和无 observer 能力时的降级测试；observer 故障不得拖垮 adapter session。
+- [x] 审核当前 `runProvider`、Mock runner、server projection 和 `packages/observers/fusion` 的连接点，并以 ADR-0006 固定 observer 启停时机、证据 key、source/kind 映射和 persist-before-publish 顺序。
+- [x] 实现最小 `@agentscope/observer-runtime` coordinator：只接收 wrapper 自己启动的进程、workspace 内 Git/File 信号和调用方提供的已知验证命令，不解析任意 shell，不读取文件内容，不改变原生 adapter 事件。
+- [x] 用 fusion ledger 对 runtime evidence 去重和裁决；重复 command、重复 file path、进程生命周期和 Git baseline 均有稳定测试。
+- [x] 为 coordinator 增加 cleanup、异常隔离和 watcher 失败降级测试；observer 故障不会让 `start()` 失败。
 - [ ] 将 observer evidence 接入 session projection/API 的最小可用字段，保留 source、reason、confidence、timestamp，不扩大协议 payload。
 
 ### 12.2 — Provider/Mock 纵向验证
