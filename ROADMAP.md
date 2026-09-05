@@ -593,6 +593,7 @@ agentscope/
 - [x] 为 inferred 事件设置较低 confidence 和明确 reason/source；ledger 校验并保留来源、理由和 payload。
 - [x] 临时 Git repo 测试 baseline、modify、delete、commit 和非仓库；Git snapshot 额外保留 tracked file 清单，避免把基线干净文件的删除误判为新增。
 - [x] synthetic test command 覆盖 pass/fail/interrupt。
+- [x] 文件 observer 回归覆盖 1,000 次事件风暴按路径合并；真实 CPU/IO 基准仍单独保留。
 - [ ] 压测事件风暴下 debounce、批量写入和 CPU/IO 开销。
 
 **Phase 9 门禁：** 关闭 adapter rich events 后，Mock/真实 wrapper 仍能展示进程、文件/Git 和验证活动；observer 不越出 workspace、不采集敏感数据。

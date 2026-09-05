@@ -91,4 +91,38 @@ build/
       vi.useRealTimers();
     }
   });
+
+  it('coalesces a high-volume event storm by path', () => {
+    vi.useFakeTimers();
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
+    const observations: Array<Pick<FileObservation, 'path' | 'kind'>> = [];
+    let emit: Parameters<FileWatchFactory>[1] | undefined;
+    try {
+      const observer = new FilesystemObserver(
+        {
+          rootPath,
+          debounceMs: 100,
+          onChange: (observation: FileObservation) =>
+            observations.push({ path: observation.path, kind: observation.kind }),
+        },
+        (_root, onEvent) => {
+          emit = onEvent;
+          return { close: () => {} };
+        },
+      );
+      observer.start();
+      for (let index = 0; index < 1_000; index += 1) {
+        emit?.('change', `src/file-${index % 25}.ts`);
+      }
+      vi.advanceTimersByTime(100);
+
+      expect(observations).toHaveLength(25);
+      expect(new Set(observations.map((observation) => observation.path)).size).toBe(25);
+      expect(observations.every((observation) => observation.kind === 'modify')).toBe(true);
+      observer.stop();
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
+  });
 });
