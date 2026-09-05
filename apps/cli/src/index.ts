@@ -6,6 +6,8 @@ export type CliCommand =
   | { readonly kind: 'run'; readonly adapter: string; readonly args: readonly string[] }
   | { readonly kind: 'run-mock'; readonly fixture: string };
 
+export * from './process-runner.js';
+
 export class CliUsageError extends Error {
   constructor(message: string) {
     super(message);

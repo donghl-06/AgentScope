@@ -394,10 +394,10 @@ agentscope/
 
 ### Step 5.2 — 子进程 wrapper
 
-- [ ] 使用 `spawn(executable, args)`，不进行通用 shell 拼接。
-- [ ] 明确 inherited、piped 和 structured 模式下 stdin/stdout/stderr 的策略。
+- [x] 使用 `spawn(executable, args)`，不进行通用 shell 拼接。
+- [x] 明确 inherited 和 piped 模式下 stdin/stdout/stderr 的策略；structured 模式待事件管线接入。
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
-- [ ] 捕获 pid、start/end、exit code、signal 和 spawn error。
+- [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
 - [ ] 处理 Ctrl+C、Ctrl+Break、父进程退出和 process tree cleanup。
 - [ ] 处理 Windows executable resolution、空格路径、Unicode 路径和长参数。
 - [ ] AgentScope CLI 返回与被包装 CLI 一致或文档化映射后的 exit code。
@@ -419,7 +419,7 @@ agentscope/
 
 ### Step 5.5 — CLI 测试
 
-- [ ] 用 synthetic child process 测试 stdout/stderr、exit 0/非 0、长运行和中断。
+- [x] 用 synthetic child process 覆盖 stdout/stderr、exit 0/非 0、spawn error、长运行中断和参数边界。
 - [ ] 测试带空格/Unicode 的 cwd 和参数。
 - [ ] 测试 cleanup 幂等、孤儿进程防护和 server unavailable。
 - [ ] 真实 TTY 行为纳入 manual smoke checklist。
