@@ -721,8 +721,8 @@ agentscope/
 - [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect。
 - [ ] 验证不会把 failed/interrupted/completed 混淆。
 - [ ] 验证 parser/observer 故障不会拖垮其他 session。
-- [ ] 验证事务失败时不广播幽灵事件。
-- [ ] 验证重复 cleanup 不报错、不遗留进程/端口/watcher。
+- [x] 验证事务失败时不广播幽灵事件；server regression test 已覆盖 repository duplicate-event rollback。
+- [x] 验证重复 cleanup 不报错、不遗留进程/端口/watcher；server close、adapter stop/detach 和 observer cleanup 已有回归覆盖。
 
 ### Step 12.4 — 性能与容量基线
 
