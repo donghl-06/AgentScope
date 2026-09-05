@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createInitialSessionState } from '@agentscope/protocol';
@@ -254,6 +258,55 @@ describe('server HTTP API', () => {
     } finally {
       await server.close();
       await server.close();
+    }
+  });
+
+  it('preserves history and recovers an in-flight session after server restart', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-server-restart-'));
+    const filename = path.join(directory, 'session.db');
+    const state = createInitialSessionState('session-restart', 1_700_000_000_000);
+    try {
+      const first = await startServer({ filename, host: '127.0.0.1', port: 0 });
+      const writer = openStorage({ filename, migrate: false });
+      const repository = new StorageRepository(writer.client);
+      repository.createSession({
+        id: 'session-restart',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: state.startedAt,
+        capabilities: {},
+        state: { ...state, status: 'running' },
+      });
+      repository.appendEvent(
+        {
+          id: 'restart-event',
+          sessionId: 'session-restart',
+          timestamp: state.startedAt + 100,
+          source,
+          type: 'planning',
+          payload: { summary: 'persisted' },
+          confidence: 1,
+        },
+        { ...state, status: 'running' },
+      );
+      writer.client.close();
+      await first.close();
+
+      const second = await startServer({ filename, host: '127.0.0.1', port: 0 });
+      try {
+        const session = await fetch(`${second.address}/api/sessions/session-restart`).then((response) =>
+          response.json(),
+        );
+        const events = await fetch(`${second.address}/api/sessions/session-restart/events`).then(
+          (response) => response.json(),
+        );
+        expect(session).toMatchObject({ status: 'interrupted' });
+        expect(events).toMatchObject({ items: [{ event: { id: 'restart-event' } }] });
+      } finally {
+        await second.close();
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
   });
 });
