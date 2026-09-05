@@ -14,6 +14,26 @@ export interface ClaudeParseResult {
   readonly malformed?: boolean;
 }
 
+export class ClaudeStreamDecoder {
+  private buffer = '';
+
+  constructor(private readonly context: ClaudeParserContext) {}
+
+  push(chunk: string): ClaudeParseResult[] {
+    this.buffer += chunk;
+    const lines = this.buffer.split('\n');
+    this.buffer = lines.pop() ?? '';
+    return lines.map((line) => parseClaudeStreamLine(line, this.context));
+  }
+
+  flush(): ClaudeParseResult[] {
+    if (this.buffer.length === 0) return [];
+    const result = parseClaudeStreamLine(this.buffer, this.context);
+    this.buffer = '';
+    return [result];
+  }
+}
+
 const DEFAULT_SOURCE: EventSource = {
   provider: 'claude',
   client: 'claude-code',

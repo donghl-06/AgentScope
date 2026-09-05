@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-import { parseClaudeStreamLine } from './parser.js';
+import { ClaudeStreamDecoder, parseClaudeStreamLine } from './parser.js';
 
 const context = { sessionId: 'session-1', timestamp: 1_700_000_000_000 };
 
@@ -51,5 +51,17 @@ describe('Claude Code stream parser', () => {
       events: [],
       ignored: true,
     });
+  });
+
+  it('reassembles split JSONL chunks and accepts CRLF input', () => {
+    const decoder = new ClaudeStreamDecoder(context);
+    const first = decoder.push('{"type":"system","subtype":"in');
+    expect(first).toEqual([]);
+    const second = decoder.push('it","session_id":"provider-1"}\r\n');
+    expect(second).toHaveLength(1);
+    expect(second[0]?.events[0]?.type).toBe('session_started');
+    expect(second[0]?.events[0]?.payload).toEqual({ providerSessionId: 'provider-1' });
+    expect(decoder.push('{"type":"result"}')).toEqual([]);
+    expect(decoder.flush()[0]?.events[0]?.type).toBe('session_finished');
   });
 });

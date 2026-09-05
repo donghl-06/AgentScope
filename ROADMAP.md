@@ -491,7 +491,7 @@ agentscope/
 ### Step 7.2 — 启动与解析
 
 - [ ] 构造参数数组，选择 Phase 0 确认的 structured 首选模式。
-- [ ] 增量解析 chunk/line，正确处理跨 chunk JSON、CRLF、Unicode 和 malformed record。
+- [x] 增量解析 chunk/line，正确处理跨 chunk JSON、CRLF 和 malformed record；Unicode 由 Node 字符串 chunk 保持。
 - [x] 将已观测的 Claude JSONL 事件映射为安全的 AgentEvent；provider-specific 字段留在 adapter 边界。
 - [ ] structured 不可用时降级为 lifecycle + stdout/stderr 文本提示 + workspace signals。
 - [x] 未知 provider 事件安全忽略，malformed record 返回可诊断结果且不让 adapter 崩溃。
