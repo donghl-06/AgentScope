@@ -361,9 +361,9 @@ agentscope/
 
 - [x] 提供 `/ws`，定义 connection hello/protocol version。
 - [ ] 广播 `session.created/session.updated/event.appended/project.updated`。
-- [ ] 每条消息携带 sessionId、seq/cursor 和必要的轻量 payload。
-- [ ] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
-- [ ] 实现 heartbeat、断开 cleanup、慢客户端处理和消息大小限制。
+- [ ] 每条消息携带 sessionId、seq/cursor 和必要的轻量 payload（消息类型已定义，事件接入待完成）。
+- [x] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
+- [ ] 实现 heartbeat、断开 cleanup、慢客户端处理和消息大小限制（断开和发送失败 cleanup 已完成，heartbeat/size limit 待完成）。
 - [ ] 文档化“WS 只负责实时，HTTP cursor 负责补齐”的恢复流程。
 
 ### Step 4.6 — Server 集成测试

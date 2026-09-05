@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+
+import { LiveHub, type LiveSocket } from './live-hub.js';
+
+class FakeSocket implements LiveSocket {
+  readonly messages: string[] = [];
+  closed = false;
+  send(payload: string): void {
+    if (this.closed) throw new Error('closed');
+    this.messages.push(payload);
+  }
+  close(): void {
+    this.closed = true;
+  }
+}
+
+describe('LiveHub', () => {
+  it('sends hello, applies subscriptions, and filters notifications', () => {
+    const hub = new LiveHub();
+    const first = new FakeSocket();
+    const second = new FakeSocket();
+    hub.attach(first);
+    hub.attach(second);
+    hub.handleMessage(first, JSON.stringify({ type: 'subscribe', sessionIds: ['session-1'] }));
+    hub.publish({ type: 'event.appended', sessionId: 'session-1', seq: 1 });
+    hub.publish({ type: 'event.appended', sessionId: 'session-2', seq: 1 });
+
+    expect(JSON.parse(first.messages[0]!)).toEqual({ type: 'hello', protocolVersion: '0.1' });
+    expect(JSON.parse(first.messages[1]!)).toMatchObject({ type: 'subscribed' });
+    expect(first.messages).toHaveLength(3);
+    expect(second.messages).toHaveLength(3);
+    expect(JSON.parse(first.messages[2]!)).toMatchObject({ sessionId: 'session-1' });
+    expect(JSON.parse(second.messages[2]!)).toMatchObject({ sessionId: 'session-2' });
+  });
+
+  it('supports ping and removes clients whose send fails', () => {
+    const hub = new LiveHub();
+    const socket = new FakeSocket();
+    hub.attach(socket);
+    hub.handleMessage(socket, JSON.stringify({ type: 'ping' }));
+    expect(JSON.parse(socket.messages.at(-1)!)).toEqual({ type: 'pong' });
+    socket.closed = true;
+    hub.publish({ type: 'project.updated', projectId: 'project-1' });
+    expect(hub.clientCount).toBe(0);
+  });
+});

@@ -9,14 +9,18 @@ import {
   type StorageRepository,
 } from '@agentscope/storage';
 
+import { LiveHub } from './live-hub.js';
+
 export interface ServerOptions {
   readonly repository: StorageRepository;
   readonly protocolVersion?: string;
+  readonly liveHub?: LiveHub;
 }
 
 export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
+  const liveHub = options.liveHub ?? new LiveHub();
 
   void app.register(websocket);
 
@@ -68,10 +72,11 @@ export function createServer(options: ServerOptions): FastifyInstance {
   });
 
   app.get('/ws', { websocket: true }, (socket) => {
-    socket.send(JSON.stringify({ type: 'hello', protocolVersion }));
+    const detach = liveHub.attach(socket, protocolVersion);
     socket.on('message', (raw: { toString(): string }) => {
-      if (raw.toString() === 'ping') socket.send(JSON.stringify({ type: 'pong' }));
+      liveHub.handleMessage(socket, raw.toString());
     });
+    socket.on('close', detach);
   });
 
   return app;
