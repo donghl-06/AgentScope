@@ -9,6 +9,7 @@ export type CliCommand =
 export * from './process-runner.js';
 export * from './mock-runner.js';
 export * from './server-client.js';
+export * from './command-runner.js';
 
 export class CliUsageError extends Error {
   constructor(message: string) {
