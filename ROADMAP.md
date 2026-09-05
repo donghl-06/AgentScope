@@ -710,11 +710,11 @@ agentscope/
 
 ### Step 12.2 — 真实双 Agent smoke
 
-- [ ] 在脱敏测试仓库启动一个 Claude Code CLI session。
-- [ ] 同时启动一个 Codex CLI session。
-- [ ] 验证两者 I/O、退出码、状态、timeline 与 workspace signals。
+- [x] 在脱敏测试仓库启动一个 Claude Code CLI session；2026-09-06 并行 smoke 已返回 `OK`。
+- [x] 同时启动一个 Codex CLI session；2026-09-06 与 Claude 共用数据库并行完成。
+- [ ] 验证两者 I/O、退出码、状态、timeline 与 workspace signals；最小只读 smoke 已覆盖 I/O、退出码、状态和 timeline，workspace signals 仍需带文件/命令的场景。
 - [ ] 测量关键事件端到端延迟，P95 目标小于 3 秒。
-- [ ] 记录 provider 版本、操作系统、模式和已知限制。
+- [x] 记录 provider 版本、操作系统、模式和已知限制；已写入 Claude/Codex findings。
 
 ### Step 12.3 — 状态与故障注入
 

@@ -5,6 +5,7 @@
 - Observed version: `codex-cli 0.152.1`.
 - Follow-up local detection on 2026-09-06 reports `codex-cli 0.153.0`; the adapter's Windows shim resolution and `--version` probe succeeded. This is detection-only evidence, not a provider session smoke.
 - Real local smoke on 2026-09-06 ran `agent-scope run codex -- "Reply with OK only"` through the `codex exec --json --ephemeral` path. Codex emitted `thread.started`, `turn.started`, an `agent_message` item containing `OK`, and `turn.completed`; the AgentScope session completed successfully and is now stored with `provider=codex`, `adapter=codex-cli`. Host/runtime warnings were observed on stderr and were not parsed as protocol events.
+- Parallel smoke on 2026-09-06 ran Codex beside a Claude Code session against the same AgentScope database. Codex returned `OK` and completed independently; the two sessions retained separate provider labels and timelines.
 - Host: Windows native PowerShell, disposable repository, non-interactive `codex exec` mode.
 - Structured command used: `codex exec --json --ephemeral`.
 - Authentication was already configured on the host; no credentials or account details are recorded here.
