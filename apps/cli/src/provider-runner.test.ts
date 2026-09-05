@@ -55,6 +55,33 @@ describe('provider runner', () => {
     expect(stdout.join('')).toContain('provider-1');
   });
 
+  it('persists a Codex session with the Codex provider label', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-'));
+    const filename = path.join(directory, 'session.db');
+    try {
+      await runProvider({
+        adapter: 'codex',
+        executable: process.execPath,
+        args: [
+          '-e',
+          script(
+            '{"type":"thread.started","thread_id":"thread-1"}\n{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}\n{"type":"turn.completed"}',
+            0,
+          ),
+        ],
+        filename,
+        workspacePath,
+        sessionId: 'codex-session-1',
+      });
+      const storage = openStorage({ filename, migrate: false });
+      const repository = new StorageRepository(storage.client);
+      expect(repository.getSession('codex-session-1').provider).toBe('codex');
+      storage.client.close();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('uses the process exit code when provider result claims success', async () => {
     const result = await runProvider({
       adapter: 'claude',

@@ -62,7 +62,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
 
   repository.createSession({
     id: sessionId,
-    provider: 'claude',
+    provider: options.adapter,
     adapter: adapter.id,
     startedAt,
     capabilities: { ...adapter.capabilities() },
