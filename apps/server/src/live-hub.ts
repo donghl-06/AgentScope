@@ -31,6 +31,17 @@ export class LiveHub {
     this.clients.delete(socket);
   }
 
+  close(): void {
+    for (const socket of this.clients.keys()) {
+      this.detach(socket);
+      try {
+        socket.close?.();
+      } catch {
+        // A closing client must not prevent other clients from being released.
+      }
+    }
+  }
+
   handleMessage(socket: LiveSocket, raw: string): void {
     let message: unknown;
     try {

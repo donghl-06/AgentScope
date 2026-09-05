@@ -372,7 +372,8 @@ agentscope/
 - [x] 重启 server 后仍能查询历史 timeline。
 - [ ] 测试并发 append 的 seq 唯一和顺序。
 - [x] 测试 WS 收到实时事件，断开期间写入后通过 HTTP cursor 补齐。
-- [ ] 测试 malformed payload、未知 session、DB failure 和优雅关闭。
+- [ ] 测试 malformed payload。
+- [x] 测试未知 session、DB failure，以及优雅关闭时的 WebSocket 资源清理。
 
 **Phase 4 门禁：** Mock 事件可持久化并实时推送；server 重启和 WS 重连不会丢失已确认写入的 timeline。
 

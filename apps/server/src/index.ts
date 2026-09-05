@@ -77,6 +77,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   });
   app.addHook('onClose', () => {
     unsubscribeRepository();
+    liveHub.close();
   });
   app.setErrorHandler((error, _request, reply) => {
     if ((error as { validation?: unknown }).validation !== undefined) {

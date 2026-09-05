@@ -43,4 +43,18 @@ describe('LiveHub', () => {
     hub.publish({ type: 'project.updated', projectId: 'project-1' });
     expect(hub.clientCount).toBe(0);
   });
+
+  it('closes all clients when the hub shuts down', () => {
+    const hub = new LiveHub();
+    const first = new FakeSocket();
+    const second = new FakeSocket();
+    hub.attach(first);
+    hub.attach(second);
+
+    hub.close();
+
+    expect(first.closed).toBe(true);
+    expect(second.closed).toBe(true);
+    expect(hub.clientCount).toBe(0);
+  });
 });

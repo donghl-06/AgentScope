@@ -176,4 +176,30 @@ describe('server recovery integration', () => {
     expect(body.items.map((item) => item.seq)).toEqual([2]);
     await closeSocket(secondSocket);
   });
+
+  it('returns stable errors for invalid requests, missing sessions, and a closed database', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    let clientClosed = false;
+    const closeClient = async () => {
+      if (clientClosed) return;
+      clientClosed = true;
+      client.close();
+    };
+    openResources.push(closeClient);
+    const repository = new StorageRepository(client);
+    const server = await startServer(repository);
+
+    const invalid = await fetch(`${server.baseUrl}/api/sessions?limit=0`);
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ error: { code: 'invalid_request' } });
+
+    const missing = await fetch(`${server.baseUrl}/api/sessions/missing/events`);
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toMatchObject({ error: { code: 'not_found' } });
+
+    await closeClient();
+    const unavailable = await fetch(`${server.baseUrl}/api/sessions`);
+    expect(unavailable.status).toBe(500);
+    expect(await unavailable.json()).toMatchObject({ error: { code: 'internal_error' } });
+  });
 });
