@@ -31,6 +31,12 @@ describe('test observer', () => {
       outcome: 'interrupted',
       verification: 'failed',
     });
+    observer.start('test-3', 'pnpm test', 300);
+    expect(observer.finish('test-3', 1, 340)).toMatchObject({
+      outcome: 'failed',
+      verification: 'failed',
+      durationMs: 40,
+    });
   });
 
   it('keeps unknown commands generic and handles missing/cancelled commands', () => {
