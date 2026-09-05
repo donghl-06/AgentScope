@@ -94,4 +94,57 @@ describe('ETA engine', () => {
       ),
     ).toThrow(RangeError);
   });
+
+  it('narrows the range as valid progress accumulates', () => {
+    const early = estimateEta({
+      state: state(),
+      progress: { value: 0.2, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 3_600,
+    });
+    const later = estimateEta({
+      state: state(),
+      progress: { value: 0.6, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 3_600,
+    });
+    expect(later.maxSeconds).toBeLessThan(early.maxSeconds);
+  });
+
+  it('widens a normal estimate while blocked and keeps all terminal states at zero', () => {
+    const normal = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 120,
+    });
+    const blocked = estimateEta({
+      state: state({ status: 'blocked' }),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 120,
+    });
+    expect(blocked.maxSeconds).toBeGreaterThan(normal.maxSeconds);
+    for (const status of ['completed', 'failed', 'interrupted'] as const) {
+      expect(
+        estimateEta({
+          state: state({ status, endedAt: 100 }),
+          progress: { value: 0.5, confidence: 0.8, reasons: [] },
+          elapsedSeconds: 120,
+        }),
+      ).toMatchObject({ minSeconds: 0, maxSeconds: 0 });
+    }
+  });
+
+  it('keeps stale low-capability estimates wide and deterministic', () => {
+    const input = {
+      state: state(),
+      progress: {
+        value: 0.5,
+        confidence: 0.3,
+        reasons: [{ code: 'low_signal', message: 'sparse' }],
+      },
+      elapsedSeconds: 120,
+    };
+    const first = estimateEta(input);
+    const second = estimateEta(input);
+    expect(first).toEqual(second);
+    expect(first.reasons.map((reason) => reason.code)).toContain('low_signal_penalty');
+  });
 });

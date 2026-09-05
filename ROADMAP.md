@@ -673,7 +673,7 @@ agentscope/
 - [x] confidence 越低，min/max 区间越宽。
 - [x] 输出 min/max 顺序、最小显示粒度和最大可显示范围。
 - [x] 终态返回 zero/not_applicable，而不是残留旧 ETA；terminal ETA 已在 engine 与 CLI 回归测试覆盖。
-- [ ] reasons 至少覆盖 failed tests、blocked、no native events、verification pending、insufficient data。
+- [x] reasons 至少覆盖 failed tests、blocked、low/no signal、verification pending、insufficient data；no native events 专用 reason 仍待 observer evidence 接入。
 
 ### Step 11.4 — Snapshot 与展示
 
@@ -684,13 +684,13 @@ agentscope/
 
 ### Step 11.5 — ETA 测试
 
-- [ ] early low-data：不输出误导性的具体分钟。
-- [ ] normal progress：范围随有效进展整体收敛。
-- [ ] failed tests：ETA 可增大、confidence 可下降。
+- [x] early low-data：不输出误导性的具体分钟。
+- [x] normal progress：范围随有效进展整体收敛。
+- [x] failed tests：ETA 可增大、confidence 可下降。
 - [x] blocker：区间显著变宽或标记 paused/uncertain。
-- [ ] low capability/stale events：低 confidence、宽区间。
-- [ ] completion/failure/interruption：终态输出正确。
-- [ ] deterministic replay 和配置边界。
+- [x] low capability/stale events：低 confidence、宽区间。
+- [x] completion/failure/interruption：终态输出正确。
+- [x] deterministic replay 和配置边界。
 
 **Phase 11 门禁：** ETA 始终以区间、confidence、reasons 表达；测试失败或阻塞后允许变长；早期低数据不会伪精确。
 
