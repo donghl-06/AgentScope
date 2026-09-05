@@ -938,7 +938,7 @@ MockAdapter
 
 ### 12.4 — 发布前加固
 
-- [ ] 完成依赖漏洞审查、Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental。
+- [ ] 完成依赖漏洞审查、Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；本轮本地审计未向外部 npm audit 服务发送依赖清单，需用户明确授权后再执行。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
 - [ ] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm fixtures:check`，扫描 tracked 文件、数据库和日志中的 secret/prompt/env。
 - [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
