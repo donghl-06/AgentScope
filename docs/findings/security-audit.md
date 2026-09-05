@@ -1,0 +1,21 @@
+# Security and privacy audit findings
+
+## 2026-09-06 local audit
+
+Scope covered the tracked source/docs/fixtures, the repository-local AgentScope
+database, and the default server configuration. The audit intentionally excluded
+the ignored `.env.claude-test.ps1` file because it is the local credential boundary.
+
+- No `sk-kimi-*` or `sk-ant-*` credential strings were found in tracked files or
+  the default database.
+- No hard-coded `ANTHROPIC_API_KEY=` assignment or `Authorization: Bearer` value
+  was found in tracked files or the default database.
+- The fixture sensitivity check passed; raw provider output and credentials are
+  not present in the committed fixture set.
+- The server configuration defaults to `127.0.0.1`; external binding requires an
+  explicit host override.
+- The local Claude configuration remains ignored and is not part of Git history.
+
+This is a targeted evidence scan, not a substitute for a full security review.
+Path traversal, symlink boundaries, shell-injection fuzzing, raw-log opt-in
+retention, and dependency vulnerability review remain explicit follow-up items.

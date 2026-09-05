@@ -733,10 +733,10 @@ agentscope/
 
 ### Step 12.5 — 安全与隐私审查
 
-- [ ] 检查 DB、logs、fixtures、API 是否出现 env、token、secret、完整 prompt。
+- [x] 检查 DB、logs、fixtures、API 是否出现 env、token、secret、完整 prompt；2026-09-06 脱敏扫描和 fixture check 未发现凭据或 raw provider 数据。
 - [ ] 检查 workspace 边界、symlink、path traversal 和任意文件读取风险。
 - [ ] 检查 CLI 参数处理，确保不发生 shell injection。
-- [ ] 默认仅监听 loopback；若支持外部 bind，必须明确风险和配置。
+- [x] 默认仅监听 loopback；`agent-scope start` 默认绑定 `127.0.0.1`，外部 bind 必须显式传入 host。
 - [ ] raw log opt-in 有醒目提示、路径限制和清理策略。
 
 ### Step 12.6 — 跨平台加固
