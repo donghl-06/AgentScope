@@ -41,6 +41,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@agentscope/adapter-claude-code':
+        specifier: workspace:*
+        version: link:../../packages/adapters/claude-code
       '@agentscope/adapter-mock':
         specifier: workspace:*
         version: link:../../packages/adapters/mock

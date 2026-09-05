@@ -390,7 +390,7 @@ agentscope/
 - [x] 建立 sessions/show/events 的 typed HTTP client 和稳定 JSON 输出；实际命令 dispatch 待接入。
 - [x] 接入 sessions、show、run mock 的命令 dispatch。
 - [x] 接入可执行入口、配置解析和前台 `agent-scope start`（默认 `127.0.0.1:8787`、`.agentscope/agentscope.db`）。
-- [ ] 实现 `agent-scope run <adapter> -- <args...>`，严格保留 `--` 后参数边界。
+- [x] 接入 `agent-scope run claude -- <args...>`，严格保留 `--` 后参数边界；其他 adapter 仍待实现。
 - [x] 实现 `agent-scope sessions` 和 `agent-scope show <session-id>`。
 - [x] 实现 `agent-scope run mock --fixture <name>`。
 - [x] 统一 help、错误码和 non-interactive 输出格式。
@@ -407,11 +407,11 @@ agentscope/
 
 ### Step 5.3 — Session 注册与生命周期连接
 
-- [ ] wrapper 启动前创建 starting session。
-- [ ] 子进程成功 spawn 后产生 session_started。
-- [ ] 将 adapter event stream 和 ProcessObserver 接入事件接纳管线。
-- [ ] 正常结束、非零退出、用户中断、spawn 失败分别生成明确事件。
-- [ ] 保证任何路径最终都执行 detach/stop/watcher/stream cleanup。
+- [x] wrapper 启动前创建 starting session。
+- [x] 子进程成功 spawn 后产生 session_started。
+- [x] 将 Claude adapter event stream 接入 reducer + Storage transaction 管线。
+- [x] 正常结束、非零退出、用户中断、spawn 失败分别生成明确事件。
+- [x] provider runner 在正常和异常路径执行 detach/storage cleanup。
 
 ### Step 5.4 — `start` 的运行模式
 
@@ -490,7 +490,7 @@ agentscope/
 
 ### Step 7.2 — 启动与解析
 
-- [ ] 构造参数数组，选择 Phase 0 确认的 structured 首选模式。
+- [x] 保留调用方参数数组；structured 首选模式由调用方传入 Claude CLI 参数（例如 `--output-format stream-json --verbose`）。
 - [x] 增量解析 chunk/line，正确处理跨 chunk JSON、CRLF 和 malformed record；Unicode 由 Node 字符串 chunk 保持。
 - [x] 将已观测的 Claude JSONL 事件映射为安全的 AgentEvent；provider-specific 字段留在 adapter 边界。
 - [ ] structured 不可用时降级为 lifecycle + stdout/stderr 文本提示 + workspace signals。
@@ -498,15 +498,15 @@ agentscope/
 
 ### Step 7.3 — 生命周期与隐私
 
-- [ ] provider outcome 与进程 exit code 冲突时按文档化规则判定状态。
-- [ ] 用户中断必须映射为 interrupted，而非 failed/completed。
+- [x] provider outcome 与进程 exit code 冲突时以进程终态为准，保留 providerOutcome 诊断。
+- [x] 用户中断映射为 interrupted，而非 failed/completed。
 - [ ] 默认不保存完整文本、prompt 或 raw output；rawRef 仅在明确启用且脱敏时使用。
-- [ ] adapter stop/detach 可重复调用且不泄漏子进程/stream。
+- [x] adapter stop/detach 可重复调用且不泄漏子进程/stream。
 
 ### Step 7.4 — 测试与文档
 
 - [x] raw fixture → normalized events fixture tests，验证不保存 assistant 文本和命令内容。
-- [ ] 覆盖 malformed、未知事件、部分输出、非零退出和中断。
+- [x] 覆盖 malformed、未知事件、部分输出、非零退出和中断。
 - [ ] 运行真实 manual smoke，并记录版本、命令、结果和限制。
 - [ ] 更新 capability matrix 和用户文档。
 

@@ -16,6 +16,7 @@ export * from './mock-runner.js';
 export * from './server-client.js';
 export * from './config.js';
 export * from './start-runtime.js';
+export * from './provider-runner.js';
 export * from './command-runner.js';
 
 export class CliUsageError extends Error {

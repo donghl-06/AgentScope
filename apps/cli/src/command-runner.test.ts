@@ -83,4 +83,18 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(output).toEqual(['started']);
   });
+
+  it('delegates provider runs without rewriting their argument list', async () => {
+    const received: { adapter: string; args: readonly string[] }[] = [];
+    const exitCode = await executeCliCommand(parseCliArgs(['run', 'claude', '--', '--bare']), {
+      runAdapter: async (adapter, args) => {
+        received.push({ adapter, args });
+        return 7;
+      },
+      write: () => {},
+    });
+
+    expect(exitCode).toBe(7);
+    expect(received).toEqual([{ adapter: 'claude', args: ['--bare'] }]);
+  });
 });

@@ -6,6 +6,7 @@ import { formatServerJson, type ServerClient } from './server-client.js';
 export interface CliCommandRunnerOptions {
   readonly client?: Pick<ServerClient, 'listSessions' | 'getSession' | 'listEvents'>;
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
+  readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
   readonly start?: () => Promise<number>;
   readonly write: (text: string) => void;
 }
@@ -50,6 +51,12 @@ export async function executeCliCommand(
     const result = await options.runMock(command.fixture);
     options.write(formatServerJson(result));
     return result.exitCode;
+  }
+  if (command.kind === 'run') {
+    if (options.runAdapter === undefined) {
+      throw new CliExecutionError('Provider runner is not configured.', 'missing_runtime');
+    }
+    return options.runAdapter(command.adapter, command.args);
   }
   if (command.kind === 'start') {
     if (options.start !== undefined) return options.start();

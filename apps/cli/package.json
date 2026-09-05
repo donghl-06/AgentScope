@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@agentscope/adapter-mock": "workspace:*",
+    "@agentscope/adapter-claude-code": "workspace:*",
     "@agentscope/core": "workspace:*",
     "@agentscope/protocol": "workspace:*",
     "@agentscope/server": "workspace:*",
