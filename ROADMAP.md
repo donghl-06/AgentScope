@@ -370,9 +370,9 @@ agentscope/
 
 - [x] 临时 SQLite 中写入事件并通过 HTTP 查询。
 - [x] 重启 server 后仍能查询历史 timeline。
-- [ ] 测试并发 append 的 seq 唯一和顺序。
+- [x] 用两条 SQLite repository 连接验证批量并发 append 的 seq 唯一和顺序。
 - [x] 测试 WS 收到实时事件，断开期间写入后通过 HTTP cursor 补齐。
-- [ ] 测试 malformed payload。
+- [x] 测试 malformed payload 在写入前被协议校验拒绝。
 - [x] 测试未知 session、DB failure，以及优雅关闭时的 WebSocket 资源清理。
 
 **Phase 4 门禁：** Mock 事件可持久化并实时推送；server 重启和 WS 重连不会丢失已确认写入的 timeline。

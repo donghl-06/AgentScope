@@ -202,4 +202,50 @@ describe('server recovery integration', () => {
     expect(unavailable.status).toBe(500);
     expect(await unavailable.json()).toMatchObject({ error: { code: 'internal_error' } });
   });
+
+  it('assigns unique ordered sequences across two SQLite repository connections', async () => {
+    const filename = path.join(
+      os.tmpdir(),
+      `agentscope-concurrent-${Date.now()}-${Math.random()}.db`,
+    );
+    const first = openStorage({ filename, migrate: true });
+    const second = openStorage({ filename, migrate: true });
+    openResources.push(async () => first.client.close());
+    openResources.push(async () => second.client.close());
+    openResources.push(async () => {
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.rmSync(filename + suffix);
+        } catch {
+          // Best-effort cleanup for SQLite sidecar files.
+        }
+      }
+    });
+    const firstRepository = new StorageRepository(first.client);
+    const secondRepository = new StorageRepository(second.client);
+    const state = createInitialSessionState('session-1', 1_700_000_000_000);
+    firstRepository.createSession({
+      id: 'session-1',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    const runningState: SessionState = { ...state, status: 'running' };
+    const repositories = [firstRepository, secondRepository];
+
+    await Promise.all(
+      Array.from({ length: 16 }, (_, index) => {
+        const repository = repositories[index % repositories.length]!;
+        return Promise.resolve().then(() =>
+          repository.appendEvent(event(`event-${index}`), runningState),
+        );
+      }),
+    );
+
+    const sequences = firstRepository.listEvents('session-1').items;
+    expect(sequences.map((item) => item.seq)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
+    expect(new Set(sequences.map((item) => item.event.id)).size).toBe(16);
+  });
 });

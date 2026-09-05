@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createInitialSessionState,
+  ProtocolValidationError,
   type AgentEvent,
   type SessionState,
 } from '@agentscope/protocol';
@@ -143,6 +144,27 @@ describe('StorageRepository', () => {
 
       client.prepare('UPDATE events SET payload_json = ? WHERE id = ?').run('{', 'event-1');
       expect(() => repository.listEvents('session-1')).toThrow(StorageCorruptPayloadError);
+    });
+  });
+
+  it('rejects malformed event payloads before writing them', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+
+      expect(() =>
+        repository.appendEvent(
+          { ...event('event-1', 'session-1', 'file_write'), payload: { path: 123 } } as AgentEvent,
+          state('session-1', 'running'),
+        ),
+      ).toThrow(ProtocolValidationError);
+      expect(repository.listEvents('session-1').items).toHaveLength(0);
     });
   });
 
