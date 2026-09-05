@@ -70,4 +70,31 @@ describe('DashboardApi', () => {
       'http://127.0.0.1:8787/api/sessions/session%2F1/eta-snapshots',
     );
   });
+
+  it('loads observer evidence separately from the event timeline', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'evidence-1',
+            sessionId: 'session/1',
+            key: 'file:app.ts',
+            timestamp: 100,
+            source: 'filesystem',
+            kind: 'file',
+            confidence: 0.65,
+            reason: 'workspace change',
+            payload: { path: 'app.ts' },
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listObserverEvidence('session/1')).resolves.toHaveLength(1);
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/sessions/session%2F1/evidence?limit=100',
+    );
+  });
 });

@@ -1,5 +1,11 @@
 import type { EtaResult } from '@agentscope/protocol';
-import type { EventPage, Page, SessionListFilter, StoredSession } from '@agentscope/storage';
+import type {
+  EventPage,
+  Page,
+  SessionListFilter,
+  StoredObserverEvidence,
+  StoredSession,
+} from '@agentscope/storage';
 
 export interface DashboardApiOptions {
   readonly baseUrl?: string;
@@ -69,6 +75,14 @@ export class DashboardApi {
   listEtaSnapshots(sessionId: string): Promise<readonly EtaResult[]> {
     return this.get<readonly EtaResult[]>(
       `/api/sessions/${encodeURIComponent(sessionId)}/eta-snapshots`,
+    );
+  }
+
+  listObserverEvidence(sessionId: string, limit = 100): Promise<readonly StoredObserverEvidence[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return this.get<readonly StoredObserverEvidence[]>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/evidence`,
+      query,
     );
   }
 

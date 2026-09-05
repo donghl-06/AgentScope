@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { StoredEvent, StoredSession } from '@agentscope/storage';
+import type { StoredEvent, StoredObserverEvidence, StoredSession } from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
@@ -12,6 +12,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [selected, setSelected] = useState<StoredSession>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
+  const [evidence, setEvidence] = useState<readonly StoredObserverEvidence[]>([]);
   const [eventsNextCursor, setEventsNextCursor] = useState<string>();
   const [statusFilter, setStatusFilter] = useState<'all' | StoredSession['status']>('all');
   const [loading, setLoading] = useState(true);
@@ -39,11 +40,13 @@ export function App() {
   const refreshDetail = useCallback(async (id: string, after?: number) => {
     setDetailLoading(true);
     try {
-      const [session, page] = await Promise.all([
+      const [session, page, observerEvidence] = await Promise.all([
         api.getSession(id),
         api.listEvents(id, after ?? 0),
+        api.listObserverEvidence(id),
       ]);
       setSelected(session);
+      setEvidence(observerEvidence);
       if (after === undefined) {
         setEvents(page.items);
         lastSeqBySessionRef.current.set(id, lastTimelineSeq(page.items));
@@ -248,6 +251,7 @@ export function App() {
             <SessionDetail
               session={selected}
               events={events}
+              evidence={evidence}
               eventsNextCursor={eventsNextCursor}
               loading={detailLoading}
               onLoadMore={() =>
@@ -302,12 +306,14 @@ function SessionRow({
 function SessionDetail({
   session,
   events,
+  evidence,
   eventsNextCursor,
   loading,
   onLoadMore,
 }: {
   session: StoredSession;
   events: readonly StoredEvent[];
+  evidence: readonly StoredObserverEvidence[];
   eventsNextCursor: string | undefined;
   loading: boolean;
   onLoadMore: () => void;
@@ -345,6 +351,11 @@ function SessionDetail({
           {session.state.progress.reasons[0]?.message ?? 'No progress explanation available.'}
         </small>
       </div>
+      <div className="evidence-card">
+        <span className="eyebrow">OBSERVER EVIDENCE</span>
+        <strong>{evidence.length} signals</strong>
+        <small>{observerEvidenceSummary(evidence)}</small>
+      </div>
       <div className="timeline-heading">
         <h3>Timeline</h3>
         <div className="timeline-actions">
@@ -381,6 +392,15 @@ function SessionDetail({
       )}
     </>
   );
+}
+
+function observerEvidenceSummary(evidence: readonly StoredObserverEvidence[]): string {
+  if (evidence.length === 0) return 'No workspace or process observer evidence recorded.';
+  const sources = [...new Set(evidence.map((item) => item.source))].join(', ');
+  const latest = evidence.at(-1);
+  return latest === undefined
+    ? `Sources: ${sources}`
+    : `Sources: ${sources}. Latest: ${latest.reason}`;
 }
 
 function AgentCard({

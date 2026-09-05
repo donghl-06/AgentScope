@@ -927,6 +927,7 @@ MockAdapter
 
 ### 12.3 — API/Dashboard 与重连验证
 
+- [x] Dashboard typed API 和 session detail 展示独立 observer evidence 的数量、来源和最新 reason；不混入 AgentEvent timeline。
 - [ ] 验证 overview counts、session card、detail、timeline、Progress、ETA 和 evidence summary 在两个并行 Mock session 中实时变化。
 - [ ] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致。
 - [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；记录 P50/P95、CPU/内存、SQLite 增长，不作无证据容量承诺。
