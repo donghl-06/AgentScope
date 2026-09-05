@@ -81,7 +81,7 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
       ...(command.kind === 'run'
         ? {
             runAdapter: (adapter: string, args: readonly string[]) => {
-              if (adapter !== 'claude') {
+              if (adapter !== 'claude' && adapter !== 'codex') {
                 throw new CliExecutionError(`Unsupported adapter: ${adapter}`, 'not_implemented');
               }
               return runProvider({

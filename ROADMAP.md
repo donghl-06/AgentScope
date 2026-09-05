@@ -520,29 +520,29 @@ agentscope/
 
 ### Step 8.1 — 检测与 capability
 
-- [ ] 实现 executable/version 检测和错误诊断。
-- [ ] capability 只反映当前实测的公开稳定能力。
-- [ ] provider session id 若不可获得，继续使用 AgentScope sessionId。
+- [x] 实现 executable/version 检测和错误诊断。
+- [x] capability 只反映当前实测的公开稳定能力。
+- [x] provider session id 若不可获得，继续使用 AgentScope sessionId。
 
 ### Step 8.2 — 启动与解析
 
-- [ ] 使用 Phase 0 确认的 JSON/structured/exec 模式，不硬编码旧事件名。
-- [ ] 实现增量 parser，处理 chunk boundary、CRLF、Unicode、mixed text 和 malformed JSON。
-- [ ] 把稳定事件映射为统一 tool/file/command/message/lifecycle 事件。
-- [ ] 内部实现字段不提升为 protocol contract。
+- [x] 使用 Phase 0 确认的 JSON/structured/exec 模式，不硬编码旧事件名。
+- [x] 实现增量 parser，处理 chunk boundary、CRLF、Unicode、mixed text 和 malformed JSON。
+- [x] 把稳定事件映射为统一 command/message/lifecycle 事件；文件事件保留给 workspace observer。
+- [x] 内部实现字段不提升为 protocol contract。
 - [ ] structured 路径失败时降级为 process + workspace observer。
 
 ### Step 8.3 — 生命周期与隐私
 
-- [ ] 正确处理正常完成、非零退出、provider error 和用户中断。
-- [ ] 避免原 stdout 被 server log 重复记录。
-- [ ] 对 message/tool payload 做最小化和敏感字段过滤。
-- [ ] 确保 stream、process 和 timer 在所有路径 cleanup。
+- [x] 正确处理正常完成、非零退出、provider error 和用户中断。
+- [x] 避免原 stdout 被 server log 重复记录。
+- [x] 对 message/tool payload 做最小化和敏感字段过滤。
+- [x] 确保 stream、process 和 timer 在所有路径 cleanup。
 
 ### Step 8.4 — 测试与文档
 
-- [ ] raw fixture → normalized events golden tests。
-- [ ] 覆盖 unknown event、partial record、failure、interrupt 和 fallback。
+- [x] raw fixture → normalized events golden tests。
+- [x] 覆盖 unknown event、partial record、failure、interrupt 的 parser 路径；fallback 仍待 observer 融合。
 - [ ] 运行真实 manual smoke 并记录能力边界。
 - [ ] 更新 capability matrix、adapter guide 和 troubleshooting。
 

@@ -10,5 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@agentscope/adapter-base": "workspace:*",
+    "@agentscope/protocol": "workspace:*"
   }
 }

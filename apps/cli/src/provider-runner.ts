@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { reduceSessionState } from '@agentscope/core';
+import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
@@ -12,7 +13,7 @@ import { openStorage, StorageRepository } from '@agentscope/storage';
 import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
 
 export interface ProviderRunOptions {
-  readonly adapter: 'claude';
+  readonly adapter: 'claude' | 'codex';
   readonly args: readonly string[];
   readonly filename: string;
   readonly workspacePath: string;
@@ -37,7 +38,6 @@ export interface ProviderRunResult {
 }
 
 export async function runProvider(options: ProviderRunOptions): Promise<ProviderRunResult> {
-  if (options.adapter !== 'claude') throw new Error(`Unsupported adapter: ${options.adapter}`);
   ensureStorageDirectory(options.filename);
   const now = options.now ?? Date.now;
   const sessionId = options.sessionId ?? randomUUID();
@@ -45,17 +45,25 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
   let state = createInitialSessionState(sessionId, startedAt);
-  const adapter = new ClaudeCodeAdapter({
-    ...(options.executable === undefined ? {} : { executable: options.executable }),
-    now,
-    ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
-    ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
-  });
+  const adapter =
+    options.adapter === 'claude'
+      ? new ClaudeCodeAdapter({
+          ...(options.executable === undefined ? {} : { executable: options.executable }),
+          now,
+          ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
+          ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+        })
+      : new CodexCliAdapter({
+          ...(options.executable === undefined ? {} : { executable: options.executable }),
+          now,
+          ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
+          ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+        });
 
   repository.createSession({
     id: sessionId,
     provider: 'claude',
-    adapter: 'claude-code',
+    adapter: adapter.id,
     startedAt,
     capabilities: { ...adapter.capabilities() },
     workspace: { rootPath: options.workspacePath },
@@ -65,13 +73,13 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
 
   let eventCount = 0;
   let lastEtaSnapshot: SessionState['eta'];
-  let attached: Awaited<ReturnType<NonNullable<ClaudeCodeAdapter['start']>>> | undefined;
+  let attached: Awaited<ReturnType<NonNullable<(typeof adapter)['start']>>> | undefined;
   const signals = options.signals ?? process;
   const handleSignal = () => {
     void attached?.stop('user_requested');
   };
   try {
-    attached = await adapter.start({
+    attached = await adapter.start!({
       sessionId,
       workspacePath: options.workspacePath,
       args: options.args,
