@@ -48,4 +48,8 @@ node .\apps\cli\bin\agent-scope.mjs run mock --fixture basic-success
 常见路径、端口、数据库、CLI 无输出、并发限制和 Windows 进程问题见
 [`docs/troubleshooting.md`](docs/troubleshooting.md)。
 
+数据库迁移、备份、恢复和回滚操作见
+[`docs/storage-operations.md`](docs/storage-operations.md)；版本变更见
+[`CHANGELOG.md`](CHANGELOG.md)。
+
 后续实施、验证和发布门禁以 `ROADMAP.md` 的 Phase/Step 记录为准。
