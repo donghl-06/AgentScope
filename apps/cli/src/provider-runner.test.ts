@@ -148,6 +148,24 @@ describe('provider runner', () => {
     expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
+  it('isolates observer sink failures from provider lifecycle completion', async () => {
+    const diagnostics: string[] = [];
+    const result = await runProvider({
+      adapter: 'claude',
+      executable: process.execPath,
+      args: ['-e', script('{"type":"result","subtype":"success","is_error":false}', 0)],
+      filename: ':memory:',
+      workspacePath,
+      onObserverEvidence: () => {
+        throw new Error('synthetic observer sink failure');
+      },
+      writeStderr: (chunk) => diagnostics.push(chunk),
+    });
+
+    expect(result).toMatchObject({ status: 'completed', exitCode: 0 });
+    expect(diagnostics.join('')).toContain('synthetic observer sink failure');
+  });
+
   it('keeps a session alive when the provider emits a malformed record before completion', async () => {
     const result = await runProvider({
       adapter: 'claude',

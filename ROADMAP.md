@@ -925,6 +925,7 @@ MockAdapter
 - [x] 已用 Codex adapter 的结构化协议 shim 覆盖 runner 级 command started/finished、workspace 文件变化、Git baseline 和 process lifecycle evidence；真实 Claude/Codex CLI 的同场景仍保留为手工 smoke。
 - [x] provider parser malformed record 隔离：坏记录被忽略时，后续合法 terminal event 仍能完成 session。
 - [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
+- [x] 已补齐 provider runner 的 observer sink error 隔离回归；malformed parser、non-zero exit、SIGINT 和重复 cleanup 已有独立测试，实际 CLI 的跨进程 Ctrl+C 仍需手工复核。
 - [x] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入 server 集成测试；历史 event/evidence 可通过 API 恢复，重启未新增幽灵记录。
 
 ### 12.3 — API/Dashboard 与重连验证
