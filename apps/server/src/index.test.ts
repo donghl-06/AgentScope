@@ -4,9 +4,17 @@ import { createInitialSessionState } from '@agentscope/protocol';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { createServer } from './index.js';
+import { LiveHub, type LiveSocket } from './live-hub.js';
 
 const source = { provider: 'mock', client: 'agentscope', environment: 'test', adapter: 'mock' };
 const openApps: Array<{ close: () => Promise<void> }> = [];
+
+class TestSocket implements LiveSocket {
+  readonly messages: string[] = [];
+  send(payload: string): void {
+    this.messages.push(payload);
+  }
+}
 
 afterEach(async () => {
   while (openApps.length > 0) await openApps.pop()?.close();
@@ -78,5 +86,51 @@ describe('server HTTP API', () => {
     const invalid = await app.inject('/api/sessions?limit=0');
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toMatchObject({ error: { code: 'invalid_query' } });
+  });
+
+  it('publishes only committed repository events to the live hub', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const state = createInitialSessionState('session-1', 1_700_000_000_000);
+    repository.createSession({
+      id: 'session-1',
+      projectId: 'project-1',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    const hub = new LiveHub();
+    const socket = new TestSocket();
+    hub.attach(socket);
+    const app = createServer({ repository, liveHub: hub });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    repository.appendEvent(
+      {
+        id: 'event-1',
+        sessionId: 'session-1',
+        timestamp: 1_700_000_000_100,
+        source,
+        type: 'planning',
+        payload: { summary: 'plan' },
+        confidence: 1,
+      },
+      { ...state, status: 'running' },
+    );
+
+    expect(JSON.parse(socket.messages.at(-1)!)).toMatchObject({
+      type: 'event.appended',
+      sessionId: 'session-1',
+      projectId: 'project-1',
+      seq: 1,
+      cursor: '1',
+    });
   });
 });

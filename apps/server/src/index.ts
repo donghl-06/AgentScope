@@ -21,6 +21,32 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
   const liveHub = options.liveHub ?? new LiveHub();
+  const unsubscribeRepository = options.repository.subscribe((notification) => {
+    if (notification.type === 'event.appended') {
+      liveHub.publish({
+        type: 'event.appended',
+        sessionId: notification.session.id,
+        ...(notification.session.projectId === undefined
+          ? {}
+          : { projectId: notification.session.projectId }),
+        seq: notification.event.seq,
+        cursor: String(notification.event.seq),
+        payload: { eventType: notification.event.event.type },
+      });
+      return;
+    }
+    liveHub.publish({
+      type: notification.type,
+      sessionId: notification.session.id,
+      ...(notification.session.projectId === undefined
+        ? {}
+        : { projectId: notification.session.projectId }),
+      payload: { status: notification.session.status },
+    });
+  });
+  app.addHook('onClose', () => {
+    unsubscribeRepository();
+  });
 
   void app.register(websocket);
 

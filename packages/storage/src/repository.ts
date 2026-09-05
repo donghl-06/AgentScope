@@ -116,8 +116,24 @@ export interface AppendEventResult {
   readonly session: StoredSession;
 }
 
+export type RepositoryNotification =
+  | { readonly type: 'session.created'; readonly session: StoredSession }
+  | { readonly type: 'session.updated'; readonly session: StoredSession }
+  | {
+      readonly type: 'event.appended';
+      readonly event: StoredEvent;
+      readonly session: StoredSession;
+    };
+
 export class StorageRepository {
+  private readonly listeners = new Set<(notification: RepositoryNotification) => void>();
+
   constructor(private readonly client: Database.Database) {}
+
+  subscribe(listener: (notification: RepositoryNotification) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   createSession(input: CreateSessionInput): StoredSession {
     assertSessionState(input.state);
@@ -153,7 +169,9 @@ export class StorageRepository {
     } catch (error) {
       throw mapSqliteError(error, `Session already exists: ${input.id}`);
     }
-    return this.getSession(input.id);
+    const session = this.getSession(input.id);
+    this.notify({ type: 'session.created', session });
+    return session;
   }
 
   getSession(id: string): StoredSession {
@@ -238,7 +256,9 @@ export class StorageRepository {
         id,
       );
     if (result.changes !== 1) throw new StorageNotFoundError(`Session not found: ${id}`);
-    return this.getSession(id);
+    const session = this.getSession(id);
+    this.notify({ type: 'session.updated', session });
+    return session;
   }
 
   appendEvent(event: AgentEvent, projection: SessionState, now = Date.now()): AppendEventResult {
@@ -284,7 +304,9 @@ export class StorageRepository {
       this.updateSessionProjection(session, projection, now);
       return { event: { seq: nextSeq, event }, session: this.getSession(event.sessionId) };
     });
-    return transaction();
+    const result = transaction();
+    this.notify({ type: 'event.appended', ...result });
+    return result;
   }
 
   listEvents(sessionId: string, afterSeq = 0, limit = 100): EventPage {
@@ -386,6 +408,16 @@ export class StorageRepository {
         `UPDATE sessions SET status = ?, ended_at = ?, state_json = ?, updated_at = ? WHERE id = ?`,
       )
       .run(state.status, state.endedAt ?? null, stringifyJson(state), now, session.id);
+  }
+
+  private notify(notification: RepositoryNotification): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(notification);
+      } catch {
+        // Observability listeners must not change durable write semantics.
+      }
+    }
   }
 
   private ensureSession(id: string): void {
