@@ -346,6 +346,9 @@ export class StorageRepository {
     if (event.sessionId !== projection.sessionId) {
       throw new StorageError('Event and projection session ids do not match.', 'invalid_session');
     }
+    // Acquire the write lock before reading the projection. A deferred transaction
+    // lets concurrent writers both read and then fail while upgrading to a write
+    // lock (SQLITE_BUSY); IMMEDIATE makes busy_timeout able to serialize them.
     const transaction = this.client.transaction(() => {
       const session = this.getSession(event.sessionId);
       const duplicate = this.client.prepare('SELECT seq FROM events WHERE id = ?').get(event.id) as
@@ -382,7 +385,7 @@ export class StorageRepository {
       }
       this.updateSessionProjection(session, projection, now);
       return { event: { seq: nextSeq, event }, session: this.getSession(event.sessionId) };
-    });
+    }).immediate;
     const result = transaction();
     this.notify({ type: 'event.appended', ...result });
     return result;

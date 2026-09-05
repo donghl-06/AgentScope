@@ -922,6 +922,7 @@ MockAdapter
 
 - [x] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和独立 evidence 同步落库。
 - [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
+- [x] 已用 Codex adapter 的结构化协议 shim 覆盖 runner 级 command started/finished、workspace 文件变化、Git baseline 和 process lifecycle evidence；真实 Claude/Codex CLI 的同场景仍保留为手工 smoke。
 - [x] provider parser malformed record 隔离：坏记录被忽略时，后续合法 terminal event 仍能完成 session。
 - [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
 - [ ] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入集成测试，并记录可重复命令和结果到 `docs/findings/`。
@@ -932,6 +933,7 @@ MockAdapter
 - [ ] 验证 overview counts、session card、detail、timeline、Progress、ETA 和 evidence summary 在两个并行 Mock session 中实时变化。
 - [ ] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致。
 - [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；记录 P50/P95、CPU/内存、SQLite 增长，不作无证据容量承诺。
+- [x] 增加 `pnpm benchmark:mock` 可重复四并发诊断基线，并记录 wall-clock、事件数、数据库大小、Node/平台和 SQLite 锁竞争修复结果；P50/P95、CPU/内存和 WS backpressure 仍未宣称完成。
 
 ### 12.4 — 发布前加固
 

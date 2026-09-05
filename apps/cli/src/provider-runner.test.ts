@@ -84,7 +84,54 @@ describe('provider runner', () => {
       );
       storage.client.close();
     } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  });
+
+  it('correlates Codex commands and workspace file changes with observer evidence', async () => {
+    const observedPath = path.join(workspacePath, `.agentscope-provider-observer-${Date.now()}.txt`);
+    const observedName = path.basename(observedPath);
+    const fakeExecutable = path.join(workspacePath, 'exec');
+    const evidence: Array<{ source: string; kind: string; key: string }> = [];
+    const output = [
+      '{"type":"thread.started","thread_id":"thread-observer"}',
+      '{"type":"item.started","item":{"type":"command_execution"}}',
+      '{"type":"item.completed","item":{"type":"command_execution","status":"completed","exit_code":0}}',
+      '{"type":"turn.completed"}',
+    ].join('\n');
+    const outputWithNewline = output + '\n';
+    fs.writeFileSync(
+      fakeExecutable,
+      [
+        "import fs from 'node:fs';",
+        `setTimeout(() => { fs.writeFileSync(${JSON.stringify(observedPath)}, 'workspace evidence');`,
+        `process.stdout.write(${JSON.stringify(outputWithNewline)});`,
+        'setTimeout(() => process.exit(0), 300); }, 1_000);',
+      ].join('\n'),
+    );
+    try {
+      await runProvider({
+        adapter: 'codex',
+        executable: process.execPath,
+        args: [],
+        filename: ':memory:',
+        workspacePath,
+        sessionId: 'codex-observer-session',
+        onObserverEvidence: (item) => evidence.push({ source: item.source, kind: item.kind, key: item.key }),
+      });
+      expect(evidence).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: 'git', kind: 'workspace' }),
+          expect.objectContaining({ source: 'filesystem', key: `file:${observedName}` }),
+          expect.objectContaining({ source: 'test_observer', kind: 'command' }),
+          expect.objectContaining({ source: 'test_observer', kind: 'verification' }),
+          expect.objectContaining({ source: 'process', kind: 'lifecycle' }),
+        ]),
+      );
+    } finally {
+      fs.rmSync(fakeExecutable, { force: true });
+      fs.rmSync(observedPath, { force: true });
     }
   });
 

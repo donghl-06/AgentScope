@@ -18,6 +18,7 @@
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.mjs --passWithNoTests",
     "test:manual-smoke": "vitest run --config vitest.manual-smoke.config.mjs --passWithNoTests",
+    "benchmark:mock": "node scripts/benchmark-mock.mjs",
     "fixtures:check": "node scripts/check-fixtures.mjs",
     "build": "pnpm typecheck && node scripts/check-workspace.mjs",
     "dev": "pnpm --parallel --recursive --if-present dev"

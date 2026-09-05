@@ -6,7 +6,7 @@ import { reduceSessionState } from '@agentscope/core';
 import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
-import { ObserverRuntime } from '@agentscope/observer-runtime';
+import { ObserverRuntime, type ObserverEvidence } from '@agentscope/observer-runtime';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
 import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
@@ -22,6 +22,7 @@ export interface ProviderRunOptions {
   readonly sessionId?: string;
   readonly writeStdout?: (chunk: string) => void;
   readonly writeStderr?: (chunk: string) => void;
+  readonly onObserverEvidence?: (evidence: ObserverEvidence) => void;
   readonly now?: () => number;
   readonly signals?: ProviderRunSignals;
 }
@@ -94,7 +95,8 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
       workspacePath: options.workspacePath,
       ...(attached.pid === undefined ? {} : { process: { pid: attached.pid } }),
       file: {},
-      onEvidence: (evidence) =>
+      onEvidence: (evidence) => {
+        options.onObserverEvidence?.(evidence);
         repository.saveObserverEvidence({
           id: evidence.id,
           sessionId,
@@ -105,7 +107,8 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           confidence: evidence.confidence,
           reason: evidence.reason,
           payload: evidence.payload,
-        }),
+        });
+      },
       onError: (error) => {
         options.writeStderr?.(`[observer:${error.source}] ${error.message}\n`);
       },

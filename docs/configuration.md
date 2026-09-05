@@ -15,7 +15,9 @@ default; the Clash proxy port is unrelated to the port AgentScope listens on.
 | Existing server URL for query commands | `http://127.0.0.1:8787` | — | `AGENTSCOPE_SERVER_URL` |
 
 The precedence for host, port, and database is CLI flag > environment variable > defaults. The
-database parent directory is created automatically. Press `Ctrl+C` to close the foreground server
+database parent directory is created automatically. SQLite uses WAL mode with a 30-second default
+busy timeout so short concurrent writes wait instead of failing immediately; callers can override
+this when constructing the storage package directly. Press `Ctrl+C` to close the foreground server
 cleanly. AgentScope does not contact a provider API directly; Claude Code or another CLI keeps its
 own endpoint, model, and credential configuration.
 

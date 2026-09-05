@@ -56,7 +56,7 @@ function readMigration(url: URL): string {
 export function openStorage(options: OpenStorageOptions): OpenStorageResult {
   const client = new Database(options.filename);
   client.pragma('foreign_keys = ON');
-  client.pragma(`busy_timeout = ${options.busyTimeoutMs ?? 5_000}`);
+  client.pragma(`busy_timeout = ${options.busyTimeoutMs ?? 30_000}`);
   if (options.filename !== ':memory:') client.pragma('journal_mode = WAL');
   if (options.migrate === true) migrateStorage(client);
   const db = drizzle(client, { schema: storageTables });

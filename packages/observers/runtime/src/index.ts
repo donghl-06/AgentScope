@@ -25,6 +25,8 @@ import {
   type TestObservation,
 } from '@agentscope/observer-tests';
 
+export type { ObserverEvidence } from '@agentscope/observer-fusion';
+
 export interface ObserverRuntimeProcessOptions {
   readonly pid: number;
   readonly startedAt?: number;
