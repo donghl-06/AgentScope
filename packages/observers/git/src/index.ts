@@ -1,1 +1,190 @@
-export {};
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { resolve } from 'node:path';
+
+const execFileAsync = promisify(execFile);
+
+export interface GitFileStatus {
+  readonly path: string;
+  readonly indexStatus: string;
+  readonly worktreeStatus: string;
+  readonly previousPath?: string;
+}
+
+export interface GitSnapshot {
+  readonly rootPath: string;
+  readonly isRepository: boolean;
+  readonly branch?: string;
+  readonly head?: string;
+  readonly files: readonly GitFileStatus[];
+  readonly capturedAt: number;
+  readonly reason?: string;
+}
+
+export interface GitChangeSet {
+  readonly added: readonly string[];
+  readonly modified: readonly string[];
+  readonly deleted: readonly string[];
+  readonly renamed: readonly { from: string; to: string }[];
+  readonly branchChanged: boolean;
+  readonly baselineAvailable: boolean;
+}
+
+export interface GitCommandResult {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}
+
+export type GitCommandRunner = (cwd: string, args: readonly string[]) => Promise<GitCommandResult>;
+
+export interface GitObserverOptions {
+  readonly rootPath: string;
+  readonly now?: () => number;
+}
+
+export class GitObserver {
+  private readonly rootPath: string;
+  private readonly now: () => number;
+  private baseline?: GitSnapshot;
+
+  constructor(
+    options: GitObserverOptions,
+    private readonly run: GitCommandRunner = runGitCommand,
+  ) {
+    this.rootPath = resolve(options.rootPath);
+    this.now = options.now ?? Date.now;
+  }
+
+  async capture(): Promise<GitSnapshot> {
+    const root = await this.run(this.rootPath, ['rev-parse', '--show-toplevel']);
+    if (root.exitCode !== 0) {
+      return {
+        rootPath: this.rootPath,
+        isRepository: false,
+        files: [],
+        capturedAt: this.now(),
+        reason: root.stderr.trim() || 'Not a Git repository.',
+      };
+    }
+
+    const [branch, head, status] = await Promise.all([
+      this.run(this.rootPath, ['branch', '--show-current']),
+      this.run(this.rootPath, ['rev-parse', 'HEAD']),
+      this.run(this.rootPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    ]);
+    return {
+      rootPath: normalizeRoot(root.stdout, this.rootPath),
+      isRepository: true,
+      ...(branch.stdout.trim() === '' ? {} : { branch: branch.stdout.trim() }),
+      ...(head.stdout.trim() === '' ? {} : { head: head.stdout.trim() }),
+      files: status.exitCode === 0 ? parsePorcelainZ(status.stdout) : [],
+      capturedAt: this.now(),
+      ...(status.exitCode === 0 ? {} : { reason: status.stderr.trim() || 'Git status failed.' }),
+    };
+  }
+
+  async captureBaseline(): Promise<GitSnapshot> {
+    this.baseline = await this.capture();
+    return this.baseline;
+  }
+
+  async changesSinceBaseline(): Promise<GitChangeSet> {
+    const current = await this.capture();
+    const baseline = this.baseline;
+    if (baseline === undefined || !baseline.isRepository || !current.isRepository) {
+      return {
+        added: [],
+        modified: [],
+        deleted: [],
+        renamed: [],
+        branchChanged: baseline?.branch !== current.branch,
+        baselineAvailable: false,
+      };
+    }
+
+    const before = new Map(baseline.files.map((file) => [file.path, file]));
+    const after = new Map(current.files.map((file) => [file.path, file]));
+    const added: string[] = [];
+    const modified: string[] = [];
+    const deleted: string[] = [];
+    const renamed: Array<{ from: string; to: string }> = [];
+    for (const [path, file] of after) {
+      const previous = before.get(path);
+      if (previous === undefined) {
+        if (file.previousPath !== undefined) renamed.push({ from: file.previousPath, to: path });
+        else added.push(path);
+      } else if (
+        previous.indexStatus !== file.indexStatus ||
+        previous.worktreeStatus !== file.worktreeStatus
+      ) {
+        modified.push(path);
+      }
+    }
+    for (const path of before.keys()) if (!after.has(path)) deleted.push(path);
+    return {
+      added: added.sort(),
+      modified: modified.sort(),
+      deleted: deleted.sort(),
+      renamed: renamed.sort((left, right) => left.to.localeCompare(right.to)),
+      branchChanged: baseline.branch !== current.branch || baseline.head !== current.head,
+      baselineAvailable: true,
+    };
+  }
+}
+
+export function parsePorcelainZ(output: string): readonly GitFileStatus[] {
+  const tokens = output.split('\0');
+  const files: GitFileStatus[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === undefined || token.length < 4) continue;
+    const indexStatus = token[0] ?? ' ';
+    const worktreeStatus = token[1] ?? ' ';
+    const path = normalizeGitPath(token.slice(3));
+    if (path.length === 0) continue;
+    const renameLike = indexStatus === 'R' || indexStatus === 'C' || worktreeStatus === 'R';
+    if (renameLike) {
+      const next = tokens[index + 1];
+      if (next !== undefined && next.length > 0) {
+        index += 1;
+        files.push({
+          path: normalizeGitPath(next),
+          indexStatus,
+          worktreeStatus,
+          previousPath: path,
+        });
+        continue;
+      }
+    }
+    files.push({ path, indexStatus, worktreeStatus });
+  }
+  return files;
+}
+
+async function runGitCommand(cwd: string, args: readonly string[]): Promise<GitCommandResult> {
+  try {
+    const result = await execFileAsync('git', [...args], {
+      cwd,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string; code?: number | string };
+    return {
+      stdout: failure.stdout ?? '',
+      stderr: failure.stderr ?? '',
+      exitCode: typeof failure.code === 'number' ? failure.code : 1,
+    };
+  }
+}
+
+function normalizeRoot(value: string, fallback: string): string {
+  const root = value.trim();
+  return root.length === 0 ? fallback : resolve(root);
+}
+
+function normalizeGitPath(path: string): string {
+  return path.replaceAll('\\', '/');
+}
