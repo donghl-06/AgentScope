@@ -556,7 +556,7 @@ agentscope/
 
 ### Step 9.1 — ProcessObserver
 
-- [ ] 只观察 wrapper 启动的进程树，记录 pid/start/end/exit code 和必要 metadata。
+- [x] 只观察 wrapper 启动的根进程，记录 pid/start/end/exit code 和必要 metadata；子进程树由 wrapper 显式提供。
 - [x] 不枚举或采集不相关进程、命令行和环境变量。
 - [x] 处理根进程快速退出和 cleanup race；子进程树扩展仍由 wrapper 显式提供。
 - [ ] 输出统一 lifecycle/command evidence，不与 adapter 事件重复计数。

@@ -58,4 +58,27 @@ describe('process observer', () => {
     expect(observations).toHaveLength(1);
     expect(observer.isFinished).toBe(false);
   });
+
+  it('serializes overlapping polls into one inspection', async () => {
+    let calls = 0;
+    let release: (() => void) | undefined;
+    const observer = new ProcessObserver({
+      pid: 11,
+      inspect: async () => {
+        calls += 1;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { state: 'running' };
+      },
+      onObservation: () => {},
+    });
+    observer.start(1);
+    const first = observer.pollOnce();
+    const second = observer.pollOnce();
+    expect(calls).toBe(1);
+    release?.();
+    await Promise.all([first, second]);
+    expect(calls).toBe(1);
+  });
 });

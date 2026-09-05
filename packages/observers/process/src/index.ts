@@ -35,7 +35,7 @@ export class ProcessObserver {
   private timer: ReturnType<typeof setInterval> | undefined;
   private startedAt: number | undefined;
   private finished = false;
-  private polling = false;
+  private pollPromise: Promise<ProcessInspection> | undefined;
 
   constructor(options: ProcessObserverOptions) {
     if (!Number.isInteger(options.pid) || options.pid <= 0) {
@@ -63,11 +63,20 @@ export class ProcessObserver {
   }
 
   async pollOnce(): Promise<ProcessInspection> {
-    const inspection = await this.inspect(this.pid);
-    if (this.startedAt === undefined || this.finished || this.polling) return inspection;
-    if (inspection.state !== 'exited') return inspection;
-    this.finish(inspection.exitCode, inspection.signal, 'poll_exit');
-    return inspection;
+    if (this.pollPromise !== undefined) return this.pollPromise;
+    const poll = (async (): Promise<ProcessInspection> => {
+      const inspection = await this.inspect(this.pid);
+      if (this.startedAt === undefined || this.finished) return inspection;
+      if (inspection.state === 'exited')
+        this.finish(inspection.exitCode, inspection.signal, 'poll_exit');
+      return inspection;
+    })();
+    this.pollPromise = poll;
+    try {
+      return await poll;
+    } finally {
+      if (this.pollPromise === poll) this.pollPromise = undefined;
+    }
   }
 
   notifyExit(exitCode?: number, signal?: string, endedAt = this.now()): void {
