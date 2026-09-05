@@ -303,6 +303,17 @@ describe('server HTTP API', () => {
         },
         { ...state, status: 'running' },
       );
+      repository.saveObserverEvidence({
+        id: 'restart-evidence',
+        sessionId: 'session-restart',
+        key: 'process:42:started',
+        timestamp: state.startedAt + 50,
+        source: 'process',
+        kind: 'lifecycle',
+        confidence: 1,
+        reason: 'Persisted before server restart.',
+        payload: { pid: 42, kind: 'started' },
+      });
       writer.client.close();
       await first.close();
 
@@ -314,8 +325,14 @@ describe('server HTTP API', () => {
         const events = await fetch(`${second.address}/api/sessions/session-restart/events`).then(
           (response) => response.json(),
         );
+        const evidence = await fetch(
+          `${second.address}/api/sessions/session-restart/evidence`,
+        ).then((response) => response.json());
         expect(session).toMatchObject({ status: 'interrupted' });
         expect(events).toMatchObject({ items: [{ event: { id: 'restart-event' } }] });
+        expect(evidence).toEqual([
+          expect.objectContaining({ id: 'restart-evidence', key: 'process:42:started' }),
+        ]);
       } finally {
         await second.close();
       }
