@@ -8,12 +8,19 @@ describe('process runner', () => {
   it('spawns without a shell and preserves spaced arguments', async () => {
     const result = await runProcess({
       executable: process.execPath,
-      args: ['-e', 'process.stdout.write(JSON.stringify(process.argv.slice(1)))', 'x y', '--flag'],
+      args: [
+        '-e',
+        'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+        'x y',
+        '--flag',
+        '$(not-a-command)',
+        'a&b',
+      ],
     });
 
     expect(result.spawnError).toBeUndefined();
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout ?? '')).toEqual(['x y', '--flag']);
+    expect(JSON.parse(result.stdout ?? '')).toEqual(['x y', '--flag', '$(not-a-command)', 'a&b']);
     expect(result.pid).toBeTypeOf('number');
   });
 
