@@ -588,8 +588,8 @@ agentscope/
 
 ### Step 9.5 — Observer 融合与测试
 
-- [ ] 定义 native > process/test > git/file > agent self-report 的证据优先级。
-- [ ] 为 inferred 事件设置较低 confidence 和明确 reason/source。
+- [x] 定义 native > process/test > git/file > agent self-report 的证据优先级；实现于 `packages/observers/fusion`。
+- [x] 为 inferred 事件设置较低 confidence 和明确 reason/source；ledger 校验并保留来源、理由和 payload。
 - [ ] 临时 Git repo 测试 baseline、modify、delete、commit 和非仓库。
 - [ ] synthetic test command 覆盖 pass/fail/interrupt。
 - [ ] 压测事件风暴下 debounce、批量写入和 CPU/IO 开销。
