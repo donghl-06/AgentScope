@@ -84,4 +84,86 @@ describe('progress engine', () => {
     expect(result.value).toBeLessThanOrEqual(0.6);
     expect(result.reasons.map((reason) => reason.code)).toContain('completion_unverified');
   });
+
+  it('covers the basic success path only as fully complete after required verification', () => {
+    const result = computeProgress({
+      state: state({
+        status: 'completed',
+        endedAt: 500,
+        milestones: [
+          { id: 'plan', title: 'Plan', status: 'completed' },
+          { id: 'implementation', title: 'Implementation', status: 'completed' },
+        ],
+        verification: { tests: 'passed', build: 'passed', typecheck: 'passed', overall: 'passed' },
+      }),
+      capabilities: { structuredEvents: true, commandEvents: true, milestones: true },
+    });
+    expect(result.value).toBe(1);
+  });
+
+  it('keeps implementation-only work below the implementation ceiling', () => {
+    const result = computeProgress({
+      state: state({ currentActivity: { kind: 'implementation', label: 'editing', startedAt: 1 } }),
+      capabilities: { structuredEvents: true, toolCalls: true },
+    });
+    expect(result.value).toBeLessThanOrEqual(0.5);
+  });
+
+  it('stalls failed verification and allows progress after unblocking', () => {
+    const failed = computeProgress({
+      state: state({
+        currentActivity: { kind: 'test', label: 'unit', startedAt: 1 },
+        verification: {
+          tests: 'failed',
+          build: 'unknown',
+          typecheck: 'unknown',
+          overall: 'failed',
+        },
+      }),
+    });
+    const blocked = computeProgress({
+      state: state({
+        status: 'blocked',
+        currentActivity: { kind: 'blocked', label: 'waiting', startedAt: 1 },
+      }),
+    });
+    const resumed = computeProgress({
+      state: state({
+        status: 'running',
+        currentActivity: { kind: 'implementation', label: 'resumed', startedAt: 2 },
+      }),
+    });
+    expect(failed.value).toBeLessThanOrEqual(0.6);
+    expect(failed.reasons.map((reason) => reason.code)).toContain('verification_failed');
+    expect(blocked.value).toBeLessThanOrEqual(0.5);
+    expect(resumed.value).toBeGreaterThanOrEqual(blocked.value);
+    expect(resumed.reasons.map((reason) => reason.code)).not.toContain('blocked_cap');
+  });
+
+  it('naturally rolls back the ratio when a new milestone expands scope', () => {
+    const before = computeProgress({
+      state: state({
+        milestones: [{ id: 'm1', title: 'Initial scope', status: 'completed' }],
+      }),
+    });
+    const after = computeProgress({
+      state: state({
+        milestones: [
+          { id: 'm1', title: 'Initial scope', status: 'completed' },
+          { id: 'm2', title: 'Expanded scope', status: 'pending' },
+        ],
+      }),
+    });
+    expect(after.value).toBeLessThan(before.value);
+  });
+
+  it('is deterministic for the same replayed state and configuration', () => {
+    const input = {
+      state: state({ currentActivity: { kind: 'review', label: 'review', startedAt: 10 } }),
+      capabilities: { structuredEvents: true, milestones: false },
+      now: 20,
+      lastSignalAt: 10,
+    };
+    expect(computeProgress(input)).toEqual(computeProgress(input));
+  });
 });

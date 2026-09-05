@@ -627,14 +627,14 @@ agentscope/
 
 ### Step 10.4 — 测试典型路径
 
-- [ ] basic success：规划→实现→unit→integration→review→完成。
-- [ ] implementation only：不超过实现上限。
-- [ ] failed test：progress 回退或停滞且理由明确。
-- [ ] blocked/unblocked：阻塞时不假装继续增长。
-- [ ] replan：新 milestone 引起合理回退。
+- [x] basic success：规划→实现→unit→integration→review→完成。
+- [x] implementation only：不超过实现上限。
+- [x] failed test：progress 回退或停滞且理由明确。
+- [x] blocked/unblocked：阻塞时不假装继续增长，解除后移除 blocked cap。
+- [x] replan：新增 milestone 会使完成比例合理回退。
 - [x] no milestone/low capability：数值可用但 confidence 较低。
-- [ ] completed with failed verification：failed 且非成功 100%。
-- [ ] 配置边界、非法权重和 deterministic replay。
+- [x] completed with failed verification：failed 且非成功 100%。
+- [x] 配置边界与 deterministic replay；非法 milestone 权重仍待配置模型接入。
 
 ### Step 10.5 — 接入 state/API/UI
 
