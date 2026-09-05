@@ -6,6 +6,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@agentscope/adapter-mock": "workspace:*",
+    "@agentscope/core": "workspace:*",
+    "@agentscope/protocol": "workspace:*",
+    "@agentscope/storage": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",

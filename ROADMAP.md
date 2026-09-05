@@ -386,6 +386,7 @@ agentscope/
 ### Step 5.1 — CLI 命令骨架
 
 - [x] 建立命令解析层，固定 help、usage error 和 `run ... -- ...` 参数边界；实际命令执行 wiring 待接入。
+- [x] 实现 Mock fixture runner，贯通 reducer、Storage transaction 和终态 exit code；CLI dispatch 待接入。
 - [ ] 实现 `agent-scope start`。
 - [ ] 实现 `agent-scope run <adapter> -- <args...>`，严格保留 `--` 后参数边界。
 - [ ] 实现 `agent-scope sessions` 和 `agent-scope show <session-id>`。
