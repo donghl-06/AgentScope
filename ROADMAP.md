@@ -920,7 +920,7 @@ MockAdapter
 
 ### 12.2 — Provider/Mock 纵向验证
 
-- [ ] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和 evidence 同步落库。
+- [x] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和独立 evidence 同步落库。
 - [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
 - [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
 - [ ] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入集成测试，并记录可重复命令和结果到 `docs/findings/`。

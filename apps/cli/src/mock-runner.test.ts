@@ -63,6 +63,42 @@ describe('mock CLI runner', () => {
       const snapshots = repository.listEtaSnapshots('session-1');
       expect(snapshots.length).toBeGreaterThan(0);
       expect(snapshots.length).toBeLessThan(8);
+      expect(repository.listObserverEvidence('session-1')).toEqual(
+        expect.arrayContaining([expect.objectContaining({ source: 'git', kind: 'workspace' })]),
+      );
+      storage.client.close();
+    } finally {
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.rmSync(filename + suffix);
+        } catch {
+          // Best-effort cleanup for SQLite sidecar files.
+        }
+      }
+    }
+  });
+
+  it('persists known command evidence for a command-bearing fixture', async () => {
+    const filename = path.join(
+      os.tmpdir(),
+      `agentscope-cli-evidence-${Date.now()}-${Math.random()}.db`,
+    );
+    try {
+      await runMockFixture({
+        filename,
+        fixture: 'basic-success',
+        sessionId: 'session-evidence',
+        workspacePath: '.',
+        speed: 0,
+      });
+      const storage = openStorage({ filename, migrate: true });
+      const repository = new StorageRepository(storage.client);
+      expect(repository.listObserverEvidence('session-evidence')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: 'test_observer', kind: 'command' }),
+          expect.objectContaining({ source: 'test_observer', kind: 'verification' }),
+        ]),
+      );
       storage.client.close();
     } finally {
       for (const suffix of ['', '-wal', '-shm']) {
