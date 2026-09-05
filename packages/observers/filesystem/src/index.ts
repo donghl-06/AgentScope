@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, watch, type FSWatcher } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, watch, type FSWatcher, type Stats } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export type FileChangeKind = 'create' | 'modify' | 'delete';
@@ -7,6 +7,15 @@ export interface FileObservation {
   readonly path: string;
   readonly kind: FileChangeKind;
   readonly timestamp: number;
+  readonly stat?: FileObservationStat;
+}
+
+export interface FileObservationStat {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  readonly isSymbolicLink: boolean;
 }
 
 export interface FilesystemObserverOptions {
@@ -43,7 +52,7 @@ export class FilesystemObserver {
   private readonly gitignoreRules: readonly GitignoreRule[];
   private readonly debounceMs: number;
   private readonly onChange: FilesystemObserverOptions['onChange'];
-  private readonly pending = new Map<string, FileChangeKind>();
+  private readonly pending = new Map<string, PendingFileChange>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private watcher: FileWatchHandle | undefined;
   private active = false;
@@ -77,7 +86,7 @@ export class FilesystemObserver {
         }
         const fullPath = resolve(this.rootPath, path);
         const change = kind === 'rename' ? (existsSync(fullPath) ? 'create' : 'delete') : 'modify';
-        this.enqueue(path, change);
+        this.enqueue(path, change, readFileStat(fullPath));
       });
     } catch (error) {
       this.active = false;
@@ -94,9 +103,19 @@ export class FilesystemObserver {
     this.pending.clear();
   }
 
-  private enqueue(path: string, kind: FileChangeKind): void {
+  private enqueue(path: string, kind: FileChangeKind, stat: FileObservationStat | undefined): void {
     const previous = this.pending.get(path);
-    this.pending.set(path, mergeChangeKinds(previous, kind));
+    const mergedKind = mergeChangeKinds(previous?.kind, kind);
+    this.pending.set(path, {
+      kind: mergedKind,
+      ...(mergedKind === 'delete'
+        ? {}
+        : stat === undefined
+          ? previous?.stat
+            ? { stat: previous.stat }
+            : {}
+          : { stat }),
+    });
     const existingTimer = this.timers.get(path);
     if (existingTimer !== undefined) clearTimeout(existingTimer);
     this.timers.set(
@@ -105,7 +124,14 @@ export class FilesystemObserver {
         this.timers.delete(path);
         const merged = this.pending.get(path);
         this.pending.delete(path);
-        if (merged !== undefined) this.onChange({ path, kind: merged, timestamp: Date.now() });
+        if (merged !== undefined) {
+          this.onChange({
+            path,
+            kind: merged.kind,
+            timestamp: Date.now(),
+            ...(merged.stat === undefined ? {} : { stat: merged.stat }),
+          });
+        }
       }, this.debounceMs),
     );
   }
@@ -184,6 +210,27 @@ function validateDebounce(value: number): number {
   if (!Number.isFinite(value) || value < 0)
     throw new RangeError('debounceMs must be non-negative.');
   return value;
+}
+
+interface PendingFileChange {
+  readonly kind: FileChangeKind;
+  readonly stat?: FileObservationStat;
+}
+
+function readFileStat(filename: string): FileObservationStat | undefined {
+  let stat: Stats;
+  try {
+    stat = lstatSync(filename);
+  } catch {
+    return undefined;
+  }
+  return {
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    isFile: stat.isFile(),
+    isDirectory: stat.isDirectory(),
+    isSymbolicLink: stat.isSymbolicLink(),
+  };
 }
 
 function readGitignoreRules(rootPath: string): readonly GitignoreRule[] {

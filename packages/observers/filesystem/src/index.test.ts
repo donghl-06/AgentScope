@@ -12,6 +12,7 @@ import {
   normalizeObservedPath,
   parseGitignore,
   type FileObservation,
+  type FileObservationStat,
   type FileWatchFactory,
 } from './index.js';
 
@@ -86,6 +87,41 @@ build/
       emit?.('change', 'src/other.ts');
       vi.advanceTimersByTime(100);
       expect(observations).toHaveLength(1);
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
+  });
+
+  it('records bounded lstat metadata without reading file contents', () => {
+    vi.useFakeTimers();
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
+    const observations: FileObservation[] = [];
+    let emit: Parameters<FileWatchFactory>[1] | undefined;
+    try {
+      fs.mkdirSync(path.join(rootPath, 'src'));
+      fs.writeFileSync(path.join(rootPath, 'src/app.ts'), 'export const value = 1;\n', 'utf8');
+      const observer = new FilesystemObserver(
+        {
+          rootPath,
+          debounceMs: 100,
+          onChange: (observation) => observations.push(observation),
+        },
+        (_root, onEvent) => {
+          emit = onEvent;
+          return { close: () => {} };
+        },
+      );
+      observer.start();
+      emit?.('change', 'src/app.ts');
+      vi.advanceTimersByTime(100);
+
+      const stat = observations[0]?.stat as FileObservationStat | undefined;
+      expect(stat).toMatchObject({ isFile: true, isDirectory: false, isSymbolicLink: false });
+      expect(stat?.size).toBeGreaterThan(0);
+      expect(stat?.mtimeMs).toBeTypeOf('number');
+      expect(observations[0]).not.toHaveProperty('content');
+      observer.stop();
     } finally {
       fs.rmSync(rootPath, { recursive: true, force: true });
       vi.useRealTimers();

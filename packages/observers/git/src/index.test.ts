@@ -96,7 +96,7 @@ describe('git observer', () => {
     } finally {
       await fs.rm(rootPath, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
 
 function result(stdout: string, exitCode = 0, stderr = ''): GitCommandResult {

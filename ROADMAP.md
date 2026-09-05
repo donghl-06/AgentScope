@@ -577,7 +577,7 @@ agentscope/
 - [x] 对 create/modify/delete debounce、coalesce，防止事件风暴。
 - [x] 防御 symlink/path traversal，确保事件仍属于 workspace。
 - [x] `stop()` 关闭监听器并清空 pending/timer；迟到的 watcher 事件由生命周期闸门丢弃，并有回归测试覆盖。
-- [ ] 只记录路径和必要 stat，不默认读取文件内容。
+- [x] 只记录路径和必要 `lstat` stat（size/mtime/类型），不默认读取文件内容；删除或不可访问路径不伪造 stat。
 
 ### Step 9.4 — TestObserver
 
