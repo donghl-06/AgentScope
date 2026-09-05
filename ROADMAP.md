@@ -605,7 +605,7 @@ agentscope/
 ### Step 10.1 — 配置阶段模型
 
 - [x] 将 planning 0.10、implementation 0.50、unit verification 0.15、integration/build 0.15、final review 0.10 放入集中配置。
-- [ ] 定义项目无某类验证时权重如何重分配，不能直接无条件送满分。
+- [x] 定义项目无某类验证时的显式验证门配置；未声明时保持默认验证集合，显式空集合也不能无条件送满分。
 - [ ] 定义 milestone 显式权重的校验、归一化和异常 fallback。
 - [ ] 定义没有 milestone 时的隐式阶段 heuristic 和 confidence penalty。
 
@@ -632,7 +632,7 @@ agentscope/
 - [ ] failed test：progress 回退或停滞且理由明确。
 - [ ] blocked/unblocked：阻塞时不假装继续增长。
 - [ ] replan：新 milestone 引起合理回退。
-- [ ] no milestone/low capability：数值可用但 confidence 较低。
+- [x] no milestone/low capability：数值可用但 confidence 较低。
 - [ ] completed with failed verification：failed 且非成功 100%。
 - [ ] 配置边界、非法权重和 deterministic replay。
 

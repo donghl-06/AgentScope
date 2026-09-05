@@ -54,4 +54,34 @@ describe('progress engine', () => {
     expect(failed.value).toBeLessThanOrEqual(0.6);
     expect(failed.reasons.map((reason) => reason.code)).toContain('verification_failed');
   });
+
+  it('supports projects that explicitly require only the validations they use', () => {
+    const result = computeProgress({
+      state: state({
+        status: 'completed',
+        endedAt: 100,
+        verification: {
+          tests: 'passed',
+          build: 'unknown',
+          typecheck: 'unknown',
+          overall: 'pending',
+        },
+      }),
+      config: { requiredVerification: ['tests'] },
+      capabilities: { structuredEvents: true, commandEvents: true },
+    });
+
+    expect(result.value).toBe(1);
+    expect(result.reasons.map((reason) => reason.code)).toContain('verified_completion');
+    expect(result.reasons.map((reason) => reason.code)).not.toContain('verification_pending');
+  });
+
+  it('keeps explicit no-verification projects below full confidence', () => {
+    const result = computeProgress({
+      state: state({ status: 'completed', endedAt: 100 }),
+      config: { requiredVerification: [] },
+    });
+    expect(result.value).toBeLessThanOrEqual(0.6);
+    expect(result.reasons.map((reason) => reason.code)).toContain('completion_unverified');
+  });
 });

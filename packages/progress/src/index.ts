@@ -1,4 +1,9 @@
-import type { ProgressReason, ProgressResult, SessionState } from '@agentscope/protocol';
+import type {
+  ProgressReason,
+  ProgressResult,
+  SessionState,
+  VerificationState,
+} from '@agentscope/protocol';
 
 export interface ProgressCapabilities {
   readonly structuredEvents?: boolean;
@@ -11,9 +16,23 @@ export interface ProgressCapabilities {
 export interface ProgressEngineInput {
   readonly state: SessionState;
   readonly capabilities?: ProgressCapabilities;
+  readonly config?: ProgressConfig;
   readonly now?: number;
   readonly lastSignalAt?: number;
 }
+
+export type VerificationKey = keyof Pick<VerificationState, 'tests' | 'build' | 'typecheck'>;
+
+export interface ProgressConfig {
+  /** Verification gates required before a completed session can report 100%. */
+  readonly requiredVerification?: readonly VerificationKey[];
+}
+
+export const DEFAULT_REQUIRED_VERIFICATION: readonly VerificationKey[] = [
+  'tests',
+  'build',
+  'typecheck',
+] as const;
 
 export const DEFAULT_PROGRESS_WEIGHTS = {
   planning: 0.1,
@@ -25,13 +44,14 @@ export const DEFAULT_PROGRESS_WEIGHTS = {
 
 export function computeProgress(input: ProgressEngineInput): ProgressResult {
   const { state } = input;
+  const requiredVerification = input.config?.requiredVerification ?? DEFAULT_REQUIRED_VERIFICATION;
   const reasons: ProgressReason[] = [];
   let value = milestoneValue(state, reasons);
   if (state.milestones.length === 0) value = activityValue(state, reasons);
 
-  const verification = verificationValue(state, reasons);
+  const verification = verificationValue(state, reasons, requiredVerification);
   value = Math.max(value, verification.value);
-  if (state.status === 'completed' && state.verification.overall === 'passed') {
+  if (state.status === 'completed' && verification.requiredCount > 0 && verification.allPassed) {
     value = 1;
     reasons.push({
       code: 'verified_completion',
@@ -100,8 +120,9 @@ function activityValue(state: SessionState, reasons: ProgressReason[]): number {
 function verificationValue(
   state: SessionState,
   reasons: ProgressReason[],
-): { value: number; known: number } {
-  const values = [state.verification.tests, state.verification.build, state.verification.typecheck];
+  required: readonly VerificationKey[],
+): { value: number; known: number; requiredCount: number; allPassed: boolean } {
+  const values = required.map((key) => state.verification[key]);
   const passed = values.filter((value) => value === 'passed').length;
   const failed = values.filter((value) => value === 'failed').length;
   const known = values.filter((value) => value !== 'unknown').length;
@@ -114,7 +135,12 @@ function verificationValue(
       code: 'verification_pending',
       message: 'Some verification checks are still unknown.',
     });
-  return { value: (passed / values.length) * 0.2, known };
+  return {
+    value: values.length === 0 ? 0 : (passed / values.length) * 0.2,
+    known,
+    requiredCount: values.length,
+    allPassed: values.length > 0 && passed === values.length,
+  };
 }
 
 function computeConfidence(
