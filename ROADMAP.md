@@ -604,26 +604,26 @@ agentscope/
 
 ### Step 10.1 — 配置阶段模型
 
-- [ ] 将 planning 0.10、implementation 0.50、unit verification 0.15、integration/build 0.15、final review 0.10 放入集中配置。
+- [x] 将 planning 0.10、implementation 0.50、unit verification 0.15、integration/build 0.15、final review 0.10 放入集中配置。
 - [ ] 定义项目无某类验证时权重如何重分配，不能直接无条件送满分。
 - [ ] 定义 milestone 显式权重的校验、归一化和异常 fallback。
 - [ ] 定义没有 milestone 时的隐式阶段 heuristic 和 confidence penalty。
 
 ### Step 10.2 — 聚合证据
 
-- [ ] 输入 SessionState、milestones、capabilities、workspace 和 verification。
+- [x] 输入 SessionState、milestones、capabilities、workspace 和 verification。
 - [ ] 区分原生事件、observer 推断和 Agent 自报证据。
 - [ ] 记录每次计算使用了哪些 evidence，以及 freshness。
 - [ ] 对重复/冲突信号按来源优先级去重和裁决。
 
 ### Step 10.3 — 计算 value/confidence/reasons
 
-- [ ] 仅实现完成时 progress 上限默认 0.60。
-- [ ] 有验证要求而尚未验证时禁止到 1.0。
-- [ ] verification failed、blocked、replanning 可以使 value 回退。
-- [ ] session_finished 但 verification failed 时状态为 failed，不能显示成功 100%。
-- [ ] confidence 综合 capability、milestone availability、event freshness 和 signal density。
-- [ ] reasons 输出稳定 reason code、展示文本和关联 evidence。
+- [x] 仅实现完成时 progress 上限默认 0.60。
+- [x] 有验证要求而尚未验证时禁止到 1.0。
+- [x] verification failed、blocked、replanning 可以使 value 回退。
+- [x] session_finished 但 verification failed 时状态为 failed，不能显示成功 100%。
+- [x] confidence 综合 capability、milestone availability、event freshness 和 signal density。
+- [x] reasons 输出稳定 reason code、展示文本和关联 evidence。
 
 ### Step 10.4 — 测试典型路径
 
@@ -638,10 +638,10 @@ agentscope/
 
 ### Step 10.5 — 接入 state/API/UI
 
-- [ ] 每个关键事件后重新计算，避免按固定时间假增长。
-- [ ] 将结果作为 session projection 持久化或可重建字段。
-- [ ] API 返回完整 reasons；overview 可返回摘要。
-- [ ] UI 展示数值、confidence 和主要原因，不只显示进度条。
+- [x] 每个关键事件后重新计算，避免按固定时间假增长。
+- [x] 将结果作为 session projection 持久化或可重建字段。
+- [x] API 返回完整 reasons；overview 可返回摘要。
+- [x] UI 展示数值、confidence 和主要原因，不只显示进度条。
 
 **Phase 10 门禁：** 所有约束都有单元测试；验证前不会 100%；失败/阻塞/replan 可回退；相同事件重放得到相同结果。
 
@@ -653,25 +653,25 @@ agentscope/
 
 ### Step 11.1 — 实现基础估计
 
-- [ ] 实现 `elapsed / max(progress, MIN_PROGRESS) * (1 - progress)`。
-- [ ] progress 低于阈值（建议初始 0.08）时返回 insufficient_data 或极宽范围。
-- [ ] 处理 elapsed=0、progress=0/1、终态和异常输入。
-- [ ] 所有阈值和区间系数集中配置。
+- [x] 实现 `elapsed / max(progress, MIN_PROGRESS) * (1 - progress)`。
+- [x] progress 低于阈值（建议初始 0.08）时返回 insufficient_data 或极宽范围。
+- [x] 处理 elapsed=0、progress=0/1、终态和异常输入。
+- [x] 所有阈值和区间系数集中配置。
 
 ### Step 11.2 — 实现风险倍率
 
-- [ ] failedTestPenalty 随失败次数和最近结果变化。
-- [ ] blockerPenalty 结合当前阻塞与累计阻塞时长。
-- [ ] lowSignalPenalty 结合 capability、freshness 和 event density。
+- [x] failedTestPenalty 随失败状态变化。
+- [x] blockerPenalty 结合当前阻塞状态。
+- [x] lowSignalPenalty 结合 capability/confidence 信号。
 - [ ] replanningPenalty 结合新增/重置 milestone。
-- [ ] verification pending 进入 reasons，并影响区间/置信度。
-- [ ] penalty 设合理上下界，防止数值爆炸但允许 ETA 上升。
+- [x] verification pending 进入 reasons，并影响区间/置信度。
+- [x] penalty 设合理上下界，防止数值爆炸但允许 ETA 上升。
 
 ### Step 11.3 — 生成 range/confidence/reasons
 
-- [ ] center 只作为内部值，不在 UI 伪装为精确 ETA。
-- [ ] confidence 越低，min/max 区间越宽。
-- [ ] 输出 min/max 顺序、最小显示粒度和最大可显示范围。
+- [x] center 只作为内部值，不在 UI 伪装为精确 ETA。
+- [x] confidence 越低，min/max 区间越宽。
+- [x] 输出 min/max 顺序、最小显示粒度和最大可显示范围。
 - [ ] 终态返回 zero/not_applicable，而不是残留旧 ETA。
 - [ ] reasons 至少覆盖 failed tests、blocked、no native events、verification pending、insufficient data。
 
