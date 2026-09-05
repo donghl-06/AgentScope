@@ -3,6 +3,7 @@
 ## Test context
 
 - Observed version: `2.1.259 (Claude Code)`.
+- Follow-up manual smoke on 2026-09-05 observed `2.1.261 (Claude Code)` with the configured compatible endpoint/model. The minimal `--bare -p` request completed successfully through AgentScope; no raw output is stored because it contained thinking signatures, usage/cost fields and provider diagnostics.
 - Host: Windows native PowerShell, disposable repository, non-interactive `--bare -p` mode.
 - Structured command used: `--output-format stream-json --verbose`.
 - The provider endpoint/model were supplied through the local experiment environment and are intentionally not recorded here.
@@ -44,6 +45,7 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 - The CLI accepted non-interactive print mode with `--bare`; the interactive mode has a workspace trust gate.
 - The observed tool/test failure demonstrates that AgentScope needs its own lifecycle mapping based on command outcomes, exit code, and interruption signals.
 - The current experiment did not establish a stable public contract for every `system` field. Unknown fields must be ignored and retained only inside the adapter boundary when needed for diagnostics.
+- The follow-up smoke emitted a non-fatal `unrecognized_model` diagnostic during session-title generation, then returned a normal assistant response and terminal success. AgentScope persisted the session as `completed` with progress `0.35`, confidence `0.55`, and a completion-unverified reason because no test/build/typecheck verification occurred; this is the expected V0 safety cap, not a parser failure.
 
 ## Fixture policy
 

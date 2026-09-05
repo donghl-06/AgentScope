@@ -507,8 +507,8 @@ agentscope/
 
 - [x] raw fixture → normalized events fixture tests，验证不保存 assistant 文本和命令内容。
 - [x] 覆盖 malformed、未知事件、部分输出、非零退出和中断。
-- [ ] 运行真实 manual smoke，并记录版本、命令、结果和限制。
-- [ ] 更新 capability matrix 和用户文档。
+- [x] 运行真实 manual smoke，并记录版本、命令、结果和限制；2026-09-05 最小 Claude structured smoke 已通过。
+- [x] 更新 capability matrix 和用户文档；脱敏结论写入 findings，操作步骤写入 `docs/manual-smoke.md`。
 
 **Phase 7 门禁：** 至少一个真实 Claude Code session 被监控；fixture tests 稳定；原生不可用时仍可退化到 wrapped/external signals。
 
