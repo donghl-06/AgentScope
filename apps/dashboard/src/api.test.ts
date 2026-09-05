@@ -52,4 +52,22 @@ describe('DashboardApi', () => {
       'http://127.0.0.1:8787/api/sessions/session%2F1/events?after=2&limit=20',
     );
   });
+
+  it('loads ETA snapshot history through the typed client', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify([{ minSeconds: 30, maxSeconds: 120, confidence: 0.4, reasons: [] }]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listEtaSnapshots('session/1')).resolves.toHaveLength(1);
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/sessions/session%2F1/eta-snapshots',
+    );
+  });
 });
