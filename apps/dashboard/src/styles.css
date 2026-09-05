@@ -347,6 +347,144 @@ h3 {
   border-radius: 10px;
   background: #13253c;
 }
+.agent-card {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0 6px;
+  padding: 18px;
+  border: 1px solid #2a4260;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #142942, #102238);
+}
+.agent-card-heading,
+.agent-facts,
+.signal-grid,
+.agent-card-footer,
+.verification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.agent-card-heading {
+  align-items: flex-start;
+}
+.agent-card-heading h3 {
+  font-size: 16px;
+}
+.agent-facts {
+  align-items: stretch;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.agent-facts span {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+  color: #c1d1e2;
+  font-size: 12px;
+}
+.agent-facts b,
+.evidence-label {
+  color: #7189a5;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.signal-grid {
+  align-items: stretch;
+}
+.signal-card {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #2a4362;
+  border-radius: 9px;
+  background: rgba(8, 19, 34, 0.42);
+}
+.signal-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #9bb0c8;
+  font-size: 12px;
+}
+.signal-card-heading strong {
+  color: #e5effa;
+  font-size: 18px;
+}
+.confidence-bar {
+  height: 4px;
+  margin: 10px 0 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #263d59;
+}
+.confidence-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #5da8ef;
+}
+.signal-card small {
+  color: #8399b3;
+  font-size: 10px;
+}
+.agent-card-footer {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.capability-list {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.capability {
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+.capability-available {
+  background: #173d38;
+  color: #7bd8b8;
+}
+.capability-muted {
+  background: #25334a;
+  color: #899bb1;
+}
+.verification-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.verification {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #26344b;
+  color: #a6b8cb;
+  font-size: 10px;
+}
+.verification b {
+  color: #7189a5;
+  font-weight: 700;
+}
+.verification-passed {
+  background: #173d38;
+  color: #7bd8b8;
+}
+.verification-failed {
+  background: #48232f;
+  color: #ff9aaa;
+}
+.verification-pending {
+  background: #493a1e;
+  color: #f3c773;
+}
 .evidence-card strong {
   font-size: 15px;
 }

@@ -446,9 +446,9 @@ agentscope/
 
 - [ ] 展示 active/blocked/completed/failed counts。
 - [x] 按最近活动排序 session，提供基本 status filter。
-- [ ] AgentCard 展示 provider/client/environment、status、elapsed、currentActivity、last event。
-- [ ] 展示 progress/ETA 占位或真实结果，并始终显示 confidence。
-- [ ] 标出 native、wrapped、inferred 等信息来源。
+- [x] AgentCard 展示 provider/client/environment、status、elapsed、currentActivity、last event。
+- [x] 展示 progress/ETA 占位或真实结果，并始终显示 confidence。
+- [x] 标出可用与未报告的 evidence capabilities，避免把缺失信号伪装成事实。
 
 ### Step 6.3 — Session detail
 

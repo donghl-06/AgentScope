@@ -337,6 +337,7 @@ function SessionDetail({
           {workspaceLabel(session.workspace)}
         </span>
       </div>
+      <AgentCard session={session} events={events} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
         <strong>{session.state.currentActivity?.label ?? 'No activity signal'}</strong>
@@ -380,6 +381,144 @@ function SessionDetail({
       )}
     </>
   );
+}
+
+function AgentCard({
+  session,
+  events,
+}: {
+  session: StoredSession;
+  events: readonly StoredEvent[];
+}) {
+  const latestEvent = events.at(-1)?.event;
+  const source = latestEvent?.source;
+  const progress = session.state.progress;
+  const eta = session.state.eta;
+  const capabilityEntries = Object.entries(session.capabilities).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+
+  return (
+    <section className="agent-card" aria-label="Agent evidence card">
+      <div className="agent-card-heading">
+        <div>
+          <p className="eyebrow">AGENT CARD</p>
+          <h3>
+            {session.provider} · {session.adapter}
+          </h3>
+        </div>
+        <span className={`status-pill status-pill-${session.status}`}>
+          {statusLabel(session.status)}
+        </span>
+      </div>
+      <div className="agent-facts">
+        <Fact label="Client" value={source?.client ?? 'Not reported'} />
+        <Fact label="Environment" value={source?.environment ?? 'Not reported'} />
+        <Fact
+          label="Activity"
+          value={session.state.currentActivity?.label ?? 'No activity signal'}
+        />
+        <Fact
+          label="Last event"
+          value={latestEvent === undefined ? 'Not reported' : statusLabel(latestEvent.type)}
+        />
+      </div>
+      <div className="signal-grid">
+        <Signal
+          label="Progress"
+          value={`${Math.round(progress.value * 100)}%`}
+          confidence={progress.confidence}
+          detail={progress.reasons[0]?.message ?? 'No progress reason.'}
+        />
+        <Signal
+          label="ETA"
+          value={eta === undefined ? 'Unavailable' : formatEta(eta.minSeconds, eta.maxSeconds)}
+          confidence={eta?.confidence ?? 0}
+          detail={eta?.reasons[0]?.message ?? 'No ETA signal has been observed.'}
+        />
+      </div>
+      <div className="agent-card-footer">
+        <span className="evidence-label">Evidence capabilities</span>
+        <div className="capability-list">
+          {capabilityEntries.length === 0 ? (
+            <span className="capability capability-muted">No capability report</span>
+          ) : (
+            capabilityEntries.map(([name, available]) => (
+              <span
+                className={`capability ${available ? 'capability-available' : 'capability-muted'}`}
+                key={name}
+              >
+                {friendlyCapability(name)} · {available ? 'available' : 'not reported'}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="verification-row">
+        <Verification label="Tests" value={session.state.verification.tests} />
+        <Verification label="Build" value={session.state.verification.build} />
+        <Verification label="Typecheck" value={session.state.verification.typecheck} />
+      </div>
+    </section>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <span>
+      <b>{label}</b>
+      {value}
+    </span>
+  );
+}
+
+function Signal({
+  label,
+  value,
+  confidence,
+  detail,
+}: {
+  label: string;
+  value: string;
+  confidence: number;
+  detail: string;
+}) {
+  return (
+    <div className="signal-card">
+      <div className="signal-card-heading">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <div
+        className="confidence-bar"
+        aria-label={`${label} confidence ${Math.round(confidence * 100)} percent`}
+      >
+        <span style={{ width: `${Math.round(confidence * 100)}%` }} />
+      </div>
+      <small>
+        {detail} · confidence {Math.round(confidence * 100)}%
+      </small>
+    </div>
+  );
+}
+
+function Verification({ label, value }: { label: string; value: string }) {
+  return (
+    <span className={`verification verification-${value}`}>
+      <b>{label}</b>
+      {statusLabel(value)}
+    </span>
+  );
+}
+
+function formatEta(minSeconds: number, maxSeconds: number): string {
+  return `${formatDuration(0, minSeconds * 1000)}–${formatDuration(0, maxSeconds * 1000)}`;
+}
+
+function friendlyCapability(name: string): string {
+  return name
+    .replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function workspaceLabel(workspace: StoredSession['workspace']): string {
