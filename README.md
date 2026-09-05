@@ -45,4 +45,7 @@ node .\apps\cli\bin\agent-scope.mjs run mock --fixture basic-success
 真实 Claude/Codex smoke 的命令、隐私约束和已知限制见
 [`docs/manual-smoke.md`](docs/manual-smoke.md)。
 
+常见路径、端口、数据库、CLI 无输出、并发限制和 Windows 进程问题见
+[`docs/troubleshooting.md`](docs/troubleshooting.md)。
+
 后续实施、验证和发布门禁以 `ROADMAP.md` 的 Phase/Step 记录为准。
