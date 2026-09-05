@@ -1,6 +1,11 @@
 export type CliCommand =
   | { readonly kind: 'help' }
-  | { readonly kind: 'start' }
+  | {
+      readonly kind: 'start';
+      readonly host?: string;
+      readonly port?: number;
+      readonly database?: string;
+    }
   | { readonly kind: 'sessions' }
   | { readonly kind: 'show'; readonly sessionId: string }
   | { readonly kind: 'run'; readonly adapter: string; readonly args: readonly string[] }
@@ -9,6 +14,8 @@ export type CliCommand =
 export * from './process-runner.js';
 export * from './mock-runner.js';
 export * from './server-client.js';
+export * from './config.js';
+export * from './start-runtime.js';
 export * from './command-runner.js';
 
 export class CliUsageError extends Error {
@@ -24,8 +31,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
 
   switch (command) {
     case 'start':
-      expectNoArguments('start', rest);
-      return { kind: 'start' };
+      return parseStart(rest);
     case 'sessions':
       expectNoArguments('sessions', rest);
       return { kind: 'sessions' };
@@ -75,6 +81,42 @@ function parseRun(argv: readonly string[]): CliCommand {
     throw new CliUsageError('Options before -- are not supported for adapter runs.');
   }
   return { kind: 'run', adapter, args: rest.slice(separator + 1) };
+}
+
+function parseStart(argv: readonly string[]): Extract<CliCommand, { kind: 'start' }> {
+  let host: string | undefined;
+  let port: number | undefined;
+  let database: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (flag === '--host' || flag === '--port' || flag === '--database' || flag === '--db') {
+      if (value === undefined || value.startsWith('-')) {
+        throw new CliUsageError(
+          'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>]',
+        );
+      }
+      if (flag === '--host') host = value;
+      else if (flag === '--port') {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+          throw new CliUsageError('The --port value must be an integer between 0 and 65535.');
+        }
+        port = parsed;
+      } else database = value;
+      index += 1;
+      continue;
+    }
+    throw new CliUsageError(
+      'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>]',
+    );
+  }
+  return {
+    kind: 'start',
+    ...(host === undefined ? {} : { host }),
+    ...(port === undefined ? {} : { port }),
+    ...(database === undefined ? {} : { database }),
+  };
 }
 
 function expectNoArguments(command: string, args: readonly string[]): void {

@@ -13,7 +13,7 @@ export interface CliCommandRunnerOptions {
 export class CliExecutionError extends Error {
   constructor(
     message: string,
-    readonly code: 'missing_runtime' | 'not_implemented',
+    readonly code: 'missing_runtime' | 'not_implemented' | 'invalid_input',
     readonly exitCode = 2,
   ) {
     super(message);

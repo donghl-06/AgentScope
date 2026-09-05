@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "agent-scope": "./bin/agent-scope.mjs"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
@@ -10,6 +13,7 @@
     "@agentscope/adapter-mock": "workspace:*",
     "@agentscope/core": "workspace:*",
     "@agentscope/protocol": "workspace:*",
+    "@agentscope/server": "workspace:*",
     "@agentscope/storage": "workspace:*"
   },
   "scripts": {

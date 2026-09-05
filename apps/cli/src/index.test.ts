@@ -6,6 +6,14 @@ describe('CLI argument parser', () => {
   it('parses top-level commands', () => {
     expect(parseCliArgs([])).toEqual({ kind: 'help' });
     expect(parseCliArgs(['start'])).toEqual({ kind: 'start' });
+    expect(
+      parseCliArgs(['start', '--host', '0.0.0.0', '--port', '9000', '--db', 'data.db']),
+    ).toEqual({
+      kind: 'start',
+      host: '0.0.0.0',
+      port: 9000,
+      database: 'data.db',
+    });
     expect(parseCliArgs(['sessions'])).toEqual({ kind: 'sessions' });
     expect(parseCliArgs(['show', 'session-1'])).toEqual({
       kind: 'show',
@@ -32,7 +40,7 @@ describe('CLI argument parser', () => {
     for (const argv of [
       ['unknown'],
       ['show'],
-      ['start', '--port', '3000'],
+      ['start', '--port'],
       ['run', 'claude'],
       ['run', 'claude', '--cwd', 'workspace', '--', 'arg'],
       ['run', 'mock', '--fixture'],

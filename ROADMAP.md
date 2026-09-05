@@ -388,12 +388,12 @@ agentscope/
 - [x] 建立命令解析层，固定 help、usage error 和 `run ... -- ...` 参数边界；实际命令执行 wiring 待接入。
 - [x] 实现 Mock fixture runner，贯通 reducer、Storage transaction 和终态 exit code；CLI dispatch 待接入。
 - [x] 建立 sessions/show/events 的 typed HTTP client 和稳定 JSON 输出；实际命令 dispatch 待接入。
-- [x] 接入 sessions、show、run mock 的命令 dispatch；可执行入口、start 和真实 provider run 待接入。
-- [ ] 实现 `agent-scope start`。
+- [x] 接入 sessions、show、run mock 的命令 dispatch。
+- [x] 接入可执行入口、配置解析和前台 `agent-scope start`（默认 `127.0.0.1:8787`、`.agentscope/agentscope.db`）。
 - [ ] 实现 `agent-scope run <adapter> -- <args...>`，严格保留 `--` 后参数边界。
-- [ ] 实现 `agent-scope sessions` 和 `agent-scope show <session-id>`。
-- [ ] 实现 `agent-scope run mock --fixture <name>`。
-- [ ] 统一 help、错误码和 non-interactive 输出格式。
+- [x] 实现 `agent-scope sessions` 和 `agent-scope show <session-id>`。
+- [x] 实现 `agent-scope run mock --fixture <name>`。
+- [x] 统一 help、错误码和 non-interactive 输出格式。
 
 ### Step 5.2 — 子进程 wrapper
 
@@ -403,7 +403,7 @@ agentscope/
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
 - [ ] 处理 Ctrl+C、Ctrl+Break、父进程退出和 process tree cleanup。
 - [ ] 处理 Windows executable resolution、空格路径、Unicode 路径和长参数。
-- [ ] AgentScope CLI 返回与被包装 CLI 一致或文档化映射后的 exit code。
+- [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 
 ### Step 5.3 — Session 注册与生命周期连接
 
@@ -417,7 +417,7 @@ agentscope/
 
 - [ ] 决定开发态和发布态下 server/dashboard 的启动方式。
 - [ ] 处理端口占用、已有 server、DB 路径、浏览器是否自动打开等场景。
-- [ ] 提供 health/readiness endpoint，CLI 可等待服务就绪。
+- [x] 提供 `/healthz` endpoint；start 在 listen 成功后输出实际地址。
 - [ ] 服务不可用时 `run` 给出可操作错误，不静默丢事件。
 
 ### Step 5.5 — CLI 测试
