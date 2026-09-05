@@ -346,7 +346,7 @@ agentscope/
 - [x] 启动时加载非终态 session，并按事件重放或 projection 校验。
 - [x] 对服务崩溃遗留的 starting/running session 标记为 `interrupted`；blocked session 保留等待用户动作。
 - [x] 比较持久化 projection 与 replay 结果，并通过启动回调报告不一致诊断。
-- [ ] 优雅关机时停止接受新事件、flush 写入、关闭 DB。
+- [x] 优雅关机时先关闭 Fastify/WS 接受面，再关闭 SQLite；写入为同步短事务，重复 close 幂等，已有 runtime 回归测试覆盖。
 
 ### Step 4.4 — 实现 HTTP API
 
