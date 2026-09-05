@@ -144,6 +144,44 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('does not publish a ghost event when the repository transaction fails', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const state = createInitialSessionState('session-1', 1_700_000_000_000);
+    repository.createSession({
+      id: 'session-1',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    const hub = new LiveHub();
+    const socket = new TestSocket();
+    hub.attach(socket);
+    const app = createServer({ repository, liveHub: hub, recoverOnStart: false });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+    const event = {
+      id: 'event-1',
+      sessionId: 'session-1',
+      timestamp: 1_700_000_000_100,
+      source,
+      type: 'planning' as const,
+      payload: { summary: 'plan' },
+      confidence: 1,
+    };
+    repository.appendEvent(event, { ...state, status: 'running' });
+    const messagesAfterCommit = socket.messages.length;
+
+    expect(() => repository.appendEvent(event, { ...state, status: 'running' })).toThrow();
+    expect(socket.messages).toHaveLength(messagesAfterCommit);
+  });
+
   it('recovers in-flight sessions during server startup', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

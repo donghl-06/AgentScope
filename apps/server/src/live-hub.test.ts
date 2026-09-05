@@ -44,6 +44,20 @@ describe('LiveHub', () => {
     expect(hub.clientCount).toBe(0);
   });
 
+  it('returns protocol errors for malformed and unsupported client messages', () => {
+    const hub = new LiveHub();
+    const socket = new FakeSocket();
+    hub.attach(socket);
+
+    hub.handleMessage(socket, '{');
+    expect(JSON.parse(socket.messages.at(-1)!)).toEqual({ type: 'error', code: 'invalid_json' });
+    hub.handleMessage(socket, JSON.stringify({ type: 'unknown' }));
+    expect(JSON.parse(socket.messages.at(-1)!)).toEqual({
+      type: 'error',
+      code: 'unsupported_message',
+    });
+  });
+
   it('closes all clients when the hub shuts down', () => {
     const hub = new LiveHub();
     const first = new FakeSocket();
