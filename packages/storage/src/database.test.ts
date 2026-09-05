@@ -22,9 +22,16 @@ describe('storage database', () => {
         .all() as Array<{ name: string }>;
       expect(
         tables.map((table) => table.name).filter((name) => name !== 'sqlite_sequence'),
-      ).toEqual(['_agentscope_migrations', 'eta_snapshots', 'events', 'milestones', 'sessions']);
+      ).toEqual([
+        '_agentscope_migrations',
+        'eta_snapshots',
+        'events',
+        'milestones',
+        'observer_evidence',
+        'sessions',
+      ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 2,
+        count: 3,
       });
       expect(
         client
@@ -58,7 +65,7 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 2,
+        count: 3,
       });
       expect(
         client

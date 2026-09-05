@@ -147,6 +147,61 @@ describe('StorageRepository', () => {
     });
   });
 
+  it('persists and deterministically replaces observer evidence by logical key', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+      repository.saveObserverEvidence({
+        id: 'evidence-1',
+        sessionId: 'session-1',
+        key: 'file:app.ts',
+        timestamp: 100,
+        source: 'filesystem',
+        kind: 'file',
+        confidence: 0.65,
+        reason: 'workspace change',
+        payload: { path: 'app.ts', kind: 'modify' },
+      });
+      repository.saveObserverEvidence({
+        id: 'evidence-old',
+        sessionId: 'session-1',
+        key: 'file:app.ts',
+        timestamp: 90,
+        source: 'filesystem',
+        kind: 'file',
+        confidence: 0.2,
+        reason: 'older observation',
+        payload: { path: 'app.ts' },
+      });
+      repository.saveObserverEvidence({
+        id: 'evidence-2',
+        sessionId: 'session-1',
+        key: 'git:workspace:baseline',
+        timestamp: 101,
+        source: 'git',
+        kind: 'workspace',
+        confidence: 0.8,
+        reason: 'baseline',
+        payload: { isRepository: true },
+      });
+
+      expect(repository.listObserverEvidence('session-1')).toEqual([
+        expect.objectContaining({ id: 'evidence-1', key: 'file:app.ts', timestamp: 100 }),
+        expect.objectContaining({
+          id: 'evidence-2',
+          key: 'git:workspace:baseline',
+          timestamp: 101,
+        }),
+      ]);
+    });
+  });
+
   it('rejects malformed event payloads before writing them', () => {
     withRepository((repository) => {
       repository.createSession({

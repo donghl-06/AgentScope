@@ -81,4 +81,25 @@ export const etaSnapshots = sqliteTable(
   (table) => [index('eta_snapshots_session_captured_idx').on(table.sessionId, table.capturedAt)],
 );
 
-export const storageTables = { sessions, events, milestones, etaSnapshots };
+export const observerEvidence = sqliteTable(
+  'observer_evidence',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    evidenceKey: text('evidence_key').notNull(),
+    timestamp: integer('timestamp', { mode: 'number' }).notNull(),
+    source: text('source').notNull(),
+    kind: text('kind').notNull(),
+    confidence: real('confidence').notNull(),
+    reason: text('reason').notNull(),
+    payloadJson: text('payload_json').notNull(),
+  },
+  (table) => [
+    uniqueIndex('observer_evidence_session_key_unique').on(table.sessionId, table.evidenceKey),
+    index('observer_evidence_session_timestamp_idx').on(table.sessionId, table.timestamp),
+  ],
+);
+
+export const storageTables = { sessions, events, milestones, etaSnapshots, observerEvidence };

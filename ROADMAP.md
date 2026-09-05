@@ -916,7 +916,7 @@ MockAdapter
 - [x] 实现最小 `@agentscope/observer-runtime` coordinator：只接收 wrapper 自己启动的进程、workspace 内 Git/File 信号和调用方提供的已知验证命令，不解析任意 shell，不读取文件内容，不改变原生 adapter 事件。
 - [x] 用 fusion ledger 对 runtime evidence 去重和裁决；重复 command、重复 file path、进程生命周期和 Git baseline 均有稳定测试。
 - [x] 为 coordinator 增加 cleanup、异常隔离和 watcher 失败降级测试；observer 故障不会让 `start()` 失败。
-- [ ] 将 observer evidence 接入 session projection/API 的最小可用字段，保留 source、reason、confidence、timestamp，不扩大协议 payload。
+- [x] 将 observer evidence 接入独立 `observer_evidence` 存储表和 `/api/sessions/:id/evidence` 只读 API，保留 source、reason、confidence、timestamp，不扩大 AgentEvent payload。
 
 ### 12.2 — Provider/Mock 纵向验证
 

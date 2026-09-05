@@ -66,6 +66,20 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/sessions/session-1/events')).json()).toMatchObject({
       items: [{ seq: 1, event: { id: 'event-1' } }],
     });
+    repository.saveObserverEvidence({
+      id: 'evidence-1',
+      sessionId: 'session-1',
+      key: 'file:app.ts',
+      timestamp: 1_700_000_000_101,
+      source: 'filesystem',
+      kind: 'file',
+      confidence: 0.65,
+      reason: 'workspace change',
+      payload: { path: 'app.ts', kind: 'modify' },
+    });
+    expect((await app.inject('/api/sessions/session-1/evidence')).json()).toMatchObject([
+      { id: 'evidence-1', key: 'file:app.ts', source: 'filesystem' },
+    ]);
     repository.saveEtaSnapshot('session-1', {
       minSeconds: 30,
       maxSeconds: 120,
@@ -294,8 +308,8 @@ describe('server HTTP API', () => {
 
       const second = await startServer({ filename, host: '127.0.0.1', port: 0 });
       try {
-        const session = await fetch(`${second.address}/api/sessions/session-restart`).then((response) =>
-          response.json(),
+        const session = await fetch(`${second.address}/api/sessions/session-restart`).then(
+          (response) => response.json(),
         );
         const events = await fetch(`${second.address}/api/sessions/session-restart/events`).then(
           (response) => response.json(),

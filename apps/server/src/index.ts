@@ -28,6 +28,9 @@ const EventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
+const EvidenceQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
 const CursorPageSchema = Type.Object({
   items: Type.Array(Type.Unknown()),
   nextCursor: Type.Optional(Type.String()),
@@ -203,6 +206,32 @@ export function createServer(options: ServerOptions): FastifyInstance {
       try {
         const { id } = request.params as { id: string };
         return reply.send(options.repository.listEtaSnapshots(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/sessions/:id/evidence',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: EvidenceQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.repository.listObserverEvidence(id, limit));
       } catch (error) {
         return sendError(reply, error);
       }

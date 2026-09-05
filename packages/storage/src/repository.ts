@@ -58,6 +58,20 @@ export interface StoredEvent {
   readonly event: AgentEvent;
 }
 
+export interface ObserverEvidenceInput {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly key: string;
+  readonly timestamp: number;
+  readonly source: string;
+  readonly kind: string;
+  readonly confidence: number;
+  readonly reason: string;
+  readonly payload: unknown;
+}
+
+export interface StoredObserverEvidence extends ObserverEvidenceInput {}
+
 export interface EventPage {
   readonly items: readonly StoredEvent[];
   readonly nextCursor?: string;
@@ -392,6 +406,80 @@ export class StorageRepository {
     };
   }
 
+  saveObserverEvidence(input: ObserverEvidenceInput): StoredObserverEvidence {
+    this.ensureSession(input.sessionId);
+    if (input.id.length === 0 || input.key.length === 0) {
+      throw new StorageError('Observer evidence identifiers must not be empty.', 'invalid_input');
+    }
+    if (!Number.isFinite(input.timestamp) || input.timestamp < 0) {
+      throw new StorageError('Observer evidence timestamp must be non-negative.', 'invalid_input');
+    }
+    if (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1) {
+      throw new StorageError(
+        'Observer evidence confidence must be between 0 and 1.',
+        'invalid_input',
+      );
+    }
+    const payloadJson = stringifyJson(input.payload);
+    try {
+      this.client
+        .prepare(
+          `INSERT INTO observer_evidence
+            (id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(session_id, evidence_key) DO UPDATE SET
+             id = excluded.id,
+             timestamp = excluded.timestamp,
+             source = excluded.source,
+             kind = excluded.kind,
+             confidence = excluded.confidence,
+             reason = excluded.reason,
+             payload_json = excluded.payload_json
+           WHERE excluded.timestamp >= observer_evidence.timestamp`,
+        )
+        .run(
+          input.id,
+          input.sessionId,
+          input.key,
+          input.timestamp,
+          input.source,
+          input.kind,
+          input.confidence,
+          input.reason,
+          payloadJson,
+        );
+    } catch (error) {
+      throw mapSqliteError(error, `Could not save observer evidence: ${input.key}`);
+    }
+    return this.getObserverEvidence(input.sessionId, input.key);
+  }
+
+  listObserverEvidence(sessionId: string, limit = 100): readonly StoredObserverEvidence[] {
+    this.ensureSession(sessionId);
+    const rows = this.client
+      .prepare(
+        `SELECT id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+         FROM observer_evidence
+         WHERE session_id = ?
+         ORDER BY timestamp, evidence_key
+         LIMIT ?`,
+      )
+      .all(sessionId, clampObserverEvidenceLimit(limit)) as ObserverEvidenceRow[];
+    return rows.map(decodeObserverEvidence);
+  }
+
+  private getObserverEvidence(sessionId: string, key: string): StoredObserverEvidence {
+    const row = this.client
+      .prepare(
+        `SELECT id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+         FROM observer_evidence
+         WHERE session_id = ? AND evidence_key = ?`,
+      )
+      .get(sessionId, key) as ObserverEvidenceRow | undefined;
+    if (row === undefined) throw new StorageNotFoundError(`Observer evidence not found: ${key}`);
+    return decodeObserverEvidence(row);
+  }
+
   upsertMilestone(sessionId: string, milestone: Milestone, now = Date.now()): void {
     this.ensureSession(sessionId);
     this.client
@@ -533,6 +621,18 @@ interface EtaRow {
   reasons_json: string;
 }
 
+interface ObserverEvidenceRow {
+  id: string;
+  session_id: string;
+  evidence_key: string;
+  timestamp: number;
+  source: string;
+  kind: string;
+  confidence: number;
+  reason: string;
+  payload_json: string;
+}
+
 function decodeSession(row: SessionRow): StoredSession {
   const state = parseJson<SessionState>(row.state_json, 'session state');
   assertSessionState(state);
@@ -572,6 +672,20 @@ function decodeEvent(row: EventRow): StoredEvent {
   return { seq: row.seq, event };
 }
 
+function decodeObserverEvidence(row: ObserverEvidenceRow): StoredObserverEvidence {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    key: row.evidence_key,
+    timestamp: row.timestamp,
+    source: row.source,
+    kind: row.kind,
+    confidence: row.confidence,
+    reason: row.reason,
+    payload: parseJson(row.payload_json, 'observer evidence payload'),
+  };
+}
+
 function stringifyJson(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
@@ -588,6 +702,11 @@ function parseJson<T = unknown>(value: string, label: string): T {
   } catch (error) {
     throw new StorageCorruptPayloadError(`Stored ${label} is not valid JSON.`, { cause: error });
   }
+}
+
+function clampObserverEvidenceLimit(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.max(1, Math.min(500, Math.trunc(value)));
 }
 
 function mapSqliteError(error: unknown, duplicateMessage: string): StorageError {
