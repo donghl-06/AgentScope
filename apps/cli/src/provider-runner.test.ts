@@ -101,6 +101,19 @@ describe('provider runner', () => {
     expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
+  it('keeps a session alive when the provider emits a malformed record before completion', async () => {
+    const result = await runProvider({
+      adapter: 'claude',
+      executable: process.execPath,
+      args: ['-e', script('not-json\n{"type":"result","subtype":"success","is_error":false}', 0)],
+      filename: ':memory:',
+      workspacePath,
+      sessionId: 'session-parser-recovery',
+    });
+
+    expect(result).toMatchObject({ status: 'completed', exitCode: 0 });
+  });
+
   it.each(['claude', 'codex'] as const)(
     'persists a terminal failure when %s cannot spawn',
     async (adapter) => {
