@@ -70,7 +70,7 @@ export interface ObserverEvidenceInput {
   readonly payload: unknown;
 }
 
-export interface StoredObserverEvidence extends ObserverEvidenceInput {}
+export type StoredObserverEvidence = ObserverEvidenceInput;
 
 export interface EventPage {
   readonly items: readonly StoredEvent[];
