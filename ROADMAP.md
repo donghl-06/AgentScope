@@ -445,18 +445,18 @@ agentscope/
 ### Step 6.2 — Project overview
 
 - [ ] 展示 active/blocked/completed/failed counts。
-- [ ] 按最近活动排序 session，提供基本 status filter。
+- [x] 按最近活动排序 session，提供基本 status filter。
 - [ ] AgentCard 展示 provider/client/environment、status、elapsed、currentActivity、last event。
 - [ ] 展示 progress/ETA 占位或真实结果，并始终显示 confidence。
 - [ ] 标出 native、wrapped、inferred 等信息来源。
 
 ### Step 6.3 — Session detail
 
-- [ ] 展示按 seq 排序的 timeline。
+- [x] 展示按 seq 排序的 timeline。
 - [ ] 展示 milestones、verification、changed files、recent commands。
 - [ ] 为 error、blocked、test_failed 等高价值事件提供醒目但不夸张的状态。
 - [ ] 对 capability 缺失做解释性降级，不展示误导性的空模块。
-- [ ] 限制大 timeline 的初始加载量，支持 cursor 加载更多。
+- [x] 限制大 timeline 的初始加载量，支持 cursor 加载更多。
 
 ### Step 6.4 — 实时更新与断线恢复
 

@@ -38,6 +38,36 @@ button {
   justify-content: space-between;
   gap: 20px;
 }
+.panel-actions,
+.timeline-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.filter-label select {
+  padding: 8px 28px 8px 10px;
+  border: 1px solid #334967;
+  border-radius: 8px;
+  background: #121f34;
+  color: #b6c8df;
+  font: inherit;
+  font-size: 12px;
+}
+.quiet-button-small {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .eyebrow {
   margin: 0 0 8px;
   color: #7f9dc4;

@@ -12,6 +12,8 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [selected, setSelected] = useState<StoredSession>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
+  const [eventsNextCursor, setEventsNextCursor] = useState<string>();
+  const [statusFilter, setStatusFilter] = useState<'all' | StoredSession['status']>('all');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -52,6 +54,7 @@ export function App() {
           return merged;
         });
       }
+      setEventsNextCursor(page.nextCursor);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load session details.');
     } finally {
@@ -150,6 +153,14 @@ export function App() {
     };
   }, [sessions]);
 
+  const visibleSessions = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? sessions
+        : sessions.filter((session) => session.status === statusFilter),
+    [sessions, statusFilter],
+  );
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -184,22 +195,41 @@ export function App() {
               <p className="eyebrow">SESSIONS</p>
               <h2>Recent agent work</h2>
             </div>
-            <button
-              className="quiet-button"
-              type="button"
-              onClick={() => void refreshSessions()}
-              disabled={loading}
-            >
-              Refresh
-            </button>
+            <div className="panel-actions">
+              <label className="filter-label">
+                <span className="sr-only">Filter sessions by status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as 'all' | StoredSession['status'])
+                  }
+                >
+                  <option value="all">All statuses</option>
+                  <option value="starting">Starting</option>
+                  <option value="running">Running</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="interrupted">Interrupted</option>
+                </select>
+              </label>
+              <button
+                className="quiet-button"
+                type="button"
+                onClick={() => void refreshSessions()}
+                disabled={loading}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
           {loading ? (
             <p className="empty-state">Loading sessions…</p>
-          ) : sessions.length === 0 ? (
+          ) : visibleSessions.length === 0 ? (
             <p className="empty-state">No sessions recorded yet.</p>
           ) : (
             <div className="session-list">
-              {sessions.map((session) => (
+              {visibleSessions.map((session) => (
                 <SessionRow
                   key={session.id}
                   session={session}
@@ -215,7 +245,15 @@ export function App() {
           {selected === undefined ? (
             <p className="empty-state">Select a session to inspect its evidence timeline.</p>
           ) : (
-            <SessionDetail session={selected} events={events} loading={detailLoading} />
+            <SessionDetail
+              session={selected}
+              events={events}
+              eventsNextCursor={eventsNextCursor}
+              loading={detailLoading}
+              onLoadMore={() =>
+                void refreshDetail(selected.id, lastSeqBySessionRef.current.get(selected.id) ?? 0)
+              }
+            />
           )}
         </div>
       </section>
@@ -264,11 +302,15 @@ function SessionRow({
 function SessionDetail({
   session,
   events,
+  eventsNextCursor,
   loading,
+  onLoadMore,
 }: {
   session: StoredSession;
   events: readonly StoredEvent[];
+  eventsNextCursor: string | undefined;
   loading: boolean;
+  onLoadMore: () => void;
 }) {
   return (
     <>
@@ -304,7 +346,19 @@ function SessionDetail({
       </div>
       <div className="timeline-heading">
         <h3>Timeline</h3>
-        <span>{loading ? 'Refreshing…' : `${events.length} events`}</span>
+        <div className="timeline-actions">
+          <span>{loading ? 'Refreshing…' : `${events.length} events`}</span>
+          {eventsNextCursor !== undefined && (
+            <button
+              className="quiet-button quiet-button-small"
+              type="button"
+              onClick={onLoadMore}
+              disabled={loading}
+            >
+              Load more
+            </button>
+          )}
+        </div>
       </div>
       {events.length === 0 ? (
         <p className="empty-state">No events recorded.</p>
