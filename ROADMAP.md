@@ -438,7 +438,7 @@ agentscope/
 ### Step 6.1 — 前端基座与 API client
 
 - [ ] 初始化 React + Vite + TypeScript + Tailwind。
-- [ ] 建立 typed HTTP/WS client，复用 protocol schema 或生成的 DTO。
+- [x] 建立 typed HTTP/WS client，复用 protocol schema 或生成的 DTO。
 - [ ] 实现 loading、empty、error、offline/reconnecting 状态。
 - [ ] 统一时间、持续时长、confidence 和 ETA range 格式化。
 
