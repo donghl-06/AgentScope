@@ -162,6 +162,8 @@ importers:
 
   packages/observers/filesystem: {}
 
+  packages/observers/fusion: {}
+
   packages/observers/git: {}
 
   packages/observers/process: {}
