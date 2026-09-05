@@ -138,7 +138,11 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
-  packages/eta: {}
+  packages/eta:
+    dependencies:
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/observers/filesystem: {}
 
@@ -148,7 +152,11 @@ importers:
 
   packages/observers/tests: {}
 
-  packages/progress: {}
+  packages/progress:
+    dependencies:
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/protocol:
     dependencies:
