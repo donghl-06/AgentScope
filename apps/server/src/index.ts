@@ -87,7 +87,16 @@ export function createServer(options: ServerOptions): FastifyInstance {
     return sendError(reply, error);
   });
 
-  void app.register(websocket);
+  app.register(async (instance) => {
+    await instance.register(websocket);
+    instance.get('/ws', { websocket: true }, (socket) => {
+      const detach = liveHub.attach(socket, protocolVersion);
+      socket.on('message', (raw: { toString(): string }) => {
+        liveHub.handleMessage(socket, raw.toString());
+      });
+      socket.on('close', detach);
+    });
+  });
 
   app.get('/healthz', async () => ({ status: 'ok', protocolVersion }));
 
@@ -181,14 +190,6 @@ export function createServer(options: ServerOptions): FastifyInstance {
       }
     },
   );
-
-  app.get('/ws', { websocket: true }, (socket) => {
-    const detach = liveHub.attach(socket, protocolVersion);
-    socket.on('message', (raw: { toString(): string }) => {
-      liveHub.handleMessage(socket, raw.toString());
-    });
-    socket.on('close', detach);
-  });
 
   return app;
 }

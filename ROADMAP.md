@@ -361,17 +361,17 @@ agentscope/
 
 - [x] 提供 `/ws`，定义 connection hello/protocol version。
 - [x] 广播 `session.created/session.updated/event.appended`；`project.updated` 待 project write path 接入。
-- [ ] 每条消息携带 sessionId、seq/cursor 和必要的轻量 payload（消息类型已定义，事件接入待完成）。
+- [x] `event.appended` 携带 sessionId、seq/cursor 和必要的轻量 payload；session 级消息携带 sessionId 与状态 payload。
 - [x] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
 - [ ] 实现 heartbeat、断开 cleanup、慢客户端处理和消息大小限制（断开和发送失败 cleanup 已完成，heartbeat/size limit 待完成）。
-- [ ] 文档化“WS 只负责实时，HTTP cursor 负责补齐”的恢复流程。
+- [x] 文档化并用集成测试验证“WS 只负责实时，HTTP cursor 负责补齐”的恢复流程。
 
 ### Step 4.6 — Server 集成测试
 
 - [x] 临时 SQLite 中写入事件并通过 HTTP 查询。
-- [ ] 重启 server 后仍能查询。
+- [x] 重启 server 后仍能查询历史 timeline。
 - [ ] 测试并发 append 的 seq 唯一和顺序。
-- [ ] 测试 WS 收到实时事件，断开期间写入后通过 HTTP 补齐。
+- [x] 测试 WS 收到实时事件，断开期间写入后通过 HTTP cursor 补齐。
 - [ ] 测试 malformed payload、未知 session、DB failure 和优雅关闭。
 
 **Phase 4 门禁：** Mock 事件可持久化并实时推送；server 重启和 WS 重连不会丢失已确认写入的 timeline。
