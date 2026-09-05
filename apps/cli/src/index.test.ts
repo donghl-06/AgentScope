@@ -15,6 +15,7 @@ describe('CLI argument parser', () => {
       database: 'data.db',
     });
     expect(parseCliArgs(['sessions'])).toEqual({ kind: 'sessions' });
+    expect(parseCliArgs(['recover'])).toEqual({ kind: 'recover' });
     expect(parseCliArgs(['show', 'session-1'])).toEqual({
       kind: 'show',
       sessionId: 'session-1',

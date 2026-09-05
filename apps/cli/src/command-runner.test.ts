@@ -55,6 +55,23 @@ describe('CLI command runner', () => {
     expect(JSON.parse(output[0]!)).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
+  it('runs stale-session recovery and prints a safe summary', async () => {
+    const output: string[] = [];
+    const exitCode = await executeCliCommand(parseCliArgs(['recover']), {
+      recover: async () => ({
+        count: 1,
+        recovered: [{ id: 'session-1', status: 'interrupted', endedAt: 100 }],
+      }),
+      write: (text) => output.push(text),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output[0]!)).toEqual({
+      count: 1,
+      recovered: [{ id: 'session-1', status: 'interrupted', endedAt: 100 }],
+    });
+  });
+
   it('returns explicit execution errors for unwired commands', async () => {
     await expect(
       executeCliCommand(parseCliArgs(['start']), { write: () => {} }),

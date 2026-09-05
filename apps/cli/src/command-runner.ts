@@ -1,11 +1,13 @@
 import type { CliCommand } from './index.js';
 import { formatCliHelp } from './index.js';
 import type { MockRunResult } from './mock-runner.js';
+import type { RecoverySummary } from './recover-runner.js';
 import { formatServerJson, type ServerClient } from './server-client.js';
 
 export interface CliCommandRunnerOptions {
   readonly client?: Pick<ServerClient, 'listSessions' | 'getSession' | 'listEvents'>;
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
+  readonly recover?: () => Promise<RecoverySummary>;
   readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
   readonly start?: () => Promise<number>;
   readonly write: (text: string) => void;
@@ -33,6 +35,14 @@ export async function executeCliCommand(
   if (command.kind === 'sessions') {
     const client = requireClient(options);
     options.write(formatServerJson(await client.listSessions()));
+    return 0;
+  }
+  if (command.kind === 'recover') {
+    if (options.recover === undefined) {
+      throw new CliExecutionError('Recovery runner is not configured.', 'missing_runtime');
+    }
+    const result = await options.recover();
+    options.write(formatServerJson(result));
     return 0;
   }
   if (command.kind === 'show') {

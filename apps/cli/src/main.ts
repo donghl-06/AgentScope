@@ -9,6 +9,7 @@ import { CliExecutionError, executeCliCommand } from './command-runner.js';
 import { CliUsageError, formatCliHelp, parseCliArgs, type CliCommand } from './index.js';
 import { runMockFixture } from './mock-runner.js';
 import { runProvider } from './provider-runner.js';
+import { recoverSessions } from './recover-runner.js';
 import { ServerClient } from './server-client.js';
 import { runStartCommand } from './start-runtime.js';
 
@@ -62,6 +63,9 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
         : {}),
       ...(command.kind === 'sessions' || command.kind === 'show'
         ? { client: new ServerClient({ baseUrl: config.serverUrl }) }
+        : {}),
+      ...(command.kind === 'recover'
+        ? { recover: async () => recoverSessions(config.database) }
         : {}),
       ...(command.kind === 'run-mock'
         ? {

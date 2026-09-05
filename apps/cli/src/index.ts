@@ -7,6 +7,7 @@ export type CliCommand =
       readonly database?: string;
     }
   | { readonly kind: 'sessions' }
+  | { readonly kind: 'recover' }
   | { readonly kind: 'show'; readonly sessionId: string }
   | { readonly kind: 'run'; readonly adapter: string; readonly args: readonly string[] }
   | { readonly kind: 'run-mock'; readonly fixture: string };
@@ -17,6 +18,7 @@ export * from './server-client.js';
 export * from './config.js';
 export * from './start-runtime.js';
 export * from './provider-runner.js';
+export * from './recover-runner.js';
 export * from './command-runner.js';
 
 export class CliUsageError extends Error {
@@ -36,6 +38,9 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
     case 'sessions':
       expectNoArguments('sessions', rest);
       return { kind: 'sessions' };
+    case 'recover':
+      expectNoArguments('recover', rest);
+      return { kind: 'recover' };
     case 'show':
       if (rest.length !== 1 || rest[0] === undefined || rest[0].startsWith('-')) {
         throw new CliUsageError('Usage: agent-scope show <session-id>');
@@ -57,6 +62,7 @@ export function formatCliHelp(): string {
     '  run <adapter> -- <args...>   Run an adapter and preserve argument boundaries.',
     '  run mock --fixture <name>    Run a deterministic mock fixture.',
     '  sessions                     List stored sessions.',
+    '  recover                      Mark stale sessions as interrupted.',
     '  show <session-id>            Show one stored session.',
     '  --help                       Show this help.',
   ].join('\n');
