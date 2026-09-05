@@ -48,9 +48,40 @@ describe('Protocol runtime schemas', () => {
   });
 
   it('accepts every V0 event type with a payload envelope', () => {
+    const payloads: Record<(typeof AGENT_EVENT_TYPES)[number], unknown> = {
+      session_started: {},
+      session_finished: { reason: 'completed' },
+      planning: {},
+      agent_message: {},
+      tool_call_started: { toolName: 'tool' },
+      tool_call_finished: { toolName: 'tool', success: true },
+      file_read: { path: 'file.ts' },
+      file_write: { path: 'file.ts' },
+      command_started: {},
+      command_finished: { exitCode: 0 },
+      test_started: {},
+      test_passed: {},
+      test_failed: {},
+      milestone_started: { milestoneId: 'm1' },
+      milestone_completed: { milestoneId: 'm1' },
+      blocked: { reason: 'needs input' },
+      unblocked: {},
+      error: { code: 'E_TEST', message: 'failure' },
+    };
     for (const type of AGENT_EVENT_TYPES) {
-      expect(isAgentEvent({ ...validEvent, type, payload: {} })).toBe(true);
+      expect(isAgentEvent({ ...validEvent, type, payload: payloads[type] })).toBe(true);
     }
+  });
+
+  it('rejects malformed payloads while preserving extension fields', () => {
+    expect(isAgentEvent({ ...validEvent, type: 'file_write', payload: { path: 123 } })).toBe(false);
+    expect(
+      isAgentEvent({
+        ...validEvent,
+        type: 'session_finished',
+        payload: { reason: 'completed', providerField: { value: true } },
+      }),
+    ).toBe(true);
   });
 
   it('rejects missing identifiers and invalid timestamps', () => {

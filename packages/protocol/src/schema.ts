@@ -1,15 +1,8 @@
 import { Type, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-import { AGENT_EVENT_TYPES, type AgentEvent } from './events.js';
+import { AGENT_EVENT_TYPES, type AgentEvent, type AgentEventType } from './events.js';
 import type { SessionState } from './session.js';
-
-const eventTypeSchema = Type.Union(
-  AGENT_EVENT_TYPES.map((eventType) => Type.Literal(eventType)) as unknown as [
-    TSchema,
-    ...TSchema[],
-  ],
-);
 
 const sourceSchema = Type.Object(
   {
@@ -21,19 +14,88 @@ const sourceSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const AgentEventSchema = Type.Object(
-  {
+const finishReasonSchema = Type.Union([
+  Type.Literal('completed'),
+  Type.Literal('failed'),
+  Type.Literal('interrupted'),
+  Type.Literal('blocked'),
+  Type.Literal('unknown'),
+]);
+const payloadSchemas: Record<AgentEventType, TSchema> = {
+  session_started: Type.Object({ providerSessionId: Type.Optional(Type.String({ minLength: 1 })) }),
+  session_finished: Type.Object({
+    reason: finishReasonSchema,
+    exitCode: Type.Optional(Type.Number()),
+    providerOutcome: Type.Optional(Type.String()),
+  }),
+  planning: Type.Object({ summary: Type.Optional(Type.String()) }),
+  agent_message: Type.Object({ summary: Type.Optional(Type.String()) }),
+  tool_call_started: Type.Object({
+    toolName: Type.String({ minLength: 1 }),
+    toolCallId: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  tool_call_finished: Type.Object({
+    toolName: Type.String({ minLength: 1 }),
+    success: Type.Boolean(),
+    durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+    errorCode: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  file_read: Type.Object({ path: Type.String({ minLength: 1 }) }),
+  file_write: Type.Object({ path: Type.String({ minLength: 1 }) }),
+  command_started: Type.Object({
+    commandKind: Type.Optional(Type.String({ minLength: 1 })),
+    commandName: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  command_finished: Type.Object({
+    commandKind: Type.Optional(Type.String({ minLength: 1 })),
+    exitCode: Type.Number(),
+    durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  }),
+  test_started: Type.Object({
+    testKind: Type.Optional(Type.String({ minLength: 1 })),
+    commandName: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  test_passed: Type.Object({
+    testKind: Type.Optional(Type.String({ minLength: 1 })),
+    durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  }),
+  test_failed: Type.Object({
+    testKind: Type.Optional(Type.String({ minLength: 1 })),
+    durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+    failureSummary: Type.Optional(Type.String()),
+  }),
+  milestone_started: Type.Object({
+    milestoneId: Type.String({ minLength: 1 }),
+    title: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  milestone_completed: Type.Object({
+    milestoneId: Type.String({ minLength: 1 }),
+    title: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  blocked: Type.Object({ reason: Type.String({ minLength: 1 }) }),
+  unblocked: Type.Object({ reason: Type.Optional(Type.String()) }),
+  error: Type.Object({
+    code: Type.String({ minLength: 1 }),
+    message: Type.String({ minLength: 1 }),
+  }),
+};
+
+export const AgentEventPayloadSchemas = payloadSchemas;
+
+const eventSchemas = AGENT_EVENT_TYPES.map((eventType) =>
+  Type.Object({
     id: Type.String({ minLength: 1 }),
     sessionId: Type.String({ minLength: 1 }),
     timestamp: Type.Number({ minimum: 0 }),
     source: sourceSchema,
-    type: eventTypeSchema,
-    payload: Type.Unknown(),
+    type: Type.Literal(eventType),
+    payload: payloadSchemas[eventType],
     confidence: Type.Number({ minimum: 0, maximum: 1 }),
     rawRef: Type.Optional(Type.String({ minLength: 1 })),
-  },
-  { additionalProperties: false },
-);
+  }),
+) as unknown as [TSchema, ...TSchema[]];
+
+export const AgentEventSchema = Type.Union(eventSchemas);
 
 const reasonSchema = Type.Object(
   {
