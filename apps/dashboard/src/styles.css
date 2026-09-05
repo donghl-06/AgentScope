@@ -80,9 +80,17 @@ h3 {
   color: #93a4bc;
   font-size: 13px;
 }
-.connection-live {
+.connection-connected {
   border-color: #1d7259;
   color: #7ce2bd;
+}
+.connection-connecting {
+  border-color: #67552d;
+  color: #f0ca78;
+}
+.connection-offline {
+  border-color: #6f3240;
+  color: #ffb1bf;
 }
 .connection-dot {
   width: 7px;
@@ -90,9 +98,15 @@ h3 {
   border-radius: 50%;
   background: #75859b;
 }
-.connection-live .connection-dot {
+.connection-connected .connection-dot {
   background: #41d49d;
   box-shadow: 0 0 12px #41d49d;
+}
+.connection-connecting .connection-dot {
+  background: #f0ca78;
+}
+.connection-offline .connection-dot {
+  background: #ff8295;
 }
 .banner {
   margin-top: 26px;

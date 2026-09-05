@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StoredEvent, StoredSession } from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
@@ -14,7 +14,10 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [live, setLive] = useState(false);
+  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'offline'>(
+    'connecting',
+  );
+  const selectedIdRef = useRef<string | undefined>(undefined);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -43,19 +46,63 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
     void refreshSessions();
-    const socket = api.connectLive((message: DashboardLiveNotification) => {
-      if (message.type === 'hello') setLive(true);
-      if (message.type === 'session.created' || message.type === 'session.updated') {
-        void refreshSessions();
+    let socket: WebSocket | undefined;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let reconnectAttempt = 0;
+    let stopped = false;
+
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer !== undefined) return;
+      const delay = Math.min(1000 * 2 ** reconnectAttempt, 10_000);
+      reconnectAttempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        connect();
+      }, delay);
+    };
+
+    const connect = () => {
+      if (stopped) return;
+      setConnectionState('connecting');
+      try {
+        socket = api.connectLive((message: DashboardLiveNotification) => {
+          if (message.type === 'session.created' || message.type === 'session.updated') {
+            void refreshSessions();
+          }
+          if (message.type === 'event.appended') {
+            void refreshSessions();
+            if (message.sessionId !== undefined && message.sessionId === selectedIdRef.current) {
+              void refreshDetail(message.sessionId);
+            }
+          }
+        });
+        socket.addEventListener('open', () => {
+          reconnectAttempt = 0;
+          setConnectionState('connected');
+        });
+        socket.addEventListener('close', () => {
+          setConnectionState('offline');
+          scheduleReconnect();
+        });
+        socket.addEventListener('error', () => setConnectionState('offline'));
+      } catch {
+        setConnectionState('offline');
+        scheduleReconnect();
       }
-      if (message.type === 'event.appended') void refreshSessions();
-    });
-    socket.addEventListener('open', () => setLive(true));
-    socket.addEventListener('close', () => setLive(false));
-    socket.addEventListener('error', () => setLive(false));
-    return () => socket.close();
-  }, [refreshSessions]);
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [refreshDetail, refreshSessions]);
 
   useEffect(() => {
     if (selectedId !== undefined) void refreshDetail(selectedId);
@@ -80,9 +127,13 @@ export function App() {
           <h1>AgentScope</h1>
           <p className="subtitle">A calm, evidence-based view of coding-agent work.</p>
         </div>
-        <div className={`connection ${live ? 'connection-live' : ''}`}>
+        <div className={`connection connection-${connectionState}`}>
           <span className="connection-dot" />
-          {live ? 'Live updates connected' : 'Waiting for server'}
+          {connectionState === 'connected'
+            ? 'Live updates connected'
+            : connectionState === 'connecting'
+              ? 'Connecting to server'
+              : 'Offline · retrying'}
         </div>
       </header>
 
