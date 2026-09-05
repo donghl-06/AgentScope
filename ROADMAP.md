@@ -591,7 +591,7 @@ agentscope/
 
 - [x] 定义 native > process/test > git/file > agent self-report 的证据优先级；实现于 `packages/observers/fusion`。
 - [x] 为 inferred 事件设置较低 confidence 和明确 reason/source；ledger 校验并保留来源、理由和 payload。
-- [ ] 临时 Git repo 测试 baseline、modify、delete、commit 和非仓库。
+- [x] 临时 Git repo 测试 baseline、modify、delete、commit 和非仓库；Git snapshot 额外保留 tracked file 清单，避免把基线干净文件的删除误判为新增。
 - [ ] synthetic test command 覆盖 pass/fail/interrupt。
 - [ ] 压测事件风暴下 debounce、批量写入和 CPU/IO 开销。
 

@@ -1,6 +1,14 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { GitObserver, parseNumstat, parsePorcelainZ, type GitCommandResult } from './index.js';
+
+const execFileAsync = promisify(execFile);
 
 describe('git observer', () => {
   it('parses machine-readable status including renames', () => {
@@ -49,8 +57,52 @@ describe('git observer', () => {
       files: [],
     });
   });
+
+  it('tracks baseline changes and committed head changes in a temporary repository', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'agentscope-git-'));
+    try {
+      await runGit(rootPath, ['init', '-q']);
+      await runGit(rootPath, ['config', 'user.name', 'AgentScope Test']);
+      await runGit(rootPath, ['config', 'user.email', 'agentscope-test@example.invalid']);
+      await fs.writeFile(path.join(rootPath, 'existing.txt'), 'before\n', 'utf8');
+      await runGit(rootPath, ['add', 'existing.txt']);
+      await runGit(rootPath, ['commit', '-q', '-m', 'initial']);
+
+      const observer = new GitObserver({ rootPath, now: () => 100 });
+      await observer.captureBaseline();
+      await fs.writeFile(path.join(rootPath, 'existing.txt'), 'after\n', 'utf8');
+      await fs.writeFile(path.join(rootPath, 'added.txt'), 'new\n', 'utf8');
+      await fs.rm(path.join(rootPath, 'existing.txt'));
+
+      await expect(observer.changesSinceBaseline()).resolves.toMatchObject({
+        added: ['added.txt'],
+        modified: [],
+        deleted: ['existing.txt'],
+        renamed: [],
+        branchChanged: false,
+        baselineAvailable: true,
+      });
+
+      await runGit(rootPath, ['add', '-A']);
+      await runGit(rootPath, ['commit', '-q', '-m', 'change']);
+      await expect(observer.changesSinceBaseline()).resolves.toMatchObject({
+        added: [],
+        modified: [],
+        deleted: [],
+        renamed: [],
+        branchChanged: true,
+        baselineAvailable: true,
+      });
+    } finally {
+      await fs.rm(rootPath, { recursive: true, force: true });
+    }
+  });
 });
 
 function result(stdout: string, exitCode = 0, stderr = ''): GitCommandResult {
   return { stdout, stderr, exitCode };
+}
+
+async function runGit(cwd: string, args: readonly string[]): Promise<void> {
+  await execFileAsync('git', args, { cwd, windowsHide: true });
 }

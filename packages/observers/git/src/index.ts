@@ -17,6 +17,7 @@ export interface GitSnapshot {
   readonly branch?: string;
   readonly head?: string;
   readonly files: readonly GitFileStatus[];
+  readonly trackedFiles: readonly string[];
   readonly diffStat: readonly GitDiffStat[];
   readonly capturedAt: number;
   readonly reason?: string;
@@ -71,16 +72,18 @@ export class GitObserver {
         rootPath: this.rootPath,
         isRepository: false,
         files: [],
+        trackedFiles: [],
         diffStat: [],
         capturedAt: this.now(),
         reason: root.stderr.trim() || 'Not a Git repository.',
       };
     }
 
-    const [branch, head, status, unstagedDiff, stagedDiff] = await Promise.all([
+    const [branch, head, status, tracked, unstagedDiff, stagedDiff] = await Promise.all([
       this.run(this.rootPath, ['branch', '--show-current']),
       this.run(this.rootPath, ['rev-parse', 'HEAD']),
       this.run(this.rootPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+      this.run(this.rootPath, ['ls-files', '-z']),
       this.run(this.rootPath, ['diff', '--numstat', '--no-renames']),
       this.run(this.rootPath, ['diff', '--cached', '--numstat', '--no-renames']),
     ]);
@@ -94,6 +97,7 @@ export class GitObserver {
       ...(branch.stdout.trim() === '' ? {} : { branch: branch.stdout.trim() }),
       ...(head.stdout.trim() === '' ? {} : { head: head.stdout.trim() }),
       files: status.exitCode === 0 ? parsePorcelainZ(status.stdout) : [],
+      trackedFiles: tracked.exitCode === 0 ? parseTrackedFiles(tracked.stdout) : [],
       diffStat,
       capturedAt: this.now(),
       ...(status.exitCode === 0 ? {} : { reason: status.stderr.trim() || 'Git status failed.' }),
@@ -121,6 +125,7 @@ export class GitObserver {
 
     const before = new Map(baseline.files.map((file) => [file.path, file]));
     const after = new Map(current.files.map((file) => [file.path, file]));
+    const trackedBefore = new Set(baseline.trackedFiles);
     const added: string[] = [];
     const modified: string[] = [];
     const deleted: string[] = [];
@@ -129,6 +134,8 @@ export class GitObserver {
       const previous = before.get(path);
       if (previous === undefined) {
         if (file.previousPath !== undefined) renamed.push({ from: file.previousPath, to: path });
+        else if (trackedBefore.has(path) && isDeletion(file)) deleted.push(path);
+        else if (trackedBefore.has(path)) modified.push(path);
         else added.push(path);
       } else if (
         previous.indexStatus !== file.indexStatus ||
@@ -176,6 +183,14 @@ export function parsePorcelainZ(output: string): readonly GitFileStatus[] {
     files.push({ path, indexStatus, worktreeStatus });
   }
   return files;
+}
+
+export function parseTrackedFiles(output: string): readonly string[] {
+  return output
+    .split('\0')
+    .filter((path) => path.length > 0)
+    .map(normalizeGitPath)
+    .sort();
 }
 
 export function parseNumstat(output: string): readonly GitDiffStat[] {
@@ -251,4 +266,8 @@ function normalizeRoot(value: string, fallback: string): string {
 
 function normalizeGitPath(path: string): string {
   return path.replaceAll('\\', '/');
+}
+
+function isDeletion(file: GitFileStatus): boolean {
+  return file.indexStatus === 'D' || file.worktreeStatus === 'D';
 }
