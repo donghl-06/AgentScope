@@ -401,7 +401,7 @@ agentscope/
 - [x] 明确 inherited 和 piped 模式下 stdin/stdout/stderr 的策略；structured 模式待事件管线接入。
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
-- [ ] 处理 Ctrl+C、Ctrl+Break、父进程退出和 process tree cleanup。
+- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；Ctrl+Break、父进程退出和 process tree cleanup 仍待补测。
 - [ ] 处理 Windows executable resolution、空格路径、Unicode 路径和长参数。
 - [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 

@@ -17,6 +17,12 @@ export interface ProviderRunOptions {
   readonly writeStdout?: (chunk: string) => void;
   readonly writeStderr?: (chunk: string) => void;
   readonly now?: () => number;
+  readonly signals?: ProviderRunSignals;
+}
+
+export interface ProviderRunSignals {
+  once(signal: NodeJS.Signals, listener: () => void): unknown;
+  removeListener(signal: NodeJS.Signals, listener: () => void): unknown;
 }
 
 export interface ProviderRunResult {
@@ -55,12 +61,18 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
 
   let eventCount = 0;
   let attached: Awaited<ReturnType<NonNullable<ClaudeCodeAdapter['start']>>> | undefined;
+  const signals = options.signals ?? process;
+  const handleSignal = () => {
+    void attached?.stop('user_requested');
+  };
   try {
     attached = await adapter.start({
       sessionId,
       workspacePath: options.workspacePath,
       args: options.args,
     });
+    signals.once('SIGINT', handleSignal);
+    signals.once('SIGTERM', handleSignal);
     for await (const event of attached.events()) {
       state = reduceSessionState(state, event);
       repository.appendEvent(event, state, event.timestamp);
@@ -73,6 +85,8 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
       eventCount,
     };
   } finally {
+    signals.removeListener('SIGINT', handleSignal);
+    signals.removeListener('SIGTERM', handleSignal);
     await attached?.detach();
     storage.client.close();
   }

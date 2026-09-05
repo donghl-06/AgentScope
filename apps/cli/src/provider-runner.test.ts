@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
 import { runProvider } from './provider-runner.js';
+import type { ProviderRunSignals } from './provider-runner.js';
 
 const workspacePath = process.cwd();
+
+class FakeSignals implements ProviderRunSignals {
+  private readonly listeners = new Map<NodeJS.Signals, () => void>();
+
+  once(signal: NodeJS.Signals, listener: () => void): void {
+    this.listeners.set(signal, listener);
+  }
+
+  removeListener(signal: NodeJS.Signals): void {
+    this.listeners.delete(signal);
+  }
+
+  emit(signal: NodeJS.Signals): void {
+    this.listeners.get(signal)?.();
+  }
+}
 
 function script(result: string, exitCode: number): string {
   return `process.stdout.write(${JSON.stringify(`${result}\n`)}); process.exit(${exitCode});`;
@@ -43,5 +60,22 @@ describe('provider runner', () => {
     });
 
     expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
+  });
+
+  it('stops the child and returns interrupted when SIGINT is received', async () => {
+    const signals = new FakeSignals();
+    const running = runProvider({
+      adapter: 'claude',
+      executable: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 10_000)'],
+      filename: ':memory:',
+      workspacePath,
+      sessionId: 'session-interrupted',
+      signals,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    signals.emit('SIGINT');
+
+    await expect(running).resolves.toMatchObject({ status: 'interrupted', exitCode: 130 });
   });
 });
