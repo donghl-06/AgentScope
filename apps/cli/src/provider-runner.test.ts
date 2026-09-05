@@ -76,6 +76,12 @@ describe('provider runner', () => {
       const storage = openStorage({ filename, migrate: false });
       const repository = new StorageRepository(storage.client);
       expect(repository.getSession('codex-session-1').provider).toBe('codex');
+      expect(repository.listObserverEvidence('codex-session-1')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: 'process', key: expect.stringContaining('process:') }),
+          expect.objectContaining({ source: 'git', kind: 'workspace' }),
+        ]),
+      );
       storage.client.close();
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -95,34 +101,37 @@ describe('provider runner', () => {
     expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
   });
 
-  it.each(['claude', 'codex'] as const)('persists a terminal failure when %s cannot spawn', async (adapter) => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-spawn-error-'));
-    const filename = path.join(directory, 'session.db');
-    const executable = path.join(directory, 'missing-provider.exe');
-    try {
-      const result = await runProvider({
-        adapter,
-        executable,
-        args: [],
-        filename,
-        workspacePath,
-        sessionId: `${adapter}-spawn-error`,
-      });
+  it.each(['claude', 'codex'] as const)(
+    'persists a terminal failure when %s cannot spawn',
+    async (adapter) => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-spawn-error-'));
+      const filename = path.join(directory, 'session.db');
+      const executable = path.join(directory, 'missing-provider.exe');
+      try {
+        const result = await runProvider({
+          adapter,
+          executable,
+          args: [],
+          filename,
+          workspacePath,
+          sessionId: `${adapter}-spawn-error`,
+        });
 
-      expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
-      const storage = openStorage({ filename, migrate: false });
-      const repository = new StorageRepository(storage.client);
-      const session = repository.getSession(`${adapter}-spawn-error`);
-      expect(session.status).toBe('failed');
-      expect(repository.listEvents(session.id).items.at(-1)?.event).toMatchObject({
-        type: 'session_finished',
-        payload: { reason: 'failed' },
-      });
-      storage.client.close();
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
-  });
+        expect(result).toMatchObject({ status: 'failed', exitCode: 1 });
+        const storage = openStorage({ filename, migrate: false });
+        const repository = new StorageRepository(storage.client);
+        const session = repository.getSession(`${adapter}-spawn-error`);
+        expect(session.status).toBe('failed');
+        expect(repository.listEvents(session.id).items.at(-1)?.event).toMatchObject({
+          type: 'session_finished',
+          payload: { reason: 'failed' },
+        });
+        storage.client.close();
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('persists explainable progress and terminal ETA after provider events', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-progress-'));

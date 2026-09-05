@@ -44,6 +44,7 @@ class AsyncQueue<T> implements AsyncIterableIterator<T> {
 }
 
 class MockAttachedSession implements AttachedSession {
+  readonly pid = undefined;
   private readonly queue = new AsyncQueue<AgentEvent>();
   private readonly listeners = new Set<(event: AgentEvent) => void | Promise<void>>();
   private stopped = false;

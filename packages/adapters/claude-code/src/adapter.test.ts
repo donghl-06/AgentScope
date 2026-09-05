@@ -34,6 +34,7 @@ describe('Claude Code adapter lifecycle', () => {
         ]),
       ],
     });
+    expect(session.pid).toBeTypeOf('number');
     const events = [];
     for await (const event of session.events()) events.push(event);
 

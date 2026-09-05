@@ -6,6 +6,7 @@ import { reduceSessionState } from '@agentscope/core';
 import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
+import { ObserverRuntime } from '@agentscope/observer-runtime';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
 import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
@@ -74,6 +75,8 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   let eventCount = 0;
   let lastEtaSnapshot: SessionState['eta'];
   let attached: Awaited<ReturnType<NonNullable<(typeof adapter)['start']>>> | undefined;
+  let observerRuntime: ObserverRuntime | undefined;
+  const activeCommandIds: string[] = [];
   const signals = options.signals ?? process;
   const handleSignal = () => {
     void attached?.stop('user_requested');
@@ -86,7 +89,55 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
     });
     signals.once('SIGINT', handleSignal);
     signals.once('SIGTERM', handleSignal);
+    observerRuntime = new ObserverRuntime({
+      sessionId,
+      workspacePath: options.workspacePath,
+      ...(attached.pid === undefined ? {} : { process: { pid: attached.pid } }),
+      file: {},
+      onEvidence: (evidence) =>
+        repository.saveObserverEvidence({
+          id: evidence.id,
+          sessionId,
+          key: evidence.key,
+          timestamp: evidence.timestamp,
+          source: evidence.source,
+          kind: evidence.kind,
+          confidence: evidence.confidence,
+          reason: evidence.reason,
+          payload: evidence.payload,
+        }),
+      onError: (error) => {
+        options.writeStderr?.(`[observer:${error.source}] ${error.message}\n`);
+      },
+    });
+    await observerRuntime.start();
     for await (const event of attached.events()) {
+      if (event.type === 'command_started') {
+        const payload = event.payload as { commandKind?: string; commandName?: string };
+        const commandId = event.id;
+        if (
+          observerRuntime.observeCommandStarted({
+            id: commandId,
+            commandName: payload.commandName ?? payload.commandKind ?? 'unknown command',
+            startedAt: event.timestamp,
+          }) !== undefined
+        ) {
+          activeCommandIds.push(commandId);
+        }
+      } else if (event.type === 'command_finished') {
+        const payload = event.payload as { exitCode: number };
+        const commandId = activeCommandIds.shift();
+        if (commandId !== undefined) {
+          observerRuntime.observeCommandFinished({
+            id: commandId,
+            exitCode: payload.exitCode,
+            endedAt: event.timestamp,
+          });
+        }
+      } else if (event.type === 'session_finished') {
+        const payload = event.payload as { exitCode?: number };
+        observerRuntime.notifyProcessExit(payload.exitCode, undefined, event.timestamp);
+      }
       state = reduceSessionState(state, event);
       const progress = computeProgress({
         state,
@@ -119,6 +170,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   } finally {
     signals.removeListener('SIGINT', handleSignal);
     signals.removeListener('SIGTERM', handleSignal);
+    observerRuntime?.stop();
     await attached?.detach();
     storage.client.close();
   }

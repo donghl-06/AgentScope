@@ -41,6 +41,8 @@ export type Unsubscribe = () => void;
 export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;
 
 export interface AttachedSession {
+  /** PID of the wrapper child when the adapter starts a local process. */
+  readonly pid: number | undefined;
   events(): AsyncIterable<AgentEvent>;
   subscribe(listener: AgentEventListener): Unsubscribe;
   stop(reason?: StopReason): Promise<void>;

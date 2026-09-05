@@ -153,6 +153,10 @@ class ClaudeAttachedSession implements AttachedSession {
   private toolFailed = false;
   private closed = false;
 
+  get pid(): number | undefined {
+    return this.child.pid;
+  }
+
   constructor(
     private readonly child: ChildProcess,
     private readonly sessionId: string,

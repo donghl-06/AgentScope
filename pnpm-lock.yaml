@@ -56,6 +56,9 @@ importers:
       '@agentscope/eta':
         specifier: workspace:*
         version: link:../../packages/eta
+      '@agentscope/observer-runtime':
+        specifier: workspace:*
+        version: link:../../packages/observers/runtime
       '@agentscope/progress':
         specifier: workspace:*
         version: link:../../packages/progress
