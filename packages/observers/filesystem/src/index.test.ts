@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  FilesystemObserver,
   isGitignoredPath,
   isIgnoredPath,
   mergeChangeKinds,
   normalizeObservedPath,
   parseGitignore,
+  type FileObservation,
+  type FileWatchFactory,
 } from './index.js';
 
 describe('filesystem observer helpers', () => {
@@ -41,5 +48,47 @@ build/
     expect(isGitignoredPath('important.log', rules)).toBe(false);
     expect(isGitignoredPath('build/output.js', rules)).toBe(true);
     expect(isGitignoredPath('src/build/output.js', rules)).toBe(true);
+  });
+
+  it('debounces change storms and stops callbacks after cleanup', () => {
+    vi.useFakeTimers();
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
+    const observations: Array<Pick<FileObservation, 'path' | 'kind'>> = [];
+    let emit: Parameters<FileWatchFactory>[1] | undefined;
+    let closed = false;
+    try {
+      const observer = new FilesystemObserver(
+        {
+          rootPath,
+          debounceMs: 100,
+          onChange: (observation: FileObservation) =>
+            observations.push({ path: observation.path, kind: observation.kind }),
+        },
+        (_root, onEvent) => {
+          emit = onEvent;
+          return {
+            close: () => {
+              closed = true;
+            },
+          };
+        },
+      );
+      observer.start();
+      emit?.('change', 'src/app.ts');
+      emit?.('change', 'src/app.ts');
+      vi.advanceTimersByTime(99);
+      expect(observations).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(observations).toEqual([{ path: 'src/app.ts', kind: 'modify' }]);
+
+      observer.stop();
+      expect(closed).toBe(true);
+      emit?.('change', 'src/other.ts');
+      vi.advanceTimersByTime(100);
+      expect(observations).toHaveLength(1);
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
   });
 });

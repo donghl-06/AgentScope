@@ -46,6 +46,7 @@ export class FilesystemObserver {
   private readonly pending = new Map<string, FileChangeKind>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private watcher: FileWatchHandle | undefined;
+  private active = false;
 
   constructor(options: FilesystemObserverOptions, watchFactory: FileWatchFactory = defaultWatch) {
     this.rootPath = resolve(options.rootPath);
@@ -62,22 +63,30 @@ export class FilesystemObserver {
   start(): void {
     if (this.watcher !== undefined) return;
     if (!existsSync(this.rootPath)) throw new Error(`Workspace does not exist: ${this.rootPath}`);
-    this.watcher = this.watchFactory(this.rootPath, (kind, filename) => {
-      const path = normalizeObservedPath(this.rootPath, filename);
-      if (
-        path === undefined ||
-        isIgnoredPath(path, this.ignored) ||
-        isGitignoredPath(path, this.gitignoreRules)
-      ) {
-        return;
-      }
-      const fullPath = resolve(this.rootPath, path);
-      const change = kind === 'rename' ? (existsSync(fullPath) ? 'create' : 'delete') : 'modify';
-      this.enqueue(path, change);
-    });
+    this.active = true;
+    try {
+      this.watcher = this.watchFactory(this.rootPath, (kind, filename) => {
+        if (!this.active) return;
+        const path = normalizeObservedPath(this.rootPath, filename);
+        if (
+          path === undefined ||
+          isIgnoredPath(path, this.ignored) ||
+          isGitignoredPath(path, this.gitignoreRules)
+        ) {
+          return;
+        }
+        const fullPath = resolve(this.rootPath, path);
+        const change = kind === 'rename' ? (existsSync(fullPath) ? 'create' : 'delete') : 'modify';
+        this.enqueue(path, change);
+      });
+    } catch (error) {
+      this.active = false;
+      throw error;
+    }
   }
 
   stop(): void {
+    this.active = false;
     this.watcher?.close();
     this.watcher = undefined;
     for (const timer of this.timers.values()) clearTimeout(timer);
