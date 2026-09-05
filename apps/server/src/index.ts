@@ -44,12 +44,14 @@ export interface ServerOptions {
   readonly repository: StorageRepository;
   readonly protocolVersion?: string;
   readonly liveHub?: LiveHub;
+  readonly recoverOnStart?: boolean;
 }
 
 export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
   const liveHub = options.liveHub ?? new LiveHub();
+  if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
   const unsubscribeRepository = options.repository.subscribe((notification) => {
     if (notification.type === 'event.appended') {
       liveHub.publish({

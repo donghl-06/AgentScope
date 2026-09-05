@@ -46,7 +46,7 @@ describe('server HTTP API', () => {
       },
       { ...state, status: 'running' },
     );
-    const app = createServer({ repository });
+    const app = createServer({ repository, recoverOnStart: false });
     openApps.push({
       close: async () => {
         await app.close();
@@ -70,7 +70,7 @@ describe('server HTTP API', () => {
 
   it('returns consistent errors for invalid queries and missing sessions', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
-    const app = createServer({ repository: new StorageRepository(client) });
+    const app = createServer({ repository: new StorageRepository(client), recoverOnStart: false });
     openApps.push({
       close: async () => {
         await app.close();
@@ -104,7 +104,7 @@ describe('server HTTP API', () => {
     const hub = new LiveHub();
     const socket = new TestSocket();
     hub.attach(socket);
-    const app = createServer({ repository, liveHub: hub });
+    const app = createServer({ repository, liveHub: hub, recoverOnStart: false });
     openApps.push({
       close: async () => {
         await app.close();
@@ -131,6 +131,35 @@ describe('server HTTP API', () => {
       projectId: 'project-1',
       seq: 1,
       cursor: '1',
+    });
+  });
+
+  it('recovers in-flight sessions during server startup', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const state = {
+      ...createInitialSessionState('session-1', 1_700_000_000_000),
+      status: 'running' as const,
+    };
+    repository.createSession({
+      id: 'session-1',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    const app = createServer({ repository });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect((await app.inject('/api/sessions/session-1')).json()).toMatchObject({
+      status: 'interrupted',
+      state: { status: 'interrupted' },
     });
   });
 });
