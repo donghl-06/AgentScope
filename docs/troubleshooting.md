@@ -91,8 +91,16 @@ normalized session status and timeline instead.
 `Ctrl+C` should result in `interrupted`, not `completed`. If the wrapper terminal
 has already exited but the database still shows `running`, do not kill every
 `node` or `claude` process. Identify the exact process/session first. The server's
-startup recovery marks stale `starting`/`running` sessions as interrupted; a
-targeted recovery is safer than editing unrelated records.
+startup recovery marks stale `starting`/`running` sessions as interrupted. You can
+also run the explicit recovery command after verifying that no matching provider
+process is still active:
+
+```powershell
+node .\apps\cli\bin\agent-scope.mjs recover
+```
+
+It prints only the recovered session ids/statuses. A targeted recovery is safer
+than editing unrelated records or killing every `node`/`claude` process.
 
 ## Unicode and spaces in paths
 

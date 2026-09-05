@@ -424,7 +424,7 @@ agentscope/
 
 - [x] 用 synthetic child process 覆盖 stdout/stderr、exit 0/非 0、spawn error、长运行中断和参数边界。
 - [ ] 测试带空格/Unicode 的 cwd 和参数。
-- [ ] 测试 cleanup 幂等、孤儿进程防护和 server unavailable。
+- [ ] 测试 cleanup 幂等、孤儿进程防护和 server unavailable；cleanup 已有回归覆盖，`agent-scope recover` 已提供 stale session 恢复，server unavailable 诊断仍待补测。
 - [ ] 真实 TTY 行为纳入 manual smoke checklist。
 
 **Phase 5 门禁：** Mock 和 synthetic process 的 I/O、退出码、状态映射均正确；wrapper 不明显破坏被包装 CLI 的使用体验。
