@@ -120,7 +120,7 @@ class ClaudeAttachedSession implements AttachedSession {
   private stopRequested = false;
   private detached = false;
   private started = false;
-  private terminal = false;
+  private terminalEvent: AgentEvent | undefined;
   private closed = false;
 
   constructor(
@@ -187,30 +187,42 @@ class ClaudeAttachedSession implements AttachedSession {
       this.started = true;
       this.publish(createEvent('session_started', this.sessionId, this.now(), {}));
     }
-    if (event.type === 'session_finished') this.terminal = true;
-    this.queue.push(event);
-    for (const listener of this.listeners) void Promise.resolve(listener(event)).catch(() => {});
+    if (event.type === 'session_finished') {
+      this.terminalEvent = event;
+      return;
+    }
+    this.enqueue(event);
   }
 
   private finish(exitCode: number | null, signal: NodeJS.Signals | null): void {
     if (this.closed) return;
     for (const result of this.decoder.flush()) this.publishResult(result);
     if (!this.started) this.publish(createEvent('session_started', this.sessionId, this.now(), {}));
-    if (!this.terminal && !this.detached) {
-      this.publish(
-        createEvent('session_finished', this.sessionId, this.now(), {
-          reason:
-            signal === null && exitCode === 0 && !this.stopRequested
-              ? 'completed'
-              : signal !== null || this.stopRequested
-                ? 'interrupted'
-                : 'failed',
-          ...(exitCode === null ? {} : { exitCode }),
-        }),
-      );
+    if (!this.detached) {
+      if (
+        this.terminalEvent !== undefined &&
+        signal === null &&
+        exitCode === 0 &&
+        !this.stopRequested
+      ) {
+        this.enqueue(this.terminalEvent);
+      } else {
+        this.enqueue(
+          createEvent('session_finished', this.sessionId, this.now(), {
+            reason: signal !== null || this.stopRequested ? 'interrupted' : 'failed',
+            ...(exitCode === null ? {} : { exitCode }),
+            ...providerOutcome(this.terminalEvent),
+          }),
+        );
+      }
     }
     this.queue.end();
     this.closed = true;
+  }
+
+  private enqueue(event: AgentEvent): void {
+    this.queue.push(event);
+    for (const listener of this.listeners) void Promise.resolve(listener(event)).catch(() => {});
   }
 }
 
@@ -257,4 +269,10 @@ function createEvent(
     payload,
     confidence: 0.9,
   };
+}
+
+function providerOutcome(event: AgentEvent | undefined): Record<string, string> {
+  if (event === undefined || typeof event.payload !== 'object' || event.payload === null) return {};
+  const outcome = (event.payload as { providerOutcome?: unknown }).providerOutcome;
+  return typeof outcome === 'string' ? { providerOutcome: outcome } : {};
 }
