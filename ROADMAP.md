@@ -752,7 +752,7 @@ agentscope/
 - [ ] `docs/adapter-guide.md`：用 ExampleAdapter 验证扩展性。
 - [ ] 配置参考：端口、DB、log level、ignore、raw log、heuristic 参数。
 - [ ] troubleshooting：CLI detection、端口、DB lock、WS、TTY、Windows/WSL。
-- [ ] manual smoke checklist 和 fixture 更新指南。
+- [x] 已建立不含密钥的 `docs/manual-smoke.md` 手工 smoke 清单；真实 CLI smoke 仍需在用户当前 PowerShell/API 环境执行。
 - [ ] 版本号、changelog、migration 和回滚/备份说明。
 
 ### Step 12.8 — V0 验收签字
