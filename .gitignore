@@ -13,6 +13,7 @@ coverage/
 .env
 .env.*
 !.env.example
+/.env.claude-test.ps1
 .agentscope/
 .DS_Store
 Thumbs.db
