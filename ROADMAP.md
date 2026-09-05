@@ -543,8 +543,8 @@ agentscope/
 
 - [x] raw fixture → normalized events golden tests。
 - [x] 覆盖 unknown event、partial record、failure、interrupt 的 parser 路径；fallback 仍待 observer 融合。
-- [ ] 运行真实 manual smoke 并记录能力边界。
-- [ ] 更新 capability matrix、adapter guide 和 troubleshooting。
+- [x] 运行真实 manual smoke 并记录能力边界；2026-09-06 最小 Codex structured smoke 返回 `OK`，AgentScope 会话落库为 `completed`。
+- [x] 更新 capability matrix、adapter guide 和 troubleshooting；真实 smoke 的脱敏能力边界已补入 `docs/findings/codex-cli.md`。
 
 **Phase 8 门禁：** 至少一个真实 Codex CLI session 被监控；Codex-specific 代码完全位于 adapter 包；与 Claude session 可同时运行。
 
