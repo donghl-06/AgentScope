@@ -1,4 +1,12 @@
-import { existsSync, lstatSync, readFileSync, watch, type FSWatcher, type Stats } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  watch,
+  type FSWatcher,
+  type Stats,
+} from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export type FileChangeKind = 'create' | 'modify' | 'delete';
@@ -85,6 +93,7 @@ export class FilesystemObserver {
           return;
         }
         const fullPath = resolve(this.rootPath, path);
+        if (!isWithinWorkspace(this.rootPath, fullPath)) return;
         const change = kind === 'rename' ? (existsSync(fullPath) ? 'create' : 'delete') : 'modify';
         this.enqueue(path, change, readFileStat(fullPath));
       });
@@ -231,6 +240,24 @@ function readFileStat(filename: string): FileObservationStat | undefined {
     isDirectory: stat.isDirectory(),
     isSymbolicLink: stat.isSymbolicLink(),
   };
+}
+
+function isWithinWorkspace(rootPath: string, targetPath: string): boolean {
+  try {
+    const root = realpathSync(rootPath);
+    const target = realpathSync(targetPath);
+    const relativePath = relative(root, target);
+    return (
+      relativePath.length === 0 ||
+      (relativePath !== '..' &&
+        !relativePath.startsWith(`..${separator()}`) &&
+        !isAbsolute(relativePath))
+    );
+  } catch {
+    // A path may have been deleted between the watcher event and this check.
+    // Lexical normalization has already enforced the workspace boundary.
+    return true;
+  }
 }
 
 function readGitignoreRules(rootPath: string): readonly GitignoreRule[] {

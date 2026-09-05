@@ -128,6 +128,42 @@ build/
     }
   });
 
+  it('drops events whose real path escapes through a workspace junction', () => {
+    vi.useFakeTimers();
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
+    const outsidePath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-outside-'));
+    const observations: FileObservation[] = [];
+    let emit: Parameters<FileWatchFactory>[1] | undefined;
+    try {
+      fs.writeFileSync(path.join(outsidePath, 'secret.txt'), 'outside\n', 'utf8');
+      try {
+        fs.symlinkSync(outsidePath, path.join(rootPath, 'link'), 'junction');
+      } catch {
+        return;
+      }
+      const observer = new FilesystemObserver(
+        {
+          rootPath,
+          debounceMs: 100,
+          onChange: (observation) => observations.push(observation),
+        },
+        (_root, onEvent) => {
+          emit = onEvent;
+          return { close: () => {} };
+        },
+      );
+      observer.start();
+      emit?.('change', 'link/secret.txt');
+      vi.advanceTimersByTime(100);
+      expect(observations).toEqual([]);
+      observer.stop();
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+      fs.rmSync(outsidePath, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
+  });
+
   it('coalesces a high-volume event storm by path', () => {
     vi.useFakeTimers();
     const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
