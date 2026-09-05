@@ -57,4 +57,19 @@ describe('LiveHub', () => {
     expect(second.closed).toBe(true);
     expect(hub.clientCount).toBe(0);
   });
+
+  it('removes clients that do not answer heartbeat probes', () => {
+    const hub = new LiveHub();
+    const socket = new FakeSocket();
+    hub.attach(socket);
+
+    hub.heartbeat();
+    expect(JSON.parse(socket.messages.at(-1)!)).toEqual({ type: 'ping' });
+    hub.handleMessage(socket, JSON.stringify({ type: 'pong' }));
+    hub.heartbeat();
+    expect(hub.clientCount).toBe(1);
+    hub.heartbeat();
+    expect(hub.clientCount).toBe(0);
+    expect(socket.closed).toBe(true);
+  });
 });

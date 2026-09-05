@@ -363,7 +363,7 @@ agentscope/
 - [x] 广播 `session.created/session.updated/event.appended`；`project.updated` 待 project write path 接入。
 - [x] `event.appended` 携带 sessionId、seq/cursor 和必要的轻量 payload；session 级消息携带 sessionId 与状态 payload。
 - [x] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
-- [ ] 实现 heartbeat、断开 cleanup、慢客户端处理和消息大小限制（断开和发送失败 cleanup 已完成，heartbeat/size limit 待完成）。
+- [x] 实现 heartbeat、断开 cleanup 和消息大小限制；慢客户端 backpressure 处理仍待完成。
 - [x] 文档化并用集成测试验证“WS 只负责实时，HTTP cursor 负责补齐”的恢复流程。
 
 ### Step 4.6 — Server 集成测试

@@ -45,12 +45,19 @@ export interface ServerOptions {
   readonly protocolVersion?: string;
   readonly liveHub?: LiveHub;
   readonly recoverOnStart?: boolean;
+  readonly heartbeatIntervalMs?: number;
+  readonly maxWebSocketPayloadBytes?: number;
 }
 
 export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
   const liveHub = options.liveHub ?? new LiveHub();
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 30_000;
+  const maxWebSocketPayloadBytes = options.maxWebSocketPayloadBytes ?? 64 * 1024;
+  if (!Number.isFinite(maxWebSocketPayloadBytes) || maxWebSocketPayloadBytes <= 0) {
+    throw new RangeError('maxWebSocketPayloadBytes must be positive.');
+  }
   if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
   const unsubscribeRepository = options.repository.subscribe((notification) => {
     if (notification.type === 'event.appended') {
@@ -77,6 +84,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   });
   app.addHook('onClose', () => {
     unsubscribeRepository();
+    stopHeartbeat();
     liveHub.close();
   });
   app.setErrorHandler((error, _request, reply) => {
@@ -89,15 +97,18 @@ export function createServer(options: ServerOptions): FastifyInstance {
   });
 
   app.register(async (instance) => {
-    await instance.register(websocket);
+    await instance.register(websocket, { options: { maxPayload: maxWebSocketPayloadBytes } });
     instance.get('/ws', { websocket: true }, (socket) => {
       const detach = liveHub.attach(socket, protocolVersion);
+      socket.on('pong', () => liveHub.markAlive(socket));
       socket.on('message', (raw: { toString(): string }) => {
         liveHub.handleMessage(socket, raw.toString());
       });
       socket.on('close', detach);
     });
   });
+
+  const stopHeartbeat = liveHub.startHeartbeat(heartbeatIntervalMs);
 
   app.get('/healthz', async () => ({ status: 'ok', protocolVersion }));
 

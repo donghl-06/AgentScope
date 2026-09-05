@@ -1,5 +1,6 @@
 export interface LiveSocket {
   send(payload: string): void;
+  ping?(): void;
   close?(): void;
 }
 
@@ -14,6 +15,7 @@ export interface LiveNotification {
 
 interface ClientState {
   readonly socket: LiveSocket;
+  readonly alive: boolean;
   sessionIds?: ReadonlySet<string>;
   projectIds?: ReadonlySet<string>;
 }
@@ -22,7 +24,7 @@ export class LiveHub {
   private readonly clients = new Map<LiveSocket, ClientState>();
 
   attach(socket: LiveSocket, protocolVersion = '0.1'): () => void {
-    this.clients.set(socket, { socket });
+    this.clients.set(socket, { socket, alive: true });
     this.send(socket, { type: 'hello', protocolVersion });
     return () => this.detach(socket);
   }
@@ -42,7 +44,40 @@ export class LiveHub {
     }
   }
 
+  markAlive(socket: LiveSocket): void {
+    const state = this.clients.get(socket);
+    if (state !== undefined && !state.alive) this.clients.set(socket, { ...state, alive: true });
+  }
+
+  heartbeat(): void {
+    for (const state of this.clients.values()) {
+      if (!state.alive) {
+        this.detach(state.socket);
+        state.socket.close?.();
+        continue;
+      }
+      this.clients.set(state.socket, { ...state, alive: false });
+      try {
+        if (state.socket.ping === undefined) this.send(state.socket, { type: 'ping' });
+        else state.socket.ping();
+      } catch {
+        this.detach(state.socket);
+        state.socket.close?.();
+      }
+    }
+  }
+
+  startHeartbeat(intervalMs = 30_000): () => void {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      throw new RangeError('Heartbeat interval must be positive.');
+    }
+    const timer = setInterval(() => this.heartbeat(), intervalMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
   handleMessage(socket: LiveSocket, raw: string): void {
+    this.markAlive(socket);
     let message: unknown;
     try {
       message = JSON.parse(raw);
@@ -58,6 +93,7 @@ export class LiveHub {
       this.send(socket, { type: 'pong' });
       return;
     }
+    if (message.type === 'pong') return;
     if (message.type !== 'subscribe') {
       this.send(socket, { type: 'error', code: 'unsupported_message' });
       return;

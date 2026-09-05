@@ -12,7 +12,7 @@ import {
 } from '../../packages/protocol/src/index.js';
 import { openStorage, StorageRepository } from '../../packages/storage/src/index.js';
 
-import { createServer } from '../../apps/server/src/index.js';
+import { createServer, type ServerOptions } from '../../apps/server/src/index.js';
 
 const source = { provider: 'mock', client: 'agentscope', environment: 'test', adapter: 'mock' };
 const openResources: Array<() => Promise<void>> = [];
@@ -41,8 +41,11 @@ function terminalState(): SessionState {
   };
 }
 
-async function startServer(repository: StorageRepository) {
-  const app = createServer({ repository });
+async function startServer(
+  repository: StorageRepository,
+  options: Omit<ServerOptions, 'repository'> = {},
+) {
+  const app = createServer({ repository, ...options });
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
   let closed = false;
   const close = async () => {
@@ -247,5 +250,23 @@ describe('server recovery integration', () => {
     const sequences = firstRepository.listEvents('session-1').items;
     expect(sequences.map((item) => item.seq)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
     expect(new Set(sequences.map((item) => item.event.id)).size).toBe(16);
+  });
+
+  it('closes a WebSocket that exceeds the configured frame size', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    openResources.push(async () => client.close());
+    const server = await startServer(new StorageRepository(client), {
+      maxWebSocketPayloadBytes: 256,
+    });
+    const connection = await openSocket(`${server.baseUrl.replace('http', 'ws')}/ws`);
+    const socket = connection.socket;
+    expect(connection.firstMessage).toMatchObject({ type: 'hello' });
+
+    const closed = new Promise<number>((resolve) => {
+      socket.once('close', (code: number) => resolve(code));
+    });
+    socket.send(JSON.stringify({ type: 'subscribe', sessionIds: ['x'.repeat(512)] }));
+
+    await expect(closed).resolves.toBe(1009);
   });
 });
