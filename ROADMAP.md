@@ -335,11 +335,11 @@ agentscope/
 
 ### Step 4.2 — 实现 repositories 与事务
 
-- [ ] 实现 session create/update/get/list。
-- [ ] 实现 append event、cursor pagination 和 timeline 查询。
-- [ ] 实现 milestones、ETA snapshot 写入与查询。
-- [ ] 将 event append 与 session projection 更新放入同一事务。
-- [ ] 定义重复事件、数据库 busy、损坏 payload 的错误处理。
+- [x] 实现 session create/update/get/list。
+- [x] 实现 append event、cursor pagination 和 timeline 查询。
+- [x] 实现 milestones、ETA snapshot 写入与查询。
+- [x] 将 event append 与 session projection 更新放入同一事务。
+- [x] 定义重复事件、数据库 busy、损坏 payload 的错误处理。
 
 ### Step 4.3 — 实现服务启动恢复
 

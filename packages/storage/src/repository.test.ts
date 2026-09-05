@@ -1,0 +1,170 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  createInitialSessionState,
+  type AgentEvent,
+  type SessionState,
+} from '@agentscope/protocol';
+
+import { openStorage } from './database.js';
+import {
+  StorageConflictError,
+  StorageCorruptPayloadError,
+  StorageRepository,
+} from './repository.js';
+
+const source = { provider: 'mock', client: 'agentscope', environment: 'test', adapter: 'mock' };
+
+function event(
+  id: string,
+  sessionId = 'session-1',
+  type: AgentEvent['type'] = 'planning',
+): AgentEvent {
+  return {
+    id,
+    sessionId,
+    timestamp: 1_700_000_000_100,
+    source,
+    type,
+    payload: type === 'planning' ? { summary: id } : {},
+    confidence: 1,
+  };
+}
+
+function state(sessionId: string, status: SessionState['status'] = 'starting'): SessionState {
+  return { ...createInitialSessionState(sessionId, 1_700_000_000_000), status };
+}
+
+function withRepository(
+  test: (repository: StorageRepository, client: ReturnType<typeof openStorage>['client']) => void,
+): void {
+  const filename = path.join(
+    os.tmpdir(),
+    `agentscope-repository-${Date.now()}-${Math.random()}.db`,
+  );
+  const { client } = openStorage({ filename, migrate: true });
+  try {
+    test(new StorageRepository(client), client);
+  } finally {
+    client.close();
+    for (const suffix of ['', '-wal', '-shm']) {
+      try {
+        fs.rmSync(filename + suffix);
+      } catch {
+        // Best-effort cleanup for SQLite sidecar files.
+      }
+    }
+  }
+}
+
+describe('StorageRepository', () => {
+  it('persists sessions, events, milestones, ETA snapshots, and cursor pages', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-1',
+        projectId: 'project-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: { structuredEvents: true },
+        state: state('session-1'),
+        now: 1_700_000_000_001,
+      });
+      repository.createSession({
+        id: 'session-2',
+        projectId: 'project-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_010,
+        capabilities: { structuredEvents: false },
+        state: state('session-2'),
+        now: 1_700_000_000_010,
+      });
+
+      const running = state('session-1', 'running');
+      repository.appendEvent(event('event-1'), running, 1_700_000_000_100);
+      repository.appendEvent(event('event-2'), running, 1_700_000_000_200);
+      repository.upsertMilestone('session-1', {
+        id: 'm1',
+        title: 'Implementation',
+        status: 'active',
+        startedAt: 1_700_000_000_150,
+      });
+      repository.saveEtaSnapshot('session-1', {
+        minSeconds: 5,
+        maxSeconds: 10,
+        confidence: 0.7,
+        reasons: [{ code: 'signal', message: 'Observed work' }],
+      });
+
+      const events = repository.listEvents('session-1', 0, 1);
+      expect(events.items).toHaveLength(1);
+      expect(events.items[0]).toMatchObject({ seq: 1, event: { id: 'event-1' } });
+      expect(events.nextCursor).toBe('1');
+      expect(repository.listEvents('session-1', Number(events.nextCursor), 10).items).toHaveLength(
+        1,
+      );
+      expect(repository.listMilestones('session-1')).toMatchObject([
+        { id: 'm1', status: 'active' },
+      ]);
+      expect(repository.listEtaSnapshots('session-1')[0]).toMatchObject({
+        minSeconds: 5,
+        maxSeconds: 10,
+      });
+
+      const sessions = repository.listSessions({ projectId: 'project-1', limit: 1 });
+      expect(sessions.items).toHaveLength(1);
+      expect(sessions.nextCursor).toBeDefined();
+      expect(
+        repository.listSessions({ projectId: 'project-1', cursor: sessions.nextCursor! }).items,
+      ).toHaveLength(1);
+      expect(repository.getSession('session-1').status).toBe('running');
+    });
+  });
+
+  it('rejects duplicate events and detects corrupt persisted JSON', () => {
+    withRepository((repository, client) => {
+      repository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+      repository.appendEvent(event('event-1'), state('session-1', 'running'));
+      expect(() => repository.appendEvent(event('event-1'), state('session-1', 'running'))).toThrow(
+        StorageConflictError,
+      );
+
+      client.prepare('UPDATE events SET payload_json = ? WHERE id = ?').run('{', 'event-1');
+      expect(() => repository.listEvents('session-1')).toThrow(StorageCorruptPayloadError);
+    });
+  });
+
+  it('rolls back the event when the session projection update fails', () => {
+    withRepository((repository, client) => {
+      repository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+      client.exec(`
+        CREATE TRIGGER fail_projection BEFORE UPDATE ON sessions
+        BEGIN SELECT RAISE(ABORT, 'projection failure'); END;
+      `);
+
+      expect(() =>
+        repository.appendEvent(event('event-1'), state('session-1', 'running')),
+      ).toThrow();
+      expect(repository.listEvents('session-1').items).toHaveLength(0);
+    });
+  });
+});
