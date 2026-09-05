@@ -17,5 +17,8 @@ the ignored `.env.claude-test.ps1` file because it is the local credential bound
 - The local Claude configuration remains ignored and is not part of Git history.
 
 This is a targeted evidence scan, not a substitute for a full security review.
-Path traversal, symlink boundaries, shell-injection fuzzing, raw-log opt-in
-retention, and dependency vulnerability review remain explicit follow-up items.
+The observer regression suite now covers lexical traversal rejection and a
+workspace junction targeting an outside path; the process-runner suite covers
+shell metacharacter arguments with `shell: false`. Raw-log opt-in retention is
+not implemented and remains disabled by policy. Dependency vulnerability
+review remains an explicit follow-up item.
