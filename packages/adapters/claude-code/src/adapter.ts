@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import type {
   AgentAdapter,
@@ -57,12 +59,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   async detect(context: AdapterDetectContext): Promise<DetectionResult> {
-    const executable = context.executablePath ?? this.executable;
+    const executable = resolveExecutable(context.executablePath ?? this.executable);
     return detectExecutable(executable, context.workspacePath);
   }
 
   async start(request: StartAgentRequest): Promise<AttachedSession> {
-    const child = spawn(this.executable, [...request.args], {
+    const child = spawn(resolveExecutable(this.executable), [...request.args], {
       cwd: request.workspacePath,
       env: { ...process.env, ...request.environment },
       shell: false,
@@ -76,6 +78,33 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       this.onStderr,
     );
   }
+}
+
+function resolveExecutable(executable: string): string {
+  if (process.platform !== 'win32' || path.extname(executable) !== '') return executable;
+  if (executable.includes('/') || executable.includes('\\')) return executable;
+  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
+  for (const directory of searchPath) {
+    for (const extension of ['.exe', '.com', '.cmd', '.bat']) {
+      const candidate = path.join(directory, `${executable}${extension}`);
+      if (!fs.existsSync(candidate)) continue;
+      if (extension === '.cmd' || extension === '.bat') {
+        const target = resolveShimTarget(candidate);
+        if (target !== undefined) return target;
+      } else return candidate;
+    }
+  }
+  return executable;
+}
+
+function resolveShimTarget(filename: string): string | undefined {
+  const text = fs.readFileSync(filename, 'utf8');
+  const target = text.match(/"([^"\r\n]+\.exe)"/iu)?.[1];
+  if (target === undefined) return undefined;
+  const directory = path.dirname(filename);
+  const expanded = target.replace(/%~?dp0%/giu, directory);
+  const resolved = path.resolve(expanded);
+  return fs.existsSync(resolved) ? resolved : undefined;
 }
 
 async function detectExecutable(executable: string, cwd: string): Promise<DetectionResult> {
@@ -209,7 +238,12 @@ class ClaudeAttachedSession implements AttachedSession {
       } else {
         this.enqueue(
           createEvent('session_finished', this.sessionId, this.now(), {
-            reason: signal !== null || this.stopRequested ? 'interrupted' : 'failed',
+            reason:
+              signal !== null || this.stopRequested
+                ? 'interrupted'
+                : exitCode === 0
+                  ? 'completed'
+                  : 'failed',
             ...(exitCode === null ? {} : { exitCode }),
             ...providerOutcome(this.terminalEvent),
           }),

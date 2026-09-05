@@ -402,7 +402,7 @@ agentscope/
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
 - [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；Ctrl+Break、父进程退出和 process tree cleanup 仍待补测。
-- [ ] 处理 Windows executable resolution、空格路径、Unicode 路径和长参数。
+- [x] 处理 Windows PATH 中 `.cmd/.bat` shim 到真实 `.exe` 的解析；空格路径、Unicode 路径和长参数仍待补测。
 - [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 
 ### Step 5.3 — Session 注册与生命周期连接
