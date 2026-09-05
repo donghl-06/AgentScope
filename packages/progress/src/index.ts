@@ -164,7 +164,13 @@ function activityValue(state: SessionState, reasons: ProgressReason[]): number {
   reasons.push(
     kind === undefined
       ? { code: 'no_activity', message: 'No agent activity has been observed yet.' }
-      : { code: 'activity_signal', message: `Current activity is ${kind}.` },
+      : {
+          code: state.milestones.length === 0 ? 'implicit_phase' : 'activity_signal',
+          message:
+            state.milestones.length === 0
+              ? `No milestones are available; using current activity ${kind} as an implicit phase.`
+              : `Current activity is ${kind}.`,
+        },
   );
   return value;
 }
@@ -206,6 +212,13 @@ function computeConfidence(
   if (capabilities.commandEvents || capabilities.fileEvents || capabilities.toolCalls)
     confidence += 0.15;
   if (input.state.milestones.length > 0 || capabilities.milestones) confidence += 0.15;
+  if (input.state.milestones.length === 0 && !capabilities.milestones) {
+    confidence -= 0.1;
+    reasons.push({
+      code: 'milestone_missing',
+      message: 'Confidence is reduced because no explicit milestones are available.',
+    });
+  }
   confidence += (knownVerification / 3) * 0.2;
   if (input.lastSignalAt !== undefined && input.now !== undefined) {
     const age = Math.max(0, input.now - input.lastSignalAt);

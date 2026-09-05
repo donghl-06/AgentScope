@@ -16,6 +16,8 @@ describe('progress engine', () => {
     expect(result.value).toBeLessThan(1);
     expect(result.confidence).toBeLessThan(0.5);
     expect(result.reasons.map((reason) => reason.code)).toContain('low_signal');
+    expect(result.reasons.map((reason) => reason.code)).toContain('implicit_phase');
+    expect(result.reasons.map((reason) => reason.code)).toContain('milestone_missing');
   });
 
   it('reports verified completion as 100%', () => {

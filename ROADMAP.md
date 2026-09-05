@@ -609,7 +609,7 @@ agentscope/
 - [x] 将 planning 0.10、implementation 0.50、unit verification 0.15、integration/build 0.15、final review 0.10 放入集中配置。
 - [x] 定义项目无某类验证时的显式验证门配置；未声明时保持默认验证集合，显式空集合也不能无条件送满分。
 - [x] 定义 milestone 显式权重的校验、归一化和异常 fallback；非法、非有限或未知 ID 的权重整组回退为等权并输出 reason。
-- [ ] 定义没有 milestone 时的隐式阶段 heuristic 和 confidence penalty。
+- [x] 定义没有 milestone 时的隐式阶段 heuristic（按 current activity）和 confidence penalty，并输出 `implicit_phase`/`milestone_missing` reason。
 
 ### Step 10.2 — 聚合证据
 
