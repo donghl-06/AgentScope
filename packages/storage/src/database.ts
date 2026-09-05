@@ -17,25 +17,31 @@ export interface OpenStorageResult {
   readonly db: StorageDatabase;
 }
 
-const INITIAL_MIGRATION = new URL('./migrations/0000_initial.sql', import.meta.url);
+const MIGRATIONS = [
+  { id: '0000_initial', url: new URL('./migrations/0000_initial.sql', import.meta.url) },
+  {
+    id: '0001_session_status_updated_index',
+    url: new URL('./migrations/0001_session_status_updated_index.sql', import.meta.url),
+  },
+] as const;
 
 export function migrateStorage(client: Database.Database): void {
   client.exec(
     'CREATE TABLE IF NOT EXISTS _agentscope_migrations (id TEXT PRIMARY KEY NOT NULL, applied_at INTEGER NOT NULL)',
   );
-  const migrationId = '0000_initial';
-  const applied = client
-    .prepare('SELECT id FROM _agentscope_migrations WHERE id = ?')
-    .get(migrationId) as { id: string } | undefined;
-  if (applied !== undefined) return;
-
-  const migration = client.transaction(() => {
-    client.exec(readMigration(INITIAL_MIGRATION));
-    client
-      .prepare('INSERT INTO _agentscope_migrations (id, applied_at) VALUES (?, ?)')
-      .run(migrationId, Date.now());
-  });
-  migration();
+  for (const migration of MIGRATIONS) {
+    const applied = client
+      .prepare('SELECT id FROM _agentscope_migrations WHERE id = ?')
+      .get(migration.id) as { id: string } | undefined;
+    if (applied !== undefined) continue;
+    const applyMigration = client.transaction(() => {
+      client.exec(readMigration(migration.url));
+      client
+        .prepare('INSERT INTO _agentscope_migrations (id, applied_at) VALUES (?, ?)')
+        .run(migration.id, Date.now());
+    });
+    applyMigration();
+  }
 }
 
 function readMigration(url: URL): string {

@@ -24,8 +24,13 @@ describe('storage database', () => {
         tables.map((table) => table.name).filter((name) => name !== 'sqlite_sequence'),
       ).toEqual(['_agentscope_migrations', 'eta_snapshots', 'events', 'milestones', 'sessions']);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 1,
+        count: 2,
       });
+      expect(
+        client
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+          .get('sessions_status_updated_idx'),
+      ).toBeDefined();
     } finally {
       client.close();
       for (const suffix of ['', '-wal', '-shm']) {
@@ -35,6 +40,33 @@ describe('storage database', () => {
           // Best-effort cleanup for SQLite sidecar files.
         }
       }
+    }
+  });
+
+  it('upgrades a database that already has the 0000 migration', () => {
+    const { client } = openStorage({ filename: ':memory:' });
+    try {
+      client.exec(
+        'CREATE TABLE _agentscope_migrations (id TEXT PRIMARY KEY NOT NULL, applied_at INTEGER NOT NULL)',
+      );
+      client.exec(
+        fs.readFileSync(new URL('./migrations/0000_initial.sql', import.meta.url), 'utf8'),
+      );
+      client
+        .prepare('INSERT INTO _agentscope_migrations (id, applied_at) VALUES (?, ?)')
+        .run('0000_initial', 1);
+      migrateStorage(client);
+
+      expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
+        count: 2,
+      });
+      expect(
+        client
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+          .get('sessions_status_updated_idx'),
+      ).toBeDefined();
+    } finally {
+      client.close();
     }
   });
 });

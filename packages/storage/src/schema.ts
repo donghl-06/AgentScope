@@ -16,7 +16,10 @@ export const sessions = sqliteTable(
     createdAt: integer('created_at', { mode: 'number' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
   },
-  (table) => [index('sessions_project_status_idx').on(table.projectId, table.status)],
+  (table) => [
+    index('sessions_project_status_idx').on(table.projectId, table.status),
+    index('sessions_status_updated_idx').on(table.status, table.updatedAt),
+  ],
 );
 
 export const events = sqliteTable(

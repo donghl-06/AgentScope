@@ -13,20 +13,24 @@ if (filename !== ':memory:') client.pragma('journal_mode = WAL');
 client.exec(
   'CREATE TABLE IF NOT EXISTS _agentscope_migrations (id TEXT PRIMARY KEY NOT NULL, applied_at INTEGER NOT NULL)',
 );
-const migrationId = '0000_initial';
-const applied = client
-  .prepare('SELECT id FROM _agentscope_migrations WHERE id = ?')
-  .get(migrationId);
-if (applied === undefined) {
-  const sql = fs.readFileSync(
-    new URL('../src/migrations/0000_initial.sql', import.meta.url),
-    'utf8',
-  );
+const migrations = [
+  { id: '0000_initial', url: new URL('../src/migrations/0000_initial.sql', import.meta.url) },
+  {
+    id: '0001_session_status_updated_index',
+    url: new URL('../src/migrations/0001_session_status_updated_index.sql', import.meta.url),
+  },
+];
+for (const migration of migrations) {
+  const applied = client
+    .prepare('SELECT id FROM _agentscope_migrations WHERE id = ?')
+    .get(migration.id);
+  if (applied !== undefined) continue;
+  const sql = fs.readFileSync(migration.url, 'utf8');
   client.transaction(() => {
     client.exec(sql);
     client
       .prepare('INSERT INTO _agentscope_migrations (id, applied_at) VALUES (?, ?)')
-      .run(migrationId, Date.now());
+      .run(migration.id, Date.now());
   })();
 }
 client.close();
