@@ -439,7 +439,7 @@ agentscope/
 
 - [ ] 初始化 React + Vite + TypeScript + Tailwind。
 - [x] 建立 typed HTTP/WS client，复用 protocol schema 或生成的 DTO。
-- [ ] 实现 loading、empty、error、offline/reconnecting 状态。
+- [x] 实现 loading、empty、error、offline/reconnecting 状态。
 - [ ] 统一时间、持续时长、confidence 和 ETA range 格式化。
 
 ### Step 6.2 — Project overview
@@ -460,11 +460,11 @@ agentscope/
 
 ### Step 6.4 — 实时更新与断线恢复
 
-- [ ] 首次进入先 HTTP snapshot，再连接 WS。
-- [ ] 保存各 session 最后 seq；收到 WS 消息时去重并检测 gap。
-- [ ] gap 或重连后用 `events?after=` 补齐，再继续实时订阅。
-- [ ] 更新 reducer/cache 时防止重复事件导致 UI 抖动。
-- [ ] 显示连接状态，但不把短暂重连误报为 session 阻塞。
+- [x] 首次进入先 HTTP snapshot，再连接 WS。
+- [x] 保存各 session 最后 seq；收到 WS 消息时去重并检测 gap。
+- [x] gap 或重连后用 `events?after=` 补齐，再继续实时订阅。
+- [x] 更新 reducer/cache 时防止重复事件导致 UI 抖动。
+- [x] 显示连接状态，但不把短暂重连误报为 session 阻塞。
 
 ### Step 6.5 — Dashboard 测试
 

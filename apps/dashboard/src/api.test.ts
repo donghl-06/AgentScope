@@ -36,4 +36,20 @@ describe('DashboardApi', () => {
     expect(error).toBeInstanceOf(DashboardApiError);
     expect(error).toMatchObject({ message: 'Missing session', status: 404 });
   });
+
+  it('supports cursor-based event catch-up after a reconnect', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ seq: 3, event: {} }], nextCursor: '3' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.listEvents('session/1', 2, 20);
+
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/sessions/session%2F1/events?after=2&limit=20',
+    );
+  });
 });

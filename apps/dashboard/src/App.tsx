@@ -3,6 +3,7 @@ import type { StoredEvent, StoredSession } from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
+import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline.js';
 
 const api = new DashboardApi();
 
@@ -18,6 +19,7 @@ export function App() {
     'connecting',
   );
   const selectedIdRef = useRef<string | undefined>(undefined);
+  const lastSeqBySessionRef = useRef(new Map<string, number>());
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -32,12 +34,24 @@ export function App() {
     }
   }, []);
 
-  const refreshDetail = useCallback(async (id: string) => {
+  const refreshDetail = useCallback(async (id: string, after?: number) => {
     setDetailLoading(true);
     try {
-      const [session, page] = await Promise.all([api.getSession(id), api.listEvents(id)]);
+      const [session, page] = await Promise.all([
+        api.getSession(id),
+        api.listEvents(id, after ?? 0),
+      ]);
       setSelected(session);
-      setEvents(page.items);
+      if (after === undefined) {
+        setEvents(page.items);
+        lastSeqBySessionRef.current.set(id, lastTimelineSeq(page.items));
+      } else {
+        setEvents((current) => {
+          const merged = mergeTimelineEvents(current, page.items);
+          lastSeqBySessionRef.current.set(id, lastTimelineSeq(merged));
+          return merged;
+        });
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load session details.');
     } finally {
@@ -50,7 +64,6 @@ export function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    void refreshSessions();
     let socket: WebSocket | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let reconnectAttempt = 0;
@@ -77,13 +90,29 @@ export function App() {
           if (message.type === 'event.appended') {
             void refreshSessions();
             if (message.sessionId !== undefined && message.sessionId === selectedIdRef.current) {
-              void refreshDetail(message.sessionId);
+              const lastSeq = lastSeqBySessionRef.current.get(message.sessionId) ?? 0;
+              if (message.seq === undefined || message.seq > lastSeq) {
+                if (
+                  message.seq === undefined ||
+                  hasTimelineGap(lastSeq, message.seq) ||
+                  message.seq === lastSeq + 1
+                ) {
+                  void refreshDetail(message.sessionId, lastSeq);
+                }
+              }
             }
           }
         });
         socket.addEventListener('open', () => {
           reconnectAttempt = 0;
           setConnectionState('connected');
+          const selectedSessionId = selectedIdRef.current;
+          if (selectedSessionId !== undefined) {
+            void refreshDetail(
+              selectedSessionId,
+              lastSeqBySessionRef.current.get(selectedSessionId) ?? 0,
+            );
+          }
         });
         socket.addEventListener('close', () => {
           setConnectionState('offline');
@@ -96,7 +125,9 @@ export function App() {
       }
     };
 
-    connect();
+    void refreshSessions().finally(() => {
+      if (!stopped) connect();
+    });
     return () => {
       stopped = true;
       if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
