@@ -344,7 +344,7 @@ agentscope/
 ### Step 4.3 — 实现服务启动恢复
 
 - [ ] 启动时加载非终态 session，并按事件重放或 projection 校验。
-- [ ] 对服务崩溃遗留的 running session 定义 `interrupted`/stale 恢复策略。
+- [x] 对服务崩溃遗留的 starting/running session 标记为 `interrupted`；blocked session 保留等待用户动作。
 - [ ] 比较持久化 projection 与 replay 结果，发现不一致时记录诊断信息。
 - [ ] 优雅关机时停止接受新事件、flush 写入、关闭 DB。
 

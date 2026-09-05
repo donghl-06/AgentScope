@@ -242,6 +242,8 @@ export class StorageRepository {
     if (state.sessionId !== id) {
       throw new StorageError('Session state id does not match session id.', 'invalid_session');
     }
+    const existing = this.getSession(id);
+    const workspace = options.workspace === undefined ? existing.workspace : options.workspace;
     const result = this.client
       .prepare(
         `UPDATE sessions SET status = ?, ended_at = ?, state_json = ?, workspace_json = ?, updated_at = ?
@@ -251,7 +253,7 @@ export class StorageRepository {
         state.status,
         state.endedAt ?? null,
         stringifyJson(state),
-        options.workspace === undefined ? null : stringifyJson(options.workspace),
+        workspace === undefined ? null : stringifyJson(workspace),
         options.now ?? Date.now(),
         id,
       );
@@ -259,6 +261,22 @@ export class StorageRepository {
     const session = this.getSession(id);
     this.notify({ type: 'session.updated', session });
     return session;
+  }
+
+  recoverInFlightSessions(now = Date.now()): readonly StoredSession[] {
+    const rows = this.client
+      .prepare(
+        "SELECT * FROM sessions WHERE status IN ('starting', 'running') ORDER BY started_at, id",
+      )
+      .all() as SessionRow[];
+    return rows.map((row) => {
+      const session = decodeSession(row);
+      return this.updateSessionState(
+        session.id,
+        { ...session.state, status: 'interrupted', endedAt: now },
+        { now, ...(session.workspace === undefined ? {} : { workspace: session.workspace }) },
+      );
+    });
   }
 
   appendEvent(event: AgentEvent, projection: SessionState, now = Date.now()): AppendEventResult {

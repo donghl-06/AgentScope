@@ -167,4 +167,35 @@ describe('StorageRepository', () => {
       expect(repository.listEvents('session-1').items).toHaveLength(0);
     });
   });
+
+  it('marks in-flight sessions interrupted while preserving blocked sessions', () => {
+    withRepository((repository) => {
+      for (const [id, status] of [
+        ['starting-session', 'starting'],
+        ['running-session', 'running'],
+        ['blocked-session', 'blocked'],
+      ] as const) {
+        repository.createSession({
+          id,
+          provider: 'mock',
+          adapter: 'mock',
+          startedAt: 1_700_000_000_000,
+          capabilities: {},
+          state: state(id, status),
+        });
+      }
+
+      const recovered = repository.recoverInFlightSessions(1_700_000_010_000);
+      expect(recovered.map((session) => session.id)).toEqual([
+        'running-session',
+        'starting-session',
+      ]);
+      expect(repository.getSession('running-session')).toMatchObject({
+        status: 'interrupted',
+        endedAt: 1_700_000_010_000,
+      });
+      expect(repository.getSession('starting-session')).toMatchObject({ status: 'interrupted' });
+      expect(repository.getSession('blocked-session').status).toBe('blocked');
+    });
+  });
 });
