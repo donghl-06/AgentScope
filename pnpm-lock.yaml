@@ -71,6 +71,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       '@agentscope/storage':
         specifier: workspace:*
         version: link:../../packages/storage

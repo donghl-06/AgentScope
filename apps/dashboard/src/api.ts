@@ -1,3 +1,4 @@
+import type { EtaResult } from '@agentscope/protocol';
 import type { EventPage, Page, SessionListFilter, StoredSession } from '@agentscope/storage';
 
 export interface DashboardApiOptions {
@@ -63,6 +64,12 @@ export class DashboardApi {
   listEvents(sessionId: string, after = 0, limit = 100): Promise<EventPage> {
     const query = new URLSearchParams({ after: String(after), limit: String(limit) });
     return this.get<EventPage>(`/api/sessions/${encodeURIComponent(sessionId)}/events`, query);
+  }
+
+  listEtaSnapshots(sessionId: string): Promise<readonly EtaResult[]> {
+    return this.get<readonly EtaResult[]>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/eta-snapshots`,
+    );
   }
 
   connectLive(onMessage: (message: DashboardLiveNotification) => void): WebSocket {

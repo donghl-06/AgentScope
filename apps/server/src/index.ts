@@ -188,6 +188,28 @@ export function createServer(options: ServerOptions): FastifyInstance {
   );
 
   app.get(
+    '/api/sessions/:id/eta-snapshots',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.repository.listEtaSnapshots(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
     '/api/projects/:id/overview',
     {
       schema: {

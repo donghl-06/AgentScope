@@ -15,6 +15,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@agentscope/protocol": "workspace:*",
     "@agentscope/storage": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

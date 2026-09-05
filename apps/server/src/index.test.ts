@@ -62,6 +62,15 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/sessions/session-1/events')).json()).toMatchObject({
       items: [{ seq: 1, event: { id: 'event-1' } }],
     });
+    repository.saveEtaSnapshot('session-1', {
+      minSeconds: 30,
+      maxSeconds: 120,
+      confidence: 0.4,
+      reasons: [{ code: 'signal', message: 'Observed activity' }],
+    });
+    expect((await app.inject('/api/sessions/session-1/eta-snapshots')).json()).toMatchObject([
+      { minSeconds: 30, maxSeconds: 120, confidence: 0.4 },
+    ]);
     expect((await app.inject('/api/projects/project-1/overview')).json()).toMatchObject({
       projectId: 'project-1',
       active: 1,

@@ -679,7 +679,7 @@ agentscope/
 
 - [x] 在显著变化、关键事件或合理节流间隔写入 eta_snapshots；CLI 运行器已保存初始、验证、阻塞、里程碑和终态快照。
 - [x] 避免每个 file event 都写 snapshot 造成数据库膨胀；普通工具/文件事件不写快照。
-- [ ] API 返回当前 ETA 和可选历史；V0 UI 先展示当前区间与原因。
+- [x] API 返回当前 ETA 和可选历史；session detail 返回当前区间，`/api/sessions/:id/eta-snapshots` 返回节流历史。
 - [ ] 预留后续曲线接口，但不在 V0 优先做复杂图表。
 
 ### Step 11.5 — ETA 测试
