@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { isIgnoredPath, mergeChangeKinds, normalizeObservedPath } from './index.js';
+import {
+  isGitignoredPath,
+  isIgnoredPath,
+  mergeChangeKinds,
+  normalizeObservedPath,
+  parseGitignore,
+} from './index.js';
 
 describe('filesystem observer helpers', () => {
   it('keeps observed paths within the workspace and normalizes separators', () => {
@@ -22,5 +28,18 @@ describe('filesystem observer helpers', () => {
     expect(mergeChangeKinds('create', 'modify')).toBe('create');
     expect(mergeChangeKinds('modify', 'delete')).toBe('delete');
     expect(mergeChangeKinds('delete', 'create')).toBe('delete');
+  });
+
+  it('applies common gitignore globs and last-match negation', () => {
+    const rules = parseGitignore(`
+# generated
+*.log
+build/
+!important.log
+`);
+    expect(isGitignoredPath('debug.log', rules)).toBe(true);
+    expect(isGitignoredPath('important.log', rules)).toBe(false);
+    expect(isGitignoredPath('build/output.js', rules)).toBe(true);
+    expect(isGitignoredPath('src/build/output.js', rules)).toBe(true);
   });
 });

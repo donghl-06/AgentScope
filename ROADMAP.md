@@ -572,7 +572,7 @@ agentscope/
 ### Step 9.3 — FileObserver
 
 - [x] watcher 根目录固定为 workspace resolved path。
-- [x] 尊重默认 ignore 和可配置 ignore；`.gitignore` 语义仍待接入。
+- [x] 尊重默认 ignore、可配置 ignore 和 workspace 根 `.gitignore` 的常用规则；默认 AgentScope 目录保持硬忽略。
 - [x] 默认排除 `.git`、`node_modules`、build output、大型缓存和 AgentScope DB。
 - [x] 对 create/modify/delete debounce、coalesce，防止事件风暴。
 - [x] 防御 symlink/path traversal，确保事件仍属于 workspace。

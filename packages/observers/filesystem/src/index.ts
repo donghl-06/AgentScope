@@ -1,4 +1,4 @@
-import { existsSync, watch, type FSWatcher } from 'node:fs';
+import { existsSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export type FileChangeKind = 'create' | 'modify' | 'delete';
@@ -12,6 +12,7 @@ export interface FileObservation {
 export interface FilesystemObserverOptions {
   readonly rootPath: string;
   readonly ignore?: readonly string[];
+  readonly respectGitignore?: boolean;
   readonly debounceMs?: number;
   readonly onChange: (observation: FileObservation) => void;
 }
@@ -39,6 +40,7 @@ export const DEFAULT_FILE_IGNORES = [
 export class FilesystemObserver {
   private readonly rootPath: string;
   private readonly ignored: readonly string[];
+  private readonly gitignoreRules: readonly GitignoreRule[];
   private readonly debounceMs: number;
   private readonly onChange: FilesystemObserverOptions['onChange'];
   private readonly pending = new Map<string, FileChangeKind>();
@@ -48,6 +50,8 @@ export class FilesystemObserver {
   constructor(options: FilesystemObserverOptions, watchFactory: FileWatchFactory = defaultWatch) {
     this.rootPath = resolve(options.rootPath);
     this.ignored = [...DEFAULT_FILE_IGNORES, ...(options.ignore ?? [])];
+    this.gitignoreRules =
+      options.respectGitignore === false ? [] : readGitignoreRules(this.rootPath);
     this.debounceMs = validateDebounce(options.debounceMs ?? 120);
     this.onChange = options.onChange;
     this.watchFactory = watchFactory;
@@ -60,7 +64,13 @@ export class FilesystemObserver {
     if (!existsSync(this.rootPath)) throw new Error(`Workspace does not exist: ${this.rootPath}`);
     this.watcher = this.watchFactory(this.rootPath, (kind, filename) => {
       const path = normalizeObservedPath(this.rootPath, filename);
-      if (path === undefined || isIgnoredPath(path, this.ignored)) return;
+      if (
+        path === undefined ||
+        isIgnoredPath(path, this.ignored) ||
+        isGitignoredPath(path, this.gitignoreRules)
+      ) {
+        return;
+      }
       const fullPath = resolve(this.rootPath, path);
       const change = kind === 'rename' ? (existsSync(fullPath) ? 'create' : 'delete') : 'modify';
       this.enqueue(path, change);
@@ -125,6 +135,32 @@ export function isIgnoredPath(
   });
 }
 
+export interface GitignoreRule {
+  readonly pattern: string;
+  readonly negated: boolean;
+}
+
+export function parseGitignore(content: string): readonly GitignoreRule[] {
+  return content
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'))
+    .map((line) => {
+      const negated = line.startsWith('!');
+      const pattern = (negated ? line.slice(1) : line).replace(/^\/+/, '');
+      return { pattern, negated };
+    })
+    .filter((rule) => rule.pattern.length > 0);
+}
+
+export function isGitignoredPath(path: string, rules: readonly GitignoreRule[]): boolean {
+  let ignored = false;
+  for (const rule of rules) {
+    if (matchesGitignorePattern(path, rule.pattern)) ignored = !rule.negated;
+  }
+  return ignored;
+}
+
 export function mergeChangeKinds(
   previous: FileChangeKind | undefined,
   next: FileChangeKind,
@@ -139,6 +175,43 @@ function validateDebounce(value: number): number {
   if (!Number.isFinite(value) || value < 0)
     throw new RangeError('debounceMs must be non-negative.');
   return value;
+}
+
+function readGitignoreRules(rootPath: string): readonly GitignoreRule[] {
+  const filename = resolve(rootPath, '.gitignore');
+  if (!existsSync(filename)) return [];
+  try {
+    return parseGitignore(readFileSync(filename, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function matchesGitignorePattern(path: string, pattern: string): boolean {
+  const normalized = pattern.replaceAll('\\', '/').replace(/\/$/u, '');
+  if (normalized.length === 0) return false;
+  const expression = globToRegExp(normalized, normalized.includes('/'));
+  if (normalized.includes('/')) return expression.test(path);
+  return path.split('/').some((segment) => expression.test(segment));
+}
+
+function globToRegExp(pattern: string, rooted: boolean): RegExp {
+  let source = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === '*') {
+      if (pattern[index + 1] === '*') {
+        source += '.*';
+        index += 1;
+      } else source += rooted ? '[^/]*' : '.*';
+    } else if (character === '?') source += rooted ? '[^/]' : '.';
+    else source += character === undefined ? '' : escapeRegExp(character);
+  }
+  return new RegExp(rooted ? `^${source}(?:/|$)` : `^${source}$`, 'u');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function separator(): string {
