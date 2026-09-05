@@ -3,6 +3,7 @@
 ## Test context
 
 - Observed version: `codex-cli 0.152.1`.
+- Follow-up local detection on 2026-09-06 reports `codex-cli 0.153.0`; the adapter's Windows shim resolution and `--version` probe succeeded. This is detection-only evidence, not a provider session smoke.
 - Host: Windows native PowerShell, disposable repository, non-interactive `codex exec` mode.
 - Structured command used: `codex exec --json --ephemeral`.
 - Authentication was already configured on the host; no credentials or account details are recorded here.
