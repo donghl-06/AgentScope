@@ -157,6 +157,32 @@ describe('progress engine', () => {
     expect(after.value).toBeLessThan(before.value);
   });
 
+  it('normalizes explicit milestone weights and rejects invalid entries as a group', () => {
+    const weighted = computeProgress({
+      state: state({
+        milestones: [
+          { id: 'small', title: 'Small', status: 'completed' },
+          { id: 'large', title: 'Large', status: 'pending' },
+        ],
+      }),
+      config: { milestoneWeights: { small: 1, large: 3 } },
+    });
+    expect(weighted.value).toBeCloseTo(0.25);
+    expect(weighted.reasons.map((reason) => reason.code)).toContain('weighted_milestones');
+
+    const invalid = computeProgress({
+      state: state({
+        milestones: [
+          { id: 'small', title: 'Small', status: 'completed' },
+          { id: 'large', title: 'Large', status: 'pending' },
+        ],
+      }),
+      config: { milestoneWeights: { small: -1, unknown: 2 } },
+    });
+    expect(invalid.value).toBeCloseTo(0.5);
+    expect(invalid.reasons.map((reason) => reason.code)).toContain('invalid_milestone_weights');
+  });
+
   it('is deterministic for the same replayed state and configuration', () => {
     const input = {
       state: state({ currentActivity: { kind: 'review', label: 'review', startedAt: 10 } }),

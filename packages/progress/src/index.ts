@@ -26,6 +26,8 @@ export type VerificationKey = keyof Pick<VerificationState, 'tests' | 'build' | 
 export interface ProgressConfig {
   /** Verification gates required before a completed session can report 100%. */
   readonly requiredVerification?: readonly VerificationKey[];
+  /** Optional per-milestone weights. Omitted milestone ids use the default weight of 1. */
+  readonly milestoneWeights?: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_REQUIRED_VERIFICATION: readonly VerificationKey[] = [
@@ -46,7 +48,7 @@ export function computeProgress(input: ProgressEngineInput): ProgressResult {
   const { state } = input;
   const requiredVerification = input.config?.requiredVerification ?? DEFAULT_REQUIRED_VERIFICATION;
   const reasons: ProgressReason[] = [];
-  let value = milestoneValue(state, reasons);
+  let value = milestoneValue(state, reasons, input.config?.milestoneWeights);
   if (state.milestones.length === 0) value = activityValue(state, reasons);
 
   const verification = verificationValue(state, reasons, requiredVerification);
@@ -83,16 +85,66 @@ export function computeProgress(input: ProgressEngineInput): ProgressResult {
   return { value: clamp(value), confidence, reasons: dedupeReasons(reasons) };
 }
 
-function milestoneValue(state: SessionState, reasons: ProgressReason[]): number {
+function milestoneValue(
+  state: SessionState,
+  reasons: ProgressReason[],
+  explicitWeights: Readonly<Record<string, number>> | undefined,
+): number {
   if (state.milestones.length === 0) return 0;
-  const completed = state.milestones.filter((milestone) => milestone.status === 'completed').length;
+  const weights = normalizeMilestoneWeights(state, explicitWeights, reasons);
+  const totalWeight = state.milestones.reduce(
+    (total, milestone) => total + (weights.get(milestone.id) ?? 1),
+    0,
+  );
+  const completedWeight = state.milestones.reduce(
+    (total, milestone) =>
+      total + (milestone.status === 'completed' ? (weights.get(milestone.id) ?? 1) : 0),
+    0,
+  );
   const active = state.milestones.some((milestone) => milestone.status === 'active');
-  const value = completed / state.milestones.length + (active ? 0.1 : 0);
+  const value = completedWeight / totalWeight + (active ? 0.1 : 0);
+  const completed = state.milestones.filter((milestone) => milestone.status === 'completed').length;
   reasons.push({
     code: 'milestone_progress',
     message: `${completed} of ${state.milestones.length} milestones completed.`,
   });
   return Math.min(0.9, value);
+}
+
+function normalizeMilestoneWeights(
+  state: SessionState,
+  explicitWeights: Readonly<Record<string, number>> | undefined,
+  reasons: ProgressReason[],
+): Map<string, number> {
+  const weights = new Map(state.milestones.map((milestone) => [milestone.id, 1]));
+  if (explicitWeights === undefined) return weights;
+
+  const milestoneIds = new Set(weights.keys());
+  const valid = Object.entries(explicitWeights).every(
+    ([id, weight]) => milestoneIds.has(id) && Number.isFinite(weight) && weight > 0,
+  );
+  if (!valid) {
+    reasons.push({
+      code: 'invalid_milestone_weights',
+      message: 'Invalid milestone weights were ignored; equal weights were used.',
+    });
+    return weights;
+  }
+  for (const [id, weight] of Object.entries(explicitWeights)) weights.set(id, weight);
+  const total = [...weights.values()].reduce((sum, weight) => sum + weight, 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    reasons.push({
+      code: 'invalid_milestone_weights',
+      message: 'Milestone weights could not be normalized; equal weights were used.',
+    });
+    return new Map(state.milestones.map((milestone) => [milestone.id, 1]));
+  }
+  for (const [id, weight] of weights) weights.set(id, weight / total);
+  reasons.push({
+    code: 'weighted_milestones',
+    message: 'Milestone progress uses normalized explicit weights.',
+  });
+  return weights;
 }
 
 function activityValue(state: SessionState, reasons: ProgressReason[]): number {
