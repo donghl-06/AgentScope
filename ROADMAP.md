@@ -901,3 +901,48 @@ MockAdapter
 ```
 
 在这条链路稳定以前，不提前投入复杂 ETA、Codex App、远程执行或视觉美化。
+
+## 12. 当前执行计划（继续推进至需要用户操作为止）
+
+本计划以当前仓库状态为起点：observer、Progress、ETA、SQLite、server、CLI、Claude/Codex adapter
+均已有单元或局部集成证据；工作区保持本地提交，不自动推送远程。每完成一个可独立验收的步骤，执行
+定向测试、类型检查或全量回归，并创建一个本地 Git commit。任何失败先定位和修复，不把失败测试标记为
+完成；任何涉及用户账号、浏览器视觉确认、真实交互式 Ctrl+C 或需要用户选择的事项，停止在该节点并说明
+具体操作。
+
+### 12.1 — 运行时 observer 融合边界
+
+- [ ] 审核当前 `runProvider`、Mock runner、server projection 和 `packages/observers/fusion` 的连接点，写一份短 ADR，明确 observer 的启动/停止时机、证据 key、source/kind 映射和 persist-before-publish 顺序。
+- [ ] 实现一个最小 observer runtime/coordinator：只接收 wrapper 自己启动的进程、workspace 内 Git/File 信号和已知验证命令，不解析任意 shell，不读取文件内容，不改变原生 adapter 事件。
+- [ ] 用 fusion ledger 对 native、process/test、git/file、agent evidence 去重和裁决；重复 command、重复 file event 和 adapter/observer 同源事件必须有稳定测试。
+- [ ] 为 coordinator 增加 cleanup、异常隔离和无 observer 能力时的降级测试；observer 故障不得拖垮 adapter session。
+- [ ] 将 observer evidence 接入 session projection/API 的最小可用字段，保留 source、reason、confidence、timestamp，不扩大协议 payload。
+
+### 12.2 — Provider/Mock 纵向验证
+
+- [ ] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和 evidence 同步落库。
+- [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
+- [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
+- [ ] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入集成测试，并记录可重复命令和结果到 `docs/findings/`。
+
+### 12.3 — API/Dashboard 与重连验证
+
+- [ ] 验证 overview counts、session card、detail、timeline、Progress、ETA 和 evidence summary 在两个并行 Mock session 中实时变化。
+- [ ] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致。
+- [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；记录 P50/P95、CPU/内存、SQLite 增长，不作无证据容量承诺。
+
+### 12.4 — 发布前加固
+
+- [ ] 完成依赖漏洞审查、Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental。
+- [ ] 补齐版本号、CHANGELOG、migration、数据库备份/恢复和回滚说明；确认 raw log 仍默认关闭且没有伪造的 opt-in 能力。
+- [ ] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm fixtures:check`，扫描 tracked 文件、数据库和日志中的 secret/prompt/env。
+- [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
+
+### 12.5 — 第一个必须用户操作的节点
+
+在 12.1–12.4 的自动化实现和验证全部通过后，才暂停请求用户操作：
+
+1. 用户保持本地 server 和 Dashboard（如需）运行，并按 `docs/manual-smoke.md` 打开页面。
+2. 用户观察两个真实 provider session 的卡片、timeline、Progress、ETA 和 workspace evidence 是否符合预期。
+3. 用户在明确指定的交互式场景执行一次真实 Ctrl+C/终止操作，并把终端输出或 session id 发回。
+4. 用户确认 UI 与终端状态后，我再处理发现的产品问题、生成最终发布说明；没有用户确认前不推送远程。
