@@ -360,7 +360,7 @@ agentscope/
 ### Step 4.5 — 实现 WebSocket 协议
 
 - [x] 提供 `/ws`，定义 connection hello/protocol version。
-- [ ] 广播 `session.created/session.updated/event.appended/project.updated`。
+- [x] 广播 `session.created/session.updated/event.appended`；`project.updated` 待 project write path 接入。
 - [ ] 每条消息携带 sessionId、seq/cursor 和必要的轻量 payload（消息类型已定义，事件接入待完成）。
 - [x] 设计 subscribe/filter，避免所有项目事件无条件发送给每个客户端。
 - [ ] 实现 heartbeat、断开 cleanup、慢客户端处理和消息大小限制（断开和发送失败 cleanup 已完成，heartbeat/size limit 待完成）。
