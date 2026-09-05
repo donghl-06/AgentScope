@@ -58,6 +58,22 @@ describe('Claude Code adapter lifecycle', () => {
     for await (const event of failed.events()) failedEvents.push(event);
     expect(failedEvents.at(-1)?.payload).toMatchObject({ reason: 'failed', exitCode: 3 });
 
+    const toolFailure = await new ClaudeCodeAdapter({ executable: process.execPath }).start({
+      sessionId: 'tool-failed',
+      workspacePath,
+      args: [
+        '-e',
+        nodeScript([
+          '{"type":"system","subtype":"init"}',
+          '{"type":"user","message":{"content":[{"type":"tool_result","is_error":true}]}}',
+          '{"type":"result","subtype":"success","is_error":false}',
+        ]),
+      ],
+    });
+    const toolFailureEvents = [];
+    for await (const event of toolFailure.events()) toolFailureEvents.push(event);
+    expect(toolFailureEvents.at(-1)?.payload).toMatchObject({ reason: 'failed' });
+
     const interrupted = await new ClaudeCodeAdapter({ executable: process.execPath }).start({
       sessionId: 'interrupted',
       workspacePath,

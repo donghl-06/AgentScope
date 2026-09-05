@@ -150,6 +150,7 @@ class ClaudeAttachedSession implements AttachedSession {
   private detached = false;
   private started = false;
   private terminalEvent: AgentEvent | undefined;
+  private toolFailed = false;
   private closed = false;
 
   constructor(
@@ -220,6 +221,7 @@ class ClaudeAttachedSession implements AttachedSession {
       this.terminalEvent = event;
       return;
     }
+    if (event.type === 'tool_call_finished' && isFailedTool(event)) this.toolFailed = true;
     this.enqueue(event);
   }
 
@@ -230,6 +232,7 @@ class ClaudeAttachedSession implements AttachedSession {
     if (!this.detached) {
       if (
         this.terminalEvent !== undefined &&
+        !this.toolFailed &&
         signal === null &&
         exitCode === 0 &&
         !this.stopRequested
@@ -241,7 +244,7 @@ class ClaudeAttachedSession implements AttachedSession {
             reason:
               signal !== null || this.stopRequested
                 ? 'interrupted'
-                : exitCode === 0
+                : exitCode === 0 && !this.toolFailed
                   ? 'completed'
                   : 'failed',
             ...(exitCode === null ? {} : { exitCode }),
@@ -258,6 +261,17 @@ class ClaudeAttachedSession implements AttachedSession {
     this.queue.push(event);
     for (const listener of this.listeners) void Promise.resolve(listener(event)).catch(() => {});
   }
+}
+
+function isFailedTool(event: AgentEvent): boolean {
+  if (
+    event.type !== 'tool_call_finished' ||
+    typeof event.payload !== 'object' ||
+    event.payload === null
+  ) {
+    return false;
+  }
+  return (event.payload as { success?: unknown }).success === false;
 }
 
 class AsyncEventQueue implements AsyncIterableIterator<AgentEvent> {
