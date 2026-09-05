@@ -4,6 +4,7 @@ export interface EtaEngineInput {
   readonly state: SessionState;
   readonly progress: ProgressResult;
   readonly elapsedSeconds: number;
+  readonly replanningDetected?: boolean;
 }
 
 export interface EtaConfig {
@@ -11,6 +12,11 @@ export interface EtaConfig {
   readonly lowSignalMinSeconds: number;
   readonly lowSignalMaxSeconds: number;
   readonly maxSeconds: number;
+  readonly failedVerificationPenalty?: number;
+  readonly blockedPenalty?: number;
+  readonly lowSignalPenalty?: number;
+  readonly verificationPendingPenalty?: number;
+  readonly replanningPenalty?: number;
 }
 
 export const DEFAULT_ETA_CONFIG: EtaConfig = {
@@ -18,6 +24,11 @@ export const DEFAULT_ETA_CONFIG: EtaConfig = {
   lowSignalMinSeconds: 60,
   lowSignalMaxSeconds: 3_600,
   maxSeconds: 7 * 24 * 60 * 60,
+  failedVerificationPenalty: 1.5,
+  blockedPenalty: 1.75,
+  lowSignalPenalty: 1.5,
+  verificationPendingPenalty: 1.2,
+  replanningPenalty: 1.4,
 };
 
 export function estimateEta(
@@ -56,29 +67,39 @@ export function estimateEta(
     input.state.verification.tests === 'failed' ||
     input.state.verification.overall === 'failed'
   ) {
-    penalty *= 1.5;
+    penalty *= config.failedVerificationPenalty ?? DEFAULT_ETA_CONFIG.failedVerificationPenalty!;
     reasons.push({
       code: 'failed_verification_penalty',
       message: 'Recent verification failure widens the ETA.',
     });
   }
   if (input.state.status === 'blocked') {
-    penalty *= 1.75;
+    penalty *= config.blockedPenalty ?? DEFAULT_ETA_CONFIG.blockedPenalty!;
     reasons.push({
       code: 'blocked_penalty',
       message: 'Current blocked state increases the ETA range.',
     });
   }
   if (input.progress.confidence < 0.5) {
-    penalty *= 1.5;
+    penalty *= config.lowSignalPenalty ?? DEFAULT_ETA_CONFIG.lowSignalPenalty!;
     reasons.push({ code: 'low_signal_penalty', message: 'Sparse evidence widens the ETA range.' });
   }
   if (
     input.state.verification.overall === 'pending' ||
     input.state.verification.overall === 'unknown'
   ) {
-    penalty *= 1.2;
+    penalty *= config.verificationPendingPenalty ?? DEFAULT_ETA_CONFIG.verificationPendingPenalty!;
     reasons.push({ code: 'verification_pending', message: 'Verification is not complete.' });
+  }
+  if (
+    input.replanningDetected === true ||
+    input.state.milestones.some((milestone) => milestone.status === 'failed')
+  ) {
+    penalty *= config.replanningPenalty ?? DEFAULT_ETA_CONFIG.replanningPenalty!;
+    reasons.push({
+      code: 'replanning_penalty',
+      message: 'Milestone scope changed or failed, widening the ETA range.',
+    });
   }
   const center = Math.min(config.maxSeconds, Math.max(0, base * penalty));
   const uncertainty = Math.max(0.35, 1 - input.progress.confidence);
@@ -121,4 +142,15 @@ function validateConfig(config: EtaConfig): void {
     throw new RangeError('Low-signal ETA range is invalid.');
   }
   if (config.maxSeconds <= 0) throw new RangeError('maxSeconds must be positive.');
+  for (const [name, value] of Object.entries({
+    failedVerificationPenalty: config.failedVerificationPenalty,
+    blockedPenalty: config.blockedPenalty,
+    lowSignalPenalty: config.lowSignalPenalty,
+    verificationPendingPenalty: config.verificationPendingPenalty,
+    replanningPenalty: config.replanningPenalty,
+  })) {
+    if (value !== undefined && (!Number.isFinite(value) || value < 1 || value > 10)) {
+      throw new RangeError(`${name} must be between 1 and 10.`);
+    }
+  }
 }

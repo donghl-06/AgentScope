@@ -53,4 +53,45 @@ describe('ETA engine', () => {
       ),
     ).toThrow(RangeError);
   });
+
+  it('widens ETA when milestone scope is replanned', () => {
+    const base = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 120,
+    });
+    const replanned = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 120,
+      replanningDetected: true,
+    });
+    expect(replanned.maxSeconds).toBeGreaterThan(base.maxSeconds);
+    expect(replanned.reasons.map((reason) => reason.code)).toContain('replanning_penalty');
+  });
+
+  it('derives replanning from a failed milestone and validates penalty bounds', () => {
+    const eta = estimateEta({
+      state: state({ milestones: [{ id: 'm1', title: 'scope', status: 'failed' }] }),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 120,
+    });
+    expect(eta.reasons.map((reason) => reason.code)).toContain('replanning_penalty');
+    expect(() =>
+      estimateEta(
+        {
+          state: state(),
+          progress: { value: 0.5, confidence: 0.8, reasons: [] },
+          elapsedSeconds: 1,
+        },
+        {
+          minProgress: 0.08,
+          lowSignalMinSeconds: 1,
+          lowSignalMaxSeconds: 2,
+          maxSeconds: 100,
+          replanningPenalty: 20,
+        },
+      ),
+    ).toThrow(RangeError);
+  });
 });

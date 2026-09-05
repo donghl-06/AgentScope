@@ -663,7 +663,7 @@ agentscope/
 - [x] failedTestPenalty 随失败状态变化。
 - [x] blockerPenalty 结合当前阻塞状态。
 - [x] lowSignalPenalty 结合 capability/confidence 信号。
-- [ ] replanningPenalty 结合新增/重置 milestone。
+- [x] replanningPenalty 结合显式 replanningDetected 或 failed milestone，并限制倍率范围。
 - [x] verification pending 进入 reasons，并影响区间/置信度。
 - [x] penalty 设合理上下界，防止数值爆炸但允许 ETA 上升。
 
@@ -687,7 +687,7 @@ agentscope/
 - [ ] early low-data：不输出误导性的具体分钟。
 - [ ] normal progress：范围随有效进展整体收敛。
 - [ ] failed tests：ETA 可增大、confidence 可下降。
-- [ ] blocker：区间显著变宽或标记 paused/uncertain。
+- [x] blocker：区间显著变宽或标记 paused/uncertain。
 - [ ] low capability/stale events：低 confidence、宽区间。
 - [ ] completion/failure/interruption：终态输出正确。
 - [ ] deterministic replay 和配置边界。
