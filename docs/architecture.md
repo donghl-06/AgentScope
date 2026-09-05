@@ -24,6 +24,7 @@ The system values truthful degradation over fabricated uniformity. An adapter ma
 - Server binds to loopback by default.
 - SQLite is the durable source of truth.
 - CLI wrappers start Claude Code CLI, Codex CLI, or MockAdapter sessions.
+- Claude Code/Codex credentials and endpoint/model selection remain in the provider CLI environment; AgentScope observes the CLI process and never requires a specific provider account.
 - The Dashboard is served locally and consumes HTTP plus WebSocket.
 - No cloud control plane, user account, remote execution, or GUI scraping.
 

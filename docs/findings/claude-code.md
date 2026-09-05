@@ -6,6 +6,7 @@
 - Host: Windows native PowerShell, disposable repository, non-interactive `--bare -p` mode.
 - Structured command used: `--output-format stream-json --verbose`.
 - The provider endpoint/model were supplied through the local experiment environment and are intentionally not recorded here.
+- The observation target is the local Claude Code CLI process, not Anthropic's API account. The CLI may use a compatible alternate endpoint and model; capability claims are therefore scoped to the tested CLI version, mode, endpoint configuration, and model combination.
 - Public reference: [Claude Code CLI usage](https://docs.anthropic.com/en/docs/claude-code/cli-usage).
 
 ## Observed event stream
@@ -47,4 +48,3 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 ## Fixture policy
 
 `tests/fixtures/raw/claude-code/` contains only representative, redacted event shapes. It deliberately excludes prompts, command text, working directories, session UUIDs, API metadata, and full tool output. A real interrupted fixture remains a Phase 0 follow-up item.
-
