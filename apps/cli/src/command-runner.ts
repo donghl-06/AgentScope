@@ -6,6 +6,7 @@ import { formatServerJson, type ServerClient } from './server-client.js';
 export interface CliCommandRunnerOptions {
   readonly client?: Pick<ServerClient, 'listSessions' | 'getSession' | 'listEvents'>;
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
+  readonly start?: () => Promise<number>;
   readonly write: (text: string) => void;
 }
 
@@ -51,6 +52,7 @@ export async function executeCliCommand(
     return result.exitCode;
   }
   if (command.kind === 'start') {
+    if (options.start !== undefined) return options.start();
     throw new CliExecutionError('The start command is not wired yet.', 'not_implemented');
   }
   throw new CliExecutionError('The selected provider runner is not wired yet.', 'not_implemented');

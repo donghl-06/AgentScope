@@ -5,6 +5,7 @@ import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { createServer } from './index.js';
 import { LiveHub, type LiveSocket } from './live-hub.js';
+import { startServer } from './runtime.js';
 
 const source = { provider: 'mock', client: 'agentscope', environment: 'test', adapter: 'mock' };
 const openApps: Array<{ close: () => Promise<void> }> = [];
@@ -191,5 +192,21 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/sessions/session-1')).json()).toMatchObject({
       status: 'interrupted',
     });
+  });
+
+  it('starts and closes the server together with its SQLite connection', async () => {
+    const server = await startServer({
+      filename: ':memory:',
+      host: '127.0.0.1',
+      port: 0,
+    });
+    try {
+      const response = await fetch(`${server.address}/healthz`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: 'ok' });
+    } finally {
+      await server.close();
+      await server.close();
+    }
   });
 });

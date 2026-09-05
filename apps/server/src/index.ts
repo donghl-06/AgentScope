@@ -240,3 +240,4 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
 }
 
 export type ServerRequest = FastifyRequest;
+export * from './runtime.js';

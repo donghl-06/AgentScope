@@ -69,4 +69,18 @@ describe('CLI command runner', () => {
       exitCode: 2,
     } satisfies Partial<CliExecutionError>);
   });
+
+  it('delegates start to the injected server lifecycle', async () => {
+    const output: string[] = [];
+    const exitCode = await executeCliCommand(parseCliArgs(['start']), {
+      start: async () => {
+        output.push('started');
+        return 0;
+      },
+      write: (text) => output.push(text),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual(['started']);
+  });
 });
