@@ -17,8 +17,16 @@ export interface GitSnapshot {
   readonly branch?: string;
   readonly head?: string;
   readonly files: readonly GitFileStatus[];
+  readonly diffStat: readonly GitDiffStat[];
   readonly capturedAt: number;
   readonly reason?: string;
+}
+
+export interface GitDiffStat {
+  readonly path: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly binary?: boolean;
 }
 
 export interface GitChangeSet {
@@ -63,22 +71,30 @@ export class GitObserver {
         rootPath: this.rootPath,
         isRepository: false,
         files: [],
+        diffStat: [],
         capturedAt: this.now(),
         reason: root.stderr.trim() || 'Not a Git repository.',
       };
     }
 
-    const [branch, head, status] = await Promise.all([
+    const [branch, head, status, unstagedDiff, stagedDiff] = await Promise.all([
       this.run(this.rootPath, ['branch', '--show-current']),
       this.run(this.rootPath, ['rev-parse', 'HEAD']),
       this.run(this.rootPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+      this.run(this.rootPath, ['diff', '--numstat', '--no-renames']),
+      this.run(this.rootPath, ['diff', '--cached', '--numstat', '--no-renames']),
     ]);
+    const diffStat = mergeDiffStats(
+      unstagedDiff.exitCode === 0 ? parseNumstat(unstagedDiff.stdout) : [],
+      stagedDiff.exitCode === 0 ? parseNumstat(stagedDiff.stdout) : [],
+    );
     return {
       rootPath: normalizeRoot(root.stdout, this.rootPath),
       isRepository: true,
       ...(branch.stdout.trim() === '' ? {} : { branch: branch.stdout.trim() }),
       ...(head.stdout.trim() === '' ? {} : { head: head.stdout.trim() }),
       files: status.exitCode === 0 ? parsePorcelainZ(status.stdout) : [],
+      diffStat,
       capturedAt: this.now(),
       ...(status.exitCode === 0 ? {} : { reason: status.stderr.trim() || 'Git status failed.' }),
     };
@@ -160,6 +176,54 @@ export function parsePorcelainZ(output: string): readonly GitFileStatus[] {
     files.push({ path, indexStatus, worktreeStatus });
   }
   return files;
+}
+
+export function parseNumstat(output: string): readonly GitDiffStat[] {
+  const entries: GitDiffStat[] = [];
+  for (const line of output.split(/\r?\n/u)) {
+    if (line.length === 0) continue;
+    const separator = line.indexOf('\t');
+    const secondSeparator = separator < 0 ? -1 : line.indexOf('\t', separator + 1);
+    if (separator < 0 || secondSeparator < 0) continue;
+    const additionsText = line.slice(0, separator);
+    const deletionsText = line.slice(separator + 1, secondSeparator);
+    const path = normalizeGitPath(line.slice(secondSeparator + 1));
+    if (path.length === 0) continue;
+    if (additionsText === '-' || deletionsText === '-') {
+      entries.push({ path, additions: 0, deletions: 0, binary: true });
+      continue;
+    }
+    const additions = Number(additionsText);
+    const deletions = Number(deletionsText);
+    if (
+      Number.isInteger(additions) &&
+      Number.isInteger(deletions) &&
+      additions >= 0 &&
+      deletions >= 0
+    ) {
+      entries.push({ path, additions, deletions });
+    }
+  }
+  return entries;
+}
+
+function mergeDiffStats(...groups: readonly (readonly GitDiffStat[])[]): readonly GitDiffStat[] {
+  const merged = new Map<string, GitDiffStat>();
+  for (const group of groups) {
+    for (const stat of group) {
+      const previous = merged.get(stat.path);
+      if (previous === undefined) merged.set(stat.path, stat);
+      else {
+        merged.set(stat.path, {
+          path: stat.path,
+          additions: previous.additions + stat.additions,
+          deletions: previous.deletions + stat.deletions,
+          ...(previous.binary || stat.binary ? { binary: true } : {}),
+        });
+      }
+    }
+  }
+  return [...merged.values()].sort((left, right) => left.path.localeCompare(right.path));
 }
 
 async function runGitCommand(cwd: string, args: readonly string[]): Promise<GitCommandResult> {

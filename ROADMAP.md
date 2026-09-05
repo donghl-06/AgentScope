@@ -564,8 +564,8 @@ agentscope/
 ### Step 9.2 — GitObserver
 
 - [x] 识别 cwd-scoped Git repo、branch、HEAD 和初始 dirty baseline。
-- [x] 使用稳定 machine-readable git 输出解析 changed files；diff stat 仍待补充。
-- [ ] 只在事件触发或合理间隔采样，避免频繁全量 diff。
+- [x] 使用稳定 machine-readable git 输出解析 changed files，并按路径提供 `diff --numstat` stat。
+- [x] 只在调用方触发或合理间隔采样，避免 observer 自行启动频繁全量 diff。
 - [x] 区分 session 前已有修改和 session 期间新增修改。
 - [x] Git 不可用、非仓库场景安全降级；submodule/worktree 仍待补测。
 

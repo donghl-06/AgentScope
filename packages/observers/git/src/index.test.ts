@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { GitObserver, parsePorcelainZ, type GitCommandResult } from './index.js';
+import { GitObserver, parseNumstat, parsePorcelainZ, type GitCommandResult } from './index.js';
 
 describe('git observer', () => {
   it('parses machine-readable status including renames', () => {
@@ -8,6 +8,13 @@ describe('git observer', () => {
       { path: 'src/app.ts', indexStatus: ' ', worktreeStatus: 'M' },
       { path: 'notes.txt', indexStatus: '?', worktreeStatus: '?' },
       { path: 'new.ts', indexStatus: 'R', worktreeStatus: ' ', previousPath: 'old.ts' },
+    ]);
+  });
+
+  it('parses numstat without reading diff contents', () => {
+    expect(parseNumstat('3\t1\tsrc/app.ts\n-\t-\tassets/logo.png\n')).toEqual([
+      { path: 'src/app.ts', additions: 3, deletions: 1 },
+      { path: 'assets/logo.png', additions: 0, deletions: 0, binary: true },
     ]);
   });
 
