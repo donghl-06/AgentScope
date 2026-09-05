@@ -703,7 +703,7 @@ agentscope/
 ### Step 12.1 — Mock E2E
 
 - [ ] 从 `agent-scope start` 启动完整系统。
-- [ ] 同时运行 success 与 blocked/test-failure 两个 Mock session。
+- [x] 同时运行 success 与 test-failure 两个 Mock session；并发 SQLite/HTTP E2E 已覆盖。
 - [ ] 验证 overview counts、card、detail、timeline、progress、ETA 实时变化。
 - [ ] 刷新 Dashboard、断开 WS、重启 server，验证历史和补齐逻辑。
 - [ ] 将该流程纳入默认 CI smoke。
