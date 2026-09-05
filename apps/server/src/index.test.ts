@@ -85,7 +85,7 @@ describe('server HTTP API', () => {
     });
     const invalid = await app.inject('/api/sessions?limit=0');
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json()).toMatchObject({ error: { code: 'invalid_query' } });
+    expect(invalid.json()).toMatchObject({ error: { code: 'invalid_request' } });
   });
 
   it('publishes only committed repository events to the live hub', async () => {

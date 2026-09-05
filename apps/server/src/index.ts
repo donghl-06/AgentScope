@@ -1,4 +1,5 @@
 import websocket from '@fastify/websocket';
+import { Type } from '@sinclair/typebox';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 import type { SessionStatus } from '@agentscope/protocol';
@@ -10,6 +11,34 @@ import {
 } from '@agentscope/storage';
 
 import { LiveHub } from './live-hub.js';
+
+const ErrorResponseSchema = Type.Object({
+  error: Type.Object({ code: Type.String(), message: Type.String() }),
+});
+const SessionListQuerySchema = Type.Object({
+  project: Type.Optional(Type.String({ minLength: 1 })),
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+});
+const SessionParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
+const EventQuerySchema = Type.Object({
+  after: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+const CursorPageSchema = Type.Object({
+  items: Type.Array(Type.Unknown()),
+  nextCursor: Type.Optional(Type.String()),
+});
+const ProjectOverviewSchema = Type.Object({
+  projectId: Type.String(),
+  active: Type.Integer({ minimum: 0 }),
+  blocked: Type.Integer({ minimum: 0 }),
+  completed: Type.Integer({ minimum: 0 }),
+  failed: Type.Integer({ minimum: 0 }),
+  interrupted: Type.Integer({ minimum: 0 }),
+  total: Type.Integer({ minimum: 0 }),
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -47,55 +76,109 @@ export function createServer(options: ServerOptions): FastifyInstance {
   app.addHook('onClose', () => {
     unsubscribeRepository();
   });
+  app.setErrorHandler((error, _request, reply) => {
+    if ((error as { validation?: unknown }).validation !== undefined) {
+      return reply.code(400).send({
+        error: { code: 'invalid_request', message: 'Request validation failed.' },
+      });
+    }
+    return sendError(reply, error);
+  });
 
   void app.register(websocket);
 
   app.get('/healthz', async () => ({ status: 'ok', protocolVersion }));
 
-  app.get('/api/sessions', async (request, reply) => {
-    try {
-      const query = request.query as Record<string, unknown>;
-      const filter: SessionListFilter = {
-        ...(typeof query.project === 'string' ? { projectId: query.project } : {}),
-        ...(typeof query.status === 'string' ? { status: query.status as SessionStatus } : {}),
-        ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
-        ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
-      };
-      return reply.send(options.repository.listSessions(filter));
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
+  app.get(
+    '/api/sessions',
+    {
+      schema: {
+        querystring: SessionListQuerySchema,
+        response: { 200: CursorPageSchema, 400: ErrorResponseSchema, 500: ErrorResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const query = request.query as Record<string, unknown>;
+        const filter: SessionListFilter = {
+          ...(typeof query.project === 'string' ? { projectId: query.project } : {}),
+          ...(typeof query.status === 'string' ? { status: query.status as SessionStatus } : {}),
+          ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
+          ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+        };
+        return reply.send(options.repository.listSessions(filter));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
-  app.get('/api/sessions/:id', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      return reply.send(options.repository.getSession(id));
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
+  app.get(
+    '/api/sessions/:id',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: { 200: Type.Unknown(), 404: ErrorResponseSchema, 500: ErrorResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.repository.getSession(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
-  app.get('/api/sessions/:id/events', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      const query = request.query as Record<string, unknown>;
-      const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
-      const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
-      return reply.send(options.repository.listEvents(id, after, limit));
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
+  app.get(
+    '/api/sessions/:id/events',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: EventQuerySchema,
+        response: {
+          200: CursorPageSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.repository.listEvents(id, after, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
-  app.get('/api/projects/:id/overview', async (request, reply) => {
-    try {
-      const { id } = request.params as { id: string };
-      return reply.send(options.repository.getProjectOverview(id));
-    } catch (error) {
-      return sendError(reply, error);
-    }
-  });
+  app.get(
+    '/api/projects/:id/overview',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: {
+          200: ProjectOverviewSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.repository.getProjectOverview(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
   app.get('/ws', { websocket: true }, (socket) => {
     const detach = liveHub.attach(socket, protocolVersion);

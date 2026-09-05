@@ -355,7 +355,7 @@ agentscope/
 - [x] `GET /api/sessions/:id/events?after=<cursor>`：按 seq 返回事件与 next cursor。
 - [x] `GET /api/projects/:id/overview`：聚合 active/blocked/completed counts。
 - [x] 为 400/404/409/500 定义一致错误 envelope。
-- [ ] 对 request/response 做 schema 校验并生成或维护 API 文档。
+- [x] 对 request/response 做 TypeBox schema 校验；API 文档生成仍待接入。
 
 ### Step 4.5 — 实现 WebSocket 协议
 
