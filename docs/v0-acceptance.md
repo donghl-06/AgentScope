@@ -22,7 +22,7 @@ documented limitation or manual-only portion remains.
 | Environment | Level | Notes |
 | --- | --- | --- |
 | Windows native PowerShell | Supported | Real Claude/Codex smoke, Unicode/space paths, and process-tree cleanup verified |
-| WSL2 | Experimental / blocked | Interactive Ubuntu has Linux Node 22.14.0/pnpm 10.33.0; a separate Linux dependency install/clone is still needed because the shared Windows checkout has no Linux workspace links/native modules |
+| WSL2 | Experimental | Interactive Ubuntu has Linux Node 22.14.0/pnpm 10.33.0; isolated Linux clone Mock CLI smoke passes. Real provider, Dashboard and interactive TTY behavior remain unclaimed |
 | macOS/Linux | Experimental | Shared TypeScript tests are expected to run, but no release smoke evidence is claimed |
 
 ## Release gate

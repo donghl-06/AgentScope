@@ -12,12 +12,11 @@ the smaller set that still affects a V0 sign-off.
    one-minute retry. Once the limit clears, run one long-lived harmless Claude
    task and interrupt it; then verify `interrupted` and the absence of an
    orphan process.
-2. **WSL2 smoke.** The user's interactive Ubuntu shell already exposes Linux
-   Node `22.14.0` and pnpm `10.33.0`. The shared Windows checkout still lacks a
-   separate Linux `node_modules` install, and non-interactive WSL shells do not
-   load the user's `.bashrc` PATH automatically. A separate Linux clone/install
-   is needed before the second-environment smoke; the Windows checkout must not
-   have its native dependencies replaced in place.
+2. **WSL2 real-provider/TTY smoke.** The user's interactive Ubuntu shell exposes
+   Linux Node `22.14.0` and pnpm `10.33.0`; an isolated Linux clone with Linux
+   dependencies passed the Mock CLI smoke. Only real-provider and interactive
+   TTY behavior remain experimental. The Windows checkout must not reuse the
+   Linux `node_modules`.
 
 ## Remaining engineering measurements
 
@@ -56,3 +55,5 @@ the smaller set that still affects a V0 sign-off.
 - Repeated 32-sample Mock performance baseline.
 - Windows native Unicode/space path and process-tree smoke.
 - Known Issues, V0 acceptance matrix, and local release-prep documentation.
+- WSL2 isolated Linux dependency install and Mock CLI smoke; Node22/pnpm user
+  environment and the Node22 CLI entry guard are verified.
