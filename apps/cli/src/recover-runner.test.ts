@@ -17,7 +17,10 @@ describe('recoverSessions', () => {
       const storage = openStorage({ filename, migrate: true });
       const repository = new StorageRepository(storage.client);
       const running = createInitialSessionState('running', 100);
-      const completed = { ...createInitialSessionState('completed', 100), status: 'completed' as const };
+      const completed = {
+        ...createInitialSessionState('completed', 100),
+        status: 'completed' as const,
+      };
       repository.createSession({
         id: 'running',
         provider: 'mock',

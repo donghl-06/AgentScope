@@ -57,8 +57,8 @@ describe('mock backend e2e', () => {
       expect(timelineBody.items.length).toBe(success.eventCount);
       expect(timelineBody.items.at(-1)?.event?.type).toBe('session_finished');
 
-      const session = await fetch(`${server.address}/api/sessions/e2e-success`).then(
-        (response) => response.json(),
+      const session = await fetch(`${server.address}/api/sessions/e2e-success`).then((response) =>
+        response.json(),
       );
       expect(session).toMatchObject({
         id: 'e2e-success',
@@ -73,9 +73,7 @@ describe('mock backend e2e', () => {
         (response) => response.json(),
       );
       expect(evidence).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ source: 'git', kind: 'workspace' }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ source: 'git', kind: 'workspace' })]),
       );
     } finally {
       await server.close();

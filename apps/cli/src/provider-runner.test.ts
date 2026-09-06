@@ -90,7 +90,10 @@ describe('provider runner', () => {
   });
 
   it('correlates Codex commands and workspace file changes with observer evidence', async () => {
-    const observedPath = path.join(workspacePath, `.agentscope-provider-observer-${Date.now()}.txt`);
+    const observedPath = path.join(
+      workspacePath,
+      `.agentscope-provider-observer-${Date.now()}.txt`,
+    );
     const observedName = path.basename(observedPath);
     const fakeExecutable = path.join(workspacePath, 'exec');
     const evidence: Array<{ source: string; kind: string; key: string }> = [];
@@ -118,7 +121,8 @@ describe('provider runner', () => {
         filename: ':memory:',
         workspacePath,
         sessionId: 'codex-observer-session',
-        onObserverEvidence: (item) => evidence.push({ source: item.source, kind: item.kind, key: item.key }),
+        onObserverEvidence: (item) =>
+          evidence.push({ source: item.source, kind: item.kind, key: item.key }),
       });
       expect(evidence).toEqual(
         expect.arrayContaining([

@@ -20,10 +20,7 @@ import {
   type ProcessInspection,
   type ProcessObservation,
 } from '@agentscope/observer-process';
-import {
-  TestObserver,
-  type TestObservation,
-} from '@agentscope/observer-tests';
+import { TestObserver, type TestObservation } from '@agentscope/observer-tests';
 
 export type { ObserverEvidence } from '@agentscope/observer-fusion';
 
