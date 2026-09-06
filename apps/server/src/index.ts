@@ -59,6 +59,8 @@ const DiagnosticsSchema = Type.Object({
     clientCount: Type.Integer({ minimum: 0 }),
     notificationsPublished: Type.Integer({ minimum: 0 }),
     notificationsDelivered: Type.Integer({ minimum: 0 }),
+    droppedNotifications: Type.Integer({ minimum: 0 }),
+    slowClientDisconnects: Type.Integer({ minimum: 0 }),
     sendFailures: Type.Integer({ minimum: 0 }),
     invalidMessages: Type.Integer({ minimum: 0 }),
     unsupportedMessages: Type.Integer({ minimum: 0 }),
@@ -83,6 +85,7 @@ export interface ServerOptions {
   readonly recoverOnStart?: boolean;
   readonly heartbeatIntervalMs?: number;
   readonly externalPollIntervalMs?: number;
+  readonly maxWebSocketBufferedBytes?: number;
   readonly maxWebSocketPayloadBytes?: number;
   readonly onProjectionMismatch?: (diagnostic: ProjectionVerification) => void;
 }
@@ -90,10 +93,10 @@ export interface ServerOptions {
 export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
-  const liveHub = options.liveHub ?? new LiveHub();
   const startedAt = Date.now();
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 30_000;
   const externalPollIntervalMs = options.externalPollIntervalMs ?? 250;
+  const maxWebSocketBufferedBytes = options.maxWebSocketBufferedBytes ?? 256 * 1024;
   const maxWebSocketPayloadBytes = options.maxWebSocketPayloadBytes ?? 64 * 1024;
   if (!Number.isFinite(maxWebSocketPayloadBytes) || maxWebSocketPayloadBytes <= 0) {
     throw new RangeError('maxWebSocketPayloadBytes must be positive.');
@@ -101,6 +104,10 @@ export function createServer(options: ServerOptions): FastifyInstance {
   if (!Number.isFinite(externalPollIntervalMs) || externalPollIntervalMs < 0) {
     throw new RangeError('externalPollIntervalMs must be non-negative.');
   }
+  if (!Number.isFinite(maxWebSocketBufferedBytes) || maxWebSocketBufferedBytes <= 0) {
+    throw new RangeError('maxWebSocketBufferedBytes must be positive.');
+  }
+  const liveHub = options.liveHub ?? new LiveHub({ maxBufferedBytes: maxWebSocketBufferedBytes });
   for (const diagnostic of options.repository.verifyNonTerminalProjections(reduceSessionState)) {
     if (!diagnostic.matches) options.onProjectionMismatch?.(diagnostic);
   }

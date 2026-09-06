@@ -63,8 +63,9 @@ remain release-hardening work.
 The server polls SQLite changes written by independent CLI processes at a bounded
 interval so Dashboard WebSocket updates do not depend on an in-process repository
 subscription. The measured event-to-WebSocket P95 is below three seconds in the
-Windows smoke; browser paint latency and sustained slow-client backpressure are
-not yet claimed.
+Windows smoke. Slow clients are disconnected once their buffered amount exceeds
+the bounded threshold and recover through WebSocket reconnect plus HTTP cursor
+catch-up. Browser paint latency and long-duration capacity are not yet claimed.
 
 ## Raw provider logs
 

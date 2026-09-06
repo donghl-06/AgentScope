@@ -25,6 +25,8 @@ Example shape:
     "clientCount": 1,
     "notificationsPublished": 12,
     "notificationsDelivered": 12,
+    "droppedNotifications": 0,
+    "slowClientDisconnects": 0,
     "sendFailures": 0,
     "invalidMessages": 0,
     "unsupportedMessages": 0
@@ -51,6 +53,10 @@ Interpretation:
   delivered count is per matching client, so it can be greater than published
   when multiple Dashboard clients are connected.
 - `sendFailures` counts sockets that failed during a send and were removed.
+- `droppedNotifications` and `slowClientDisconnects` count notifications not
+  written to a client whose WebSocket buffered amount exceeded the bounded
+  threshold. The client is closed so Dashboard reconnect/cursor catch-up can
+  recover without allowing an unbounded server-side queue.
 - `invalidMessages` and `unsupportedMessages` count malformed WebSocket client
   messages; they do not include provider payloads.
 - `eventAppendAttempts` and `eventAppendSuccesses` cover normalized event writes.

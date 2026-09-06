@@ -5,6 +5,7 @@ import { LiveHub, type LiveSocket } from './live-hub.js';
 class FakeSocket implements LiveSocket {
   readonly messages: string[] = [];
   closed = false;
+  bufferedAmount = 0;
   send(payload: string): void {
     if (this.closed) throw new Error('closed');
     this.messages.push(payload);
@@ -74,6 +75,22 @@ describe('LiveHub', () => {
       notificationsPublished: 1,
       notificationsDelivered: 1,
       sendFailures: 1,
+    });
+  });
+
+  it('disconnects a slow client before its buffered queue grows without bound', () => {
+    const hub = new LiveHub({ maxBufferedBytes: 100 });
+    const socket = new FakeSocket();
+    socket.bufferedAmount = 101;
+    hub.attach(socket);
+
+    hub.publish({ type: 'event.appended', sessionId: 'session-1', seq: 1 });
+
+    expect(socket.closed).toBe(true);
+    expect(hub.diagnostics()).toMatchObject({
+      clientCount: 0,
+      droppedNotifications: 1,
+      slowClientDisconnects: 1,
     });
   });
 

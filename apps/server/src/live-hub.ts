@@ -2,6 +2,7 @@ export interface LiveSocket {
   send(payload: string): void;
   ping?(): void;
   close?(): void;
+  readonly bufferedAmount?: number;
 }
 
 export interface LiveNotification {
@@ -17,6 +18,8 @@ export interface LiveHubDiagnostics {
   readonly clientCount: number;
   readonly notificationsPublished: number;
   readonly notificationsDelivered: number;
+  readonly droppedNotifications: number;
+  readonly slowClientDisconnects: number;
   readonly sendFailures: number;
   readonly invalidMessages: number;
   readonly unsupportedMessages: number;
@@ -31,11 +34,21 @@ interface ClientState {
 
 export class LiveHub {
   private readonly clients = new Map<LiveSocket, ClientState>();
+  private readonly maxBufferedBytes: number;
   private notificationsPublished = 0;
   private notificationsDelivered = 0;
+  private droppedNotifications = 0;
+  private slowClientDisconnects = 0;
   private sendFailures = 0;
   private invalidMessages = 0;
   private unsupportedMessages = 0;
+
+  constructor(options: { readonly maxBufferedBytes?: number } = {}) {
+    this.maxBufferedBytes = options.maxBufferedBytes ?? 256 * 1024;
+    if (!Number.isFinite(this.maxBufferedBytes) || this.maxBufferedBytes <= 0) {
+      throw new RangeError('maxBufferedBytes must be positive.');
+    }
+  }
 
   attach(socket: LiveSocket, protocolVersion = '0.1'): () => void {
     this.clients.set(socket, { socket, alive: true });
@@ -135,6 +148,13 @@ export class LiveHub {
     this.notificationsPublished += 1;
     for (const state of this.clients.values()) {
       if (!matches(state, notification)) continue;
+      if ((state.socket.bufferedAmount ?? 0) > this.maxBufferedBytes) {
+        this.droppedNotifications += 1;
+        this.slowClientDisconnects += 1;
+        this.detach(state.socket);
+        state.socket.close?.();
+        continue;
+      }
       if (this.send(state.socket, notification)) this.notificationsDelivered += 1;
     }
   }
@@ -148,6 +168,8 @@ export class LiveHub {
       clientCount: this.clientCount,
       notificationsPublished: this.notificationsPublished,
       notificationsDelivered: this.notificationsDelivered,
+      droppedNotifications: this.droppedNotifications,
+      slowClientDisconnects: this.slowClientDisconnects,
       sendFailures: this.sendFailures,
       invalidMessages: this.invalidMessages,
       unsupportedMessages: this.unsupportedMessages,
