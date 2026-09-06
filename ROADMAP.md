@@ -1,6 +1,6 @@
 # AgentScope V0 实施路线图
 
-> 状态：待实施
+> 状态：V0 发布加固进行中
 > 依据：`AgentScope_Codex实施规格.md`、`AgentScope_项目规划_用户版.md`
 > 目标版本：V0（本地优先、单用户、Claude Code CLI + Codex CLI）
 > 使用方式：按 Phase 顺序推进；每完成一个 Step，勾选任务并附上测试、文档或实验结果。未通过阶段门禁时，不进入依赖该阶段的后续开发。
@@ -27,7 +27,7 @@ V0 完成时，用户应能在本机启动 AgentScope，用 wrapper 分别运行
 
 ### 1.1 V0 必须达成的产品结果
 
-- [ ] 可通过 `agent-scope start` 启动后端与 Dashboard。
+- [x] 可通过 `agent-scope start` 启动后端与 Dashboard；默认 Dashboard 5173，可用 `--no-dashboard` 和 `--dashboard-port` 覆盖。
 - [ ] 可通过 `agent-scope run claude -- ...` 和 `agent-scope run codex -- ...` 启动并监控真实 CLI。
 - [ ] 可通过 `agent-scope run mock --fixture ...` 在没有真实 Agent 的 CI 中跑通全链路。
 - [ ] Dashboard 可同时展示至少两个运行中的 session。
@@ -401,7 +401,7 @@ agentscope/
 - [x] 明确 inherited 和 piped 模式下 stdin/stdout/stderr 的策略；structured 模式待事件管线接入。
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
-- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；signals are now registered before provider startup and a startup-interrupt regression is covered. Real Windows console Ctrl+C was observed to terminate the outer CLI before terminal persistence, while `agent-scope recover` safely recovered the stale session; atomic Ctrl+C/parent-exit handling and Ctrl+Break remain hardening items.
+- [x] 处理 SIGINT/SIGTERM，停止 provider 子进程并映射 interrupted；signals are registered before provider startup and a startup-interrupt regression is covered. The `agent-scope start` supervisor also terminates the Dashboard process tree. Real Windows console Ctrl+C can still terminate the outer CLI before terminal persistence, while `agent-scope recover` safely recovers the stale session; atomic Ctrl+C/parent-exit handling and Ctrl+Break remain documented limitations.
 - [x] 处理 Windows PATH 中 `.cmd/.bat` shim 到真实 `.exe` 的解析；空格路径、Unicode 路径和长参数仍待补测。
 - [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 
@@ -415,8 +415,8 @@ agentscope/
 
 ### Step 5.4 — `start` 的运行模式
 
-- [ ] 决定开发态和发布态下 server/dashboard 的启动方式。
-- [ ] 处理端口占用、已有 server、DB 路径、浏览器是否自动打开等场景。
+- [x] 决定开发态和发布态下 server/dashboard 的启动方式：V0 从仓库通过 pnpm 启动本地 Vite，发布态 bundle 不在 V0 承诺范围内。
+- [x] 处理端口占用、已有 server、DB 路径、浏览器是否自动打开等场景：提供 Dashboard 端口覆盖、server-only 模式和文档化的端口检查；不自动打开浏览器。
 - [x] 提供 `/healthz` endpoint；start 在 listen 成功后输出实际地址。
 - [ ] 服务不可用时 `run` 给出可操作错误，不静默丢事件。
 
@@ -704,7 +704,7 @@ agentscope/
 
 ### Step 12.1 — Mock E2E
 
-- [ ] 从 `agent-scope start` 启动完整系统。
+- [x] 从 `agent-scope start` 启动完整系统；2026-09-06 在隔离的 8788/5174 端口完成 Windows 真实启停和 Ctrl+C 子进程清理 smoke。
 - [x] 同时运行 success 与 test-failure 两个 Mock session；并发 SQLite/HTTP E2E 已覆盖。
 - [ ] 验证 overview counts、card、detail、timeline、progress、ETA 实时变化。
 - [ ] 刷新 Dashboard、断开 WS、重启 server，验证历史和补齐逻辑。
@@ -755,14 +755,14 @@ agentscope/
 - [x] 配置参考：端口、DB、log level、ignore、raw log、heuristic 参数；已有 `docs/configuration.md`。
 - [x] troubleshooting：CLI detection、端口、DB lock、WS、TTY、Windows/WSL；已补入 `docs/troubleshooting.md`。
 - [x] 已建立不含密钥的 `docs/manual-smoke.md` 手工 smoke 清单；2026-09-06 已在用户当前 Windows PowerShell/API 环境完成 Claude/Codex 最小、工作区证据和 Codex 中断/恢复 smoke，限制已记录到 findings。
-- [ ] 版本号、changelog、migration 和回滚/备份说明。
+- [x] 版本号、changelog、migration 和回滚/备份说明；Unreleased 已记录一键启动、Windows 收尾和 V0 文档，版本仍保持 0.1.0 开发基线。
 
 ### Step 12.8 — V0 验收签字
 
-- [ ] 逐项运行第 8 节验收追踪表，附命令、测试报告、截图或文档链接。
-- [ ] 所有 P0/P1 bug 已关闭；剩余限制进入 Known Issues。
+- [x] 建立并开始填写 V0 验收追踪表；逐项状态、命令/测试和文档证据见 `docs/v0-acceptance.md`。
+- [x] 当前已知限制已进入 `docs/known-issues.md`；剩余 partial 验收项未伪装为完成。
 - [ ] 验证 ExampleAdapter 不需要修改 Core/Storage/Dashboard 关键逻辑。
-- [ ] 生成 V0 release notes，明确支持矩阵和非目标。
+- [x] 生成 V0 release notes 内容，明确支持矩阵和非目标；发布签字仍待性能/跨平台等未完成门禁。
 
 **Phase 12 门禁：** V0 所有验收标准有可重复证据；无已知数据丢失、状态误判或敏感信息默认泄漏问题。
 
@@ -942,7 +942,7 @@ MockAdapter
 
 - [ ] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
-- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/170 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 和 Unicode/空格 workspace 回归也通过。
+- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/171 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 和 Unicode/空格 workspace 回归也通过。
 - [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
 
 ### 12.5 — 第一个必须用户操作的节点

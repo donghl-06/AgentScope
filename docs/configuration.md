@@ -11,14 +11,16 @@ default; the Clash proxy port is unrelated to the port AgentScope listens on.
 | --- | --- | --- | --- |
 | Bind host | `127.0.0.1` | `--host` | `AGENTSCOPE_HOST` |
 | HTTP/WebSocket port | `8787` | `--port` | `AGENTSCOPE_PORT` |
+| Dashboard dev port | `5173` | `--dashboard-port` | `AGENTSCOPE_DASHBOARD_PORT` |
 | SQLite file | `.agentscope/agentscope.db` | `--database` / `--db` | `AGENTSCOPE_DATABASE` |
 | Existing server URL for query commands | `http://127.0.0.1:8787` | — | `AGENTSCOPE_SERVER_URL` |
 
-The precedence for host, port, and database is CLI flag > environment variable > defaults. The
-database parent directory is created automatically. SQLite uses WAL mode with a 30-second default
-busy timeout so short concurrent writes wait instead of failing immediately; callers can override
-this when constructing the storage package directly. Press `Ctrl+C` to close the foreground server
-cleanly. AgentScope does not contact a provider API directly; Claude Code or another CLI keeps its
+The precedence for host, ports, and database is CLI flag > environment variable > defaults. By
+default `agent-scope start` launches both the server and the repository-local Vite Dashboard. Use
+`--no-dashboard` for server-only mode. The database parent directory is created automatically.
+SQLite uses WAL mode with a 30-second default busy timeout so short concurrent writes wait instead
+of failing immediately; callers can override this when constructing the storage package directly.
+Press `Ctrl+C` to close the foreground server and Dashboard cleanly. AgentScope does not contact a provider API directly; Claude Code or another CLI keeps its
 own endpoint, model, and credential configuration.
 
 ## Configuration precedence

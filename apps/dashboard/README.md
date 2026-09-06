@@ -5,13 +5,13 @@ React + Vite Dashboard：项目总览、session 列表、session detail、timeli
 
 ## Local development
 
-先在一个终端启动 AgentScope server：
+推荐由 CLI 一条命令同时启动 server 和 Dashboard：
 
 ```powershell
 node ..\cli\bin\agent-scope.mjs start
 ```
 
-再启动 Dashboard：
+开发时也可以只启动 Dashboard（前提是已有 server 在 `127.0.0.1:8787` 运行）：
 
 ```powershell
 pnpm --filter @agentscope/dashboard dev

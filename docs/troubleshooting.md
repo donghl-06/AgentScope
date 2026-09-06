@@ -40,7 +40,8 @@ delete the database as a first response.
 ## Server and Dashboard ports
 
 The default local split is server `127.0.0.1:8787` and Vite Dashboard
-`localhost:5173`:
+`127.0.0.1:5173`. `agent-scope start` launches both; append `--no-dashboard` for
+server-only mode:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/healthz
@@ -48,9 +49,10 @@ Test-NetConnection 127.0.0.1 -Port 8787
 ```
 
 The CLI can write sessions directly to SQLite, but Dashboard live updates need
-the server and its WebSocket endpoint to remain available. If the port is busy,
+the server and its WebSocket endpoint to remain available. If either port is busy,
 inspect the owning process before choosing another port and update the Dashboard
-proxy configuration consistently.
+port with `--dashboard-port <port>` (or the `AGENTSCOPE_DASHBOARD_PORT` environment
+variable) consistently.
 
 ## A provider command prints nothing
 
@@ -105,7 +107,10 @@ than editing unrelated records or killing every `node`/`claude` process.
 The provider runner registers `SIGINT`/`SIGTERM` before launching the provider, so
 interrupts during startup are normalized and cleaned up as well. Windows console
 control events can still terminate the outer CLI before it persists the terminal
-event; in that case the recovery command above is the supported fallback.
+event; in that case the recovery command above is the supported fallback. For
+`agent-scope start`, the same shutdown path terminates the Dashboard process tree
+and then closes the server. If a console host prevents delivery of `Ctrl+C`, check
+the two ports before restarting rather than killing unrelated Node processes.
 
 ## Unicode and spaces in paths
 

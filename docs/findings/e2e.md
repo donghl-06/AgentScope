@@ -36,6 +36,20 @@ a dedicated benchmark with defined sampling and retention rules.
 - Browser visual refresh, WebSocket reconnect, and HTTP cursor catch-up remain a
   separate manual acceptance item; this check establishes server/SQLite/API recovery.
 
+## One-command server + Dashboard startup
+
+- Date: 2026-09-06.
+- Command: `node .\apps\cli\bin\agent-scope.mjs start --port 8788
+  --dashboard-port 5174 --database :memory:`.
+- Environment: Windows native PowerShell, Node `v24.14.1`, isolated ports so the
+  user's existing 8787/5173 services were not disturbed.
+- Result: AgentScope printed server `http://127.0.0.1:8788` and Dashboard
+  `http://127.0.0.1:5174`; Vite reported the requested 5174 local URL.
+- Ctrl+C result: the outer command exited with the expected interrupt code; post-checks
+  found no listener on 8788/5174 and no matching pnpm/Vite child process. This verifies
+  Dashboard process-tree cleanup, but does not claim that every Windows console host
+  can persist a provider terminal event before killing the outer CLI.
+
 The repeatable local benchmark entry point is:
 
 ```powershell

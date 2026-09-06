@@ -14,21 +14,16 @@ codex --version
 
 如果使用兼容 Claude API 的 endpoint，继续使用你自己的现有环境变量配置；不要把 key 粘贴到命令输出或提交中。
 
-## 2. 启动 AgentScope 服务
+## 2. 启动 AgentScope 服务和 Dashboard
 
 ```powershell
 $env:AGENTSCOPE_DATABASE = Join-Path (Get-Location) '.agentscope\agentscope.db'
 node .\apps\cli\bin\agent-scope.mjs start
 ```
 
-另开一个 PowerShell 窗口启动 Dashboard（开发态）：
-
-```powershell
-Set-Location -LiteralPath 'D:\大学\项目\AgentScope'
-pnpm --filter @agentscope/dashboard dev
-```
-
-浏览器打开 `http://localhost:5173`，服务 API 默认在 `http://127.0.0.1:8787`。
+该命令默认同时启动后端和开发态 Dashboard。浏览器打开 `http://127.0.0.1:5173`，服务
+API 默认在 `http://127.0.0.1:8787`。如果 Dashboard 端口被占用，使用
+`--dashboard-port <port>`；如果只需要后端，使用 `--no-dashboard`。
 
 ## 3. Claude Code structured smoke
 
