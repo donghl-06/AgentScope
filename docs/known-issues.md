@@ -31,9 +31,14 @@ automatic CI contract.
 Real provider sessions depend on the locally installed CLI, endpoint, model,
 credentials, network, and approval policy. They are documented manual smoke
 tests rather than CI tests. Mock fixtures provide the deterministic CI path.
-The configured compatible endpoint currently returns HTTP 403 concurrent-request
-limit errors even after a one-minute retry window; a real provider Ctrl+C smoke
-must be retried when that external limit clears.
+The configured compatible endpoint can return HTTP 403 concurrent-request-limit
+errors while another request is active; waiting about one minute allowed a later
+real retry to initialize. In that retry the Claude CLI reached a structured tool
+call, but Windows Ctrl+C caused the wrapper to exit with code 1 and persisted the
+isolated session as `failed` rather than `interrupted`. No Claude/sleep child was
+left behind. This confirms cleanup but not atomic terminal-status persistence;
+use `agent-scope recover` for stale sessions and do not treat direct Ctrl+C as a
+fully reliable V0 transition yet.
 
 ## WSL2 prerequisite
 

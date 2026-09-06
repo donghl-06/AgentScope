@@ -51,10 +51,23 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 
 ## Provider availability during interruption retry
 
-- A Ctrl+C attempt on 2026-09-06 could not reach the long-running phase because
-  the compatible endpoint returned HTTP 403 for its concurrent-request limit during
-  request initialization. The session was recorded as provider failure; this is an
-  endpoint/account availability result, not evidence about AgentScope signal cleanup.
+- An earlier Ctrl+C attempt on 2026-09-06 could not reach the long-running phase
+  because the compatible endpoint returned HTTP 403 for its concurrent-request
+  limit during request initialization. The session was recorded as provider
+  failure; this is an endpoint/account availability result, not evidence about
+  AgentScope signal cleanup.
+- After waiting 60 seconds, a second real retry was admitted by the endpoint. The
+  Claude CLI initialized `k3-256k`, emitted structured thinking tokens, and emitted
+  an assistant Bash tool call. The requested long sleep was rejected by Claude's
+  own shell-tool policy, which asked for a monitor/background mechanism instead;
+  this is provider tool behavior, not an AgentScope parser error.
+- Ctrl+C was then sent to the AgentScope wrapper. The wrapper exited with code 1
+  and the isolated database persisted the session as terminal `failed`, not
+  `interrupted`. Process inspection found no remaining Claude or sleep child.
+  This confirms child cleanup for this run, but it does not establish atomic
+  Windows Ctrl+C status persistence. The supported V0 recovery path remains
+  `agent-scope recover` for stale sessions; direct Ctrl+C mapping remains a known
+  limitation.
 
 ## Fixture policy
 
