@@ -31,6 +31,16 @@ automatic CI contract.
 Real provider sessions depend on the locally installed CLI, endpoint, model,
 credentials, network, and approval policy. They are documented manual smoke
 tests rather than CI tests. Mock fixtures provide the deterministic CI path.
+The configured compatible endpoint currently returns HTTP 403 concurrent-request
+limit errors even after a one-minute retry window; a real provider Ctrl+C smoke
+must be retried when that external limit clears.
+
+## WSL2 prerequisite
+
+WSL2 itself is installed on the host, but the available Ubuntu environment has
+Linux Node `18.19.0` while the repository requires Node 22+, and its `pnpm`
+command resolves to a Windows Corepack shim. WSL2 remains experimental until a
+Linux Node 22+ and Linux pnpm installation is supplied.
 
 ## Development Dashboard process
 

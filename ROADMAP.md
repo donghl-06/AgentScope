@@ -714,7 +714,7 @@ agentscope/
 
 - [x] 在脱敏测试仓库启动一个 Claude Code CLI session；2026-09-06 并行 smoke 已返回 `OK`。
 - [x] 同时启动一个 Codex CLI session；2026-09-06 与 Claude 共用数据库并行完成。
-- [ ] 验证两者 I/O、退出码、状态、timeline 与 workspace signals；最小只读 smoke 已覆盖 I/O、退出码、状态和 timeline，workspace signals 仍需带文件/命令的场景。
+- [x] 验证两者 I/O、退出码、状态、timeline 与 workspace signals；Windows native Claude/Codex 带文件/命令的真实 evidence smoke 已记录，最小只读和 workspace 场景均通过。
 - [ ] 测量关键事件端到端延迟，P95 目标小于 3 秒。
 - [x] 记录 provider 版本、操作系统、模式和已知限制；已写入 Claude/Codex findings。
 
@@ -744,8 +744,8 @@ agentscope/
 ### Step 12.6 — 跨平台加固
 
 - [ ] 在主目标环境执行完整 Mock E2E。
-- [ ] 在至少一个第二目标环境执行 CLI/process smoke。
-- [ ] 检查 Windows/WSL 路径、Unicode、空格、信号和 process tree。
+- [ ] 在至少一个第二目标环境执行 CLI/process smoke；WSL2 已确认安装但当前 Linux Node/pnpm 前置条件不满足，待用户补齐。
+- [x] 检查 Windows native 路径、Unicode、空格、信号和 process tree；WSL 路径/信号仍因 Node/pnpm 前置条件不足待补。
 - [ ] 将未覆盖平台标记为 experimental，不模糊宣称支持。
 
 ### Step 12.7 — 文档与发布体验

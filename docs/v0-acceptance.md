@@ -14,7 +14,7 @@ documented limitation or manual-only portion remains.
 | AC-06 | Progress includes value, confidence and reasons and is capped before validation | Pass | `packages/progress` unit tests and Mock E2E |
 | AC-07 | ETA includes range, confidence and reasons and widens for risk | Pass | `packages/eta` unit tests and Mock E2E |
 | AC-08 | SQLite history survives a server restart | Pass | server-recovery integration test and 2026-09-06 same-database restart acceptance |
-| AC-09 | Dashboard refresh/WS catch-up does not duplicate or lose timeline events | Partial | HTTP cursor catch-up and user-confirmed refresh/reconnect evidence; a repeatable real browser WS-disconnect script is still pending |
+| AC-09 | Dashboard refresh/WS catch-up does not duplicate or lose timeline events | Pass | HTTP cursor catch-up tests, user-confirmed Dashboard refresh/reconnect, and 2026-09-06 isolated real WS disconnect/catch-up smoke |
 | AC-10 | ExampleAdapter does not require core/storage/dashboard changes | Pass | `docs/adapter-guide.md`, protocol/core boundary tests |
 
 ## Supported V0 matrix
@@ -22,7 +22,7 @@ documented limitation or manual-only portion remains.
 | Environment | Level | Notes |
 | --- | --- | --- |
 | Windows native PowerShell | Supported | Real Claude/Codex smoke, Unicode/space paths, and process-tree cleanup verified |
-| WSL2 | Experimental | Path and signal behavior require a separate smoke run |
+| WSL2 | Experimental / blocked | WSL2 is installed, but the current Ubuntu has Node 18 and a Windows pnpm shim; install Linux Node 22+ and pnpm before smoke |
 | macOS/Linux | Experimental | Shared TypeScript tests are expected to run, but no release smoke evidence is claimed |
 
 ## Release gate
