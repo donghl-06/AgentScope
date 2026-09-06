@@ -754,7 +754,7 @@ agentscope/
 - [x] `docs/adapter-guide.md`：用 ExampleAdapter 说明扩展边界和测试要求。
 - [x] 配置参考：端口、DB、log level、ignore、raw log、heuristic 参数；已有 `docs/configuration.md`。
 - [x] troubleshooting：CLI detection、端口、DB lock、WS、TTY、Windows/WSL；已补入 `docs/troubleshooting.md`。
-- [x] 已建立不含密钥的 `docs/manual-smoke.md` 手工 smoke 清单；真实 CLI smoke 仍需在用户当前 PowerShell/API 环境执行。
+- [x] 已建立不含密钥的 `docs/manual-smoke.md` 手工 smoke 清单；2026-09-06 已在用户当前 Windows PowerShell/API 环境完成 Claude/Codex 最小、工作区证据和 Codex 中断/恢复 smoke，限制已记录到 findings。
 - [ ] 版本号、changelog、migration 和回滚/备份说明。
 
 ### Step 12.8 — V0 验收签字
