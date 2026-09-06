@@ -6,7 +6,7 @@
 
 ```powershell
 pnpm install
-node .\apps\cli\bin\agent-scope.mjs start
+pnpm start
 ```
 
 默认服务地址为 `http://127.0.0.1:8787`，Dashboard 地址为

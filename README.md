@@ -26,7 +26,7 @@ AgentScope 是一个本地优先的 AI Coding Agent 可观测平台。V0 聚焦 
 ```powershell
 pnpm install
 $env:AGENTSCOPE_DATABASE = Join-Path (Get-Location) '.agentscope\agentscope.db'
-node .\apps\cli\bin\agent-scope.mjs start --host 127.0.0.1 --port 8787 --database $env:AGENTSCOPE_DATABASE
+pnpm start -- --host 127.0.0.1 --port 8787 --database $env:AGENTSCOPE_DATABASE
 ```
 
 默认 Dashboard 地址为 `http://127.0.0.1:5173/`。`Ctrl+C` 会同时关闭后端和 Dashboard；
