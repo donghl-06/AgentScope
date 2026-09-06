@@ -12,11 +12,6 @@ the smaller set that still affects a V0 sign-off.
    one-minute retry. Once the limit clears, run one long-lived harmless Claude
    task and interrupt it; then verify `interrupted` and the absence of an
    orphan process.
-2. **WSL2 real-provider/TTY smoke.** The user's interactive Ubuntu shell exposes
-   Linux Node `22.14.0` and pnpm `10.33.0`; an isolated Linux clone with Linux
-   dependencies passed the Mock CLI smoke. Only real-provider and interactive
-   TTY behavior remain experimental. The Windows checkout must not reuse the
-   Linux `node_modules`.
 
 ## Remaining engineering measurements
 
@@ -57,3 +52,6 @@ the smaller set that still affects a V0 sign-off.
 - Known Issues, V0 acceptance matrix, and local release-prep documentation.
 - WSL2 isolated Linux dependency install and Mock CLI smoke; Node22/pnpm user
   environment and the Node22 CLI entry guard are verified.
+- WSL2 real Claude provider plus same-database Dashboard relay was manually
+  confirmed by the user on 2026-09-07. Full interactive TTY/PTY behavior is
+  intentionally still experimental and is not included in that confirmation.

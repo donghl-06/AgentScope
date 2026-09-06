@@ -47,9 +47,10 @@ already exposes Linux Node `22.14.0` and Linux pnpm `10.33.0` from
 `$HOME/workspace/node-v22.14.0-linux-x64`. A non-interactive shell returns before
 the user's `.bashrc` PATH setup, so WSL commands must run through an interactive
 shell or explicitly source the user's setup. A separate temporary Linux clone
-with Linux dependencies passed the Mock CLI smoke on 2026-09-06. The shared
-Windows checkout must not reuse that Linux `node_modules`; WSL real-provider and
-interactive TTY behavior remain experimental.
+with Linux dependencies passed the Mock CLI smoke on 2026-09-06, and the user
+confirmed real Claude plus same-database Dashboard relay on 2026-09-07. The
+shared Windows checkout must not reuse that Linux `node_modules`; interactive
+TTY behavior remains experimental.
 
 ## Development Dashboard process
 

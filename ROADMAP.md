@@ -744,8 +744,8 @@ agentscope/
 ### Step 12.6 — 跨平台加固
 
 - [ ] 在主目标环境执行完整 Mock E2E。
-- [ ] 在至少一个第二目标环境执行 CLI/process smoke；WSL2 已确认安装但当前 Linux Node/pnpm 前置条件不满足，待用户补齐。
-- [x] 检查 Windows native 路径、Unicode、空格、信号和 process tree；WSL 路径/信号仍因 Node/pnpm 前置条件不足待补。
+- [x] 在至少一个第二目标环境执行 CLI/process smoke；WSL2 Linux Mock smoke、真实 Claude provider 和同库 Dashboard relay 已由用户在 2026-09-07 确认通过。
+- [x] 检查 Windows native 路径、Unicode、空格和 process tree；WSL2 structured CLI/Dashboard smoke 已通过，跨终端 interactive TTY/信号仍保留为实验性边界。
 - [ ] 将未覆盖平台标记为 experimental，不模糊宣称支持。
 
 ### Step 12.7 — 文档与发布体验

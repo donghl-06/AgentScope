@@ -1,7 +1,8 @@
 # AgentScope V0 Acceptance Matrix
 
-Status is based on repository tests and the Windows native PowerShell evidence
-recorded on 2026-09-06. `Partial` means the supported V0 path is verified but a
+Status is based on repository tests, Windows native PowerShell evidence
+recorded on 2026-09-06, and the user-confirmed WSL2 smoke recorded on
+2026-09-07. `Partial` means the supported V0 path is verified but a
 documented limitation or manual-only portion remains.
 
 | ID | Acceptance condition | Status | Evidence |
@@ -22,7 +23,7 @@ documented limitation or manual-only portion remains.
 | Environment | Level | Notes |
 | --- | --- | --- |
 | Windows native PowerShell | Supported | Real Claude/Codex smoke, Unicode/space paths, and process-tree cleanup verified |
-| WSL2 | Experimental | Interactive Ubuntu has Linux Node 22.14.0/pnpm 10.33.0; isolated Linux clone Mock CLI smoke passes. Real provider, Dashboard and interactive TTY behavior remain unclaimed |
+| WSL2 | Experimental / manual pass | Interactive Ubuntu has Linux Node 22.14.0/pnpm 10.33.0; isolated Linux clone Mock CLI, real Claude provider, and same-database Dashboard relay passed. Full interactive TTY/PTY behavior remains unclaimed |
 | macOS/Linux | Experimental | Shared TypeScript tests are expected to run, but no release smoke evidence is claimed |
 
 ## Release gate

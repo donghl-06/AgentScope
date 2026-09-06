@@ -24,5 +24,5 @@ Secondary environment: WSL2 (Linux 5.15.167.4-microsoft-standard-WSL2)
 ## Open items
 
 - Real Ctrl+C/ Ctrl+Break delivery to an attached interactive process still requires the Phase 5 wrapper/manual TTY experiment. The current synthetic cleanup result must not be treated as equivalent to console signal forwarding.
-- WSL2 interactive Ubuntu exposes Node `22.14.0` and pnpm `10.33.0`; an isolated Linux clone passed the Mock CLI smoke. The shared Windows checkout remains separate because native dependencies are platform-specific.
+- WSL2 interactive Ubuntu exposes Node `22.14.0` and pnpm `10.33.0`; an isolated Linux clone passed the Mock CLI smoke, and the user confirmed real Claude plus same-database Dashboard relay on 2026-09-07. The shared Windows checkout remains separate because native dependencies are platform-specific.
 - PTY remains optional for the V0 non-interactive structured path. Interactive passthrough is not declared complete until the Claude/Codex TTY experiments are repeatable.
