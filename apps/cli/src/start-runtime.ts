@@ -26,6 +26,7 @@ export interface StartDashboardOptions {
   readonly cwd: string;
   readonly host: string;
   readonly port: number;
+  readonly serverUrl: string;
 }
 
 export interface RunningDashboard {
@@ -53,6 +54,7 @@ export async function runStartCommand(options: StartCommandRuntimeOptions = {}):
         cwd: config.workspacePath,
         host: '127.0.0.1',
         port: config.dashboardPort,
+        serverUrl: config.serverUrl,
       });
     }
   } catch (error) {
@@ -128,7 +130,7 @@ export async function launchDashboard(options: StartDashboardOptions): Promise<R
     ],
     {
       cwd: path.resolve(options.cwd),
-      env: process.env,
+      env: { ...process.env, AGENTSCOPE_SERVER_URL: options.serverUrl },
       shell: false,
       stdio: 'inherit',
       windowsHide: false,

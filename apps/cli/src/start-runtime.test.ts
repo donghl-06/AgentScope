@@ -70,7 +70,12 @@ describe('start command runtime', () => {
         },
       }),
       startDashboard: async (options) => {
-        expect(options).toEqual({ cwd: 'C:/workspace', host: '127.0.0.1', port: 5173 });
+        expect(options).toEqual({
+          cwd: 'C:/workspace',
+          host: '127.0.0.1',
+          port: 5173,
+          serverUrl: 'http://127.0.0.1:8787',
+        });
         return {
           address: 'http://127.0.0.1:5173',
           close: async () => {
