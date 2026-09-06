@@ -193,11 +193,10 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     return;
   }
   await new Promise<void>((resolve) => {
-    const killer = spawn(
-      'taskkill.exe',
-      ['/PID', String(child.pid), '/T', '/F'],
-      { stdio: 'ignore', windowsHide: true },
-    );
+    const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     killer.once('close', () => resolve());
     killer.once('error', () => resolve());
   });
