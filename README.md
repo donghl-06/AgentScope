@@ -42,6 +42,10 @@ node .\apps\cli\bin\agent-scope.mjs run mock --fixture basic-success
 真实 Claude/Codex smoke 的命令、隐私约束和已知限制见
 [`docs/manual-smoke.md`](docs/manual-smoke.md)。
 
+如果你在 VS Code PowerShell 中使用 Claude Code 配置 Kimi API，并希望实时
+观察 Dashboard，请按
+[`docs/claude-kimi-workflow.md`](docs/claude-kimi-workflow.md) 的双终端流程操作。
+
 常见路径、端口、数据库、CLI 无输出、并发限制和 Windows 进程问题见
 [`docs/troubleshooting.md`](docs/troubleshooting.md)。
 
