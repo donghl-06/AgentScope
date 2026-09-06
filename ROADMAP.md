@@ -35,8 +35,8 @@ V0 完成时，用户应能在本机启动 AgentScope，用 wrapper 分别运行
 - [ ] session 的 `completed`、`failed`、`interrupted`、`blocked` 状态不会混淆。
 - [ ] Progress 输出 `value + confidence + reasons`，在必要验证完成前不会显示 100%。
 - [ ] ETA 输出 `minSeconds + maxSeconds + confidence + reasons`，失败、阻塞和低信号会增大区间或降低置信度。
-- [ ] SQLite 可在服务重启后恢复历史 session 和 timeline。
-- [ ] WebSocket 断线重连后，可用 cursor 通过 HTTP 补齐缺失事件。
+- [x] SQLite 可在服务重启后恢复历史 session 和 timeline；已通过 server-recovery 集成测试和 2026-09-06 真实同库 server 重启验收。
+- [x] WebSocket 断线重连后，可用 cursor 通过 HTTP 补齐缺失事件；已有 server-recovery 集成测试，且 2026-09-06 Dashboard 刷新/实时连接人工验收通过。
 - [ ] 新增 ExampleAdapter 时，无需修改 Core、Storage 或 Dashboard 的关键逻辑。
 
 ### 1.2 V0 明确不做
@@ -934,7 +934,7 @@ MockAdapter
 - [x] Dashboard typed API 和 session detail 展示独立 observer evidence 的数量、来源和最新 reason；不混入 AgentEvent timeline。
 - [ ] 验证 overview counts、session card、detail、timeline、Progress、ETA 和 evidence summary 在两个并行 Mock session 中实时变化。
 - [x] Mock backend E2E 已在两个并行 session 中验证 overview counts、session detail 的 Progress/ETA、timeline 终态和 observer evidence API；浏览器视觉实时变化仍需手工确认。
-- [ ] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致；2026-09-06 已实测同库 server 重启、healthz、历史 session/API timeline/evidence 保持不变，浏览器视觉、WebSocket reconnect 和 cursor catch-up 仍需人工确认。
+- [x] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致；自动化 server-recovery 覆盖 HTTP cursor catch-up，2026-09-06 同库 server 重启/API 核验通过，Dashboard 刷新、历史数据、Live updates connected 和无 404 人工验收通过。
 - [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；记录 P50/P95、CPU/内存、SQLite 增长，不作无证据容量承诺。
 - [x] 增加 `pnpm benchmark:mock` 可重复四并发诊断基线，并记录 wall-clock、事件数、数据库大小、Node/平台和 SQLite 锁竞争修复结果；P50/P95、CPU/内存和 WS backpressure 仍未宣称完成。
 
