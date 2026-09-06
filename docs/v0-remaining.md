@@ -18,9 +18,10 @@ the smaller set that still affects a V0 sign-off.
 
 ## Remaining engineering measurements
 
-1. **UI end-to-end latency.** The repeated Mock benchmark now reports wrapper
-   latency P50/P95, SQLite growth, and orchestrator CPU/RSS. It does not measure
-   event-to-Dashboard paint latency.
+1. **UI end-to-end latency.** Cross-process event-to-WebSocket delivery is now
+   measured (P50 163 ms, P95 287 ms in the isolated Windows smoke), and the
+   server polls external CLI writers. Browser event-to-paint latency is still
+   not measured.
 2. **WebSocket backpressure and timeline pagination.** Cursor catch-up and a
    real disconnect/reconnect smoke pass, but sustained slow-client/backpressure
    behavior and large timeline pagination still need measurement.

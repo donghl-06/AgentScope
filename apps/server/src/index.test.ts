@@ -169,6 +169,61 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('polls external SQLite writers and publishes their events to WebSocket clients', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-server-external-'));
+    const filename = path.join(directory, 'session.db');
+    const serverStorage = openStorage({ filename, migrate: true });
+    const writerStorage = openStorage({ filename, migrate: false });
+    const repository = new StorageRepository(serverStorage.client);
+    const writer = new StorageRepository(writerStorage.client);
+    const hub = new LiveHub();
+    const socket = new TestSocket();
+    hub.attach(socket);
+    const app = createServer({
+      repository,
+      liveHub: hub,
+      recoverOnStart: false,
+      externalPollIntervalMs: 10,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        serverStorage.client.close();
+        writerStorage.client.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+      },
+    });
+
+    const state = createInitialSessionState('external-session', 1_700_000_000_000);
+    writer.createSession({
+      id: 'external-session',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    writer.appendEvent(
+      {
+        id: 'external-event',
+        sessionId: 'external-session',
+        timestamp: state.startedAt + 100,
+        source,
+        type: 'planning',
+        payload: { summary: 'external write' },
+        confidence: 1,
+      },
+      { ...state, status: 'running' },
+    );
+
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline) {
+      if (socket.messages.some((message) => JSON.parse(message).type === 'event.appended')) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(socket.messages.map((message) => JSON.parse(message).type)).toContain('event.appended');
+  });
+
   it('does not publish a ghost event when the repository transaction fails', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

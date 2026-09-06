@@ -116,3 +116,21 @@ above while continuing to delete its temporary database.
 - These checks close the diagnostics baseline and cursor pagination correctness;
   sustained slow-client backpressure and browser paint latency remain separate
   release-hardening measurements.
+
+## Cross-process live updates and event-to-client latency
+
+- Date: 2026-09-06.
+- A server process was started on isolated port 8791 while a separate CLI
+  process ran the `basic-success` Mock fixture against the same SQLite file.
+  Before this check, the server could read the external writes after refresh but
+  its in-process repository subscription could not broadcast them to WebSocket
+  clients.
+- The server now polls external SQLite writers at a bounded 250 ms interval,
+  tracks per-session event cursors, and publishes only newly observed session or
+  event notifications. Existing history is hydrated without replaying it to new
+  clients, and all session list cursor pages are covered.
+- The isolated smoke received all 10 of 10 event notifications with no missing
+  sequence numbers. Event timestamp to WebSocket receipt latency was P50 163 ms,
+  P95 287 ms, maximum 287 ms on Windows native Node `v24.14.1`.
+- This is an event-to-WebSocket baseline, not browser paint latency. Slow-client
+  backpressure and actual Dashboard paint measurement remain separate items.

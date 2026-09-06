@@ -60,6 +60,12 @@ V0 has a four-concurrent-Mock baseline, but does not promise a P95 latency,
 CPU/memory ceiling, or maximum session/event count yet. These measurements
 remain release-hardening work.
 
+The server polls SQLite changes written by independent CLI processes at a bounded
+interval so Dashboard WebSocket updates do not depend on an in-process repository
+subscription. The measured event-to-WebSocket P95 is below three seconds in the
+Windows smoke; browser paint latency and sustained slow-client backpressure are
+not yet claimed.
+
 ## Raw provider logs
 
 Raw provider output is not persisted by default. A general-purpose raw-log

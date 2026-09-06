@@ -6,9 +6,11 @@ import type { SessionStatus } from '@agentscope/protocol';
 import { reduceSessionState } from '@agentscope/core';
 import {
   type ProjectionVerification,
+  type RepositoryNotification,
   StorageError,
   StorageNotFoundError,
   type SessionListFilter,
+  type StoredSession,
   type StorageRepository,
 } from '@agentscope/storage';
 
@@ -80,6 +82,7 @@ export interface ServerOptions {
   readonly liveHub?: LiveHub;
   readonly recoverOnStart?: boolean;
   readonly heartbeatIntervalMs?: number;
+  readonly externalPollIntervalMs?: number;
   readonly maxWebSocketPayloadBytes?: number;
   readonly onProjectionMismatch?: (diagnostic: ProjectionVerification) => void;
 }
@@ -90,15 +93,22 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const liveHub = options.liveHub ?? new LiveHub();
   const startedAt = Date.now();
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 30_000;
+  const externalPollIntervalMs = options.externalPollIntervalMs ?? 250;
   const maxWebSocketPayloadBytes = options.maxWebSocketPayloadBytes ?? 64 * 1024;
   if (!Number.isFinite(maxWebSocketPayloadBytes) || maxWebSocketPayloadBytes <= 0) {
     throw new RangeError('maxWebSocketPayloadBytes must be positive.');
+  }
+  if (!Number.isFinite(externalPollIntervalMs) || externalPollIntervalMs < 0) {
+    throw new RangeError('externalPollIntervalMs must be non-negative.');
   }
   for (const diagnostic of options.repository.verifyNonTerminalProjections(reduceSessionState)) {
     if (!diagnostic.matches) options.onProjectionMismatch?.(diagnostic);
   }
   if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
+  const observedSessions = new Map<string, ObservedSession>();
+  hydrateObservedSessions(options.repository, observedSessions);
   const unsubscribeRepository = options.repository.subscribe((notification) => {
+    rememberNotification(observedSessions, notification);
     if (notification.type === 'event.appended') {
       liveHub.publish({
         type: 'event.appended',
@@ -121,9 +131,59 @@ export function createServer(options: ServerOptions): FastifyInstance {
       payload: { status: notification.session.status },
     });
   });
+  let externalPollInFlight = false;
+  const pollExternalChanges = () => {
+    if (externalPollInFlight) return;
+    externalPollInFlight = true;
+    try {
+      for (const session of listAllSessions(options.repository)) {
+        const observed = observedSessions.get(session.id);
+        const afterSeq = observed?.lastEventSeq ?? 0;
+        const events = options.repository.listEvents(session.id, afterSeq, 100).items;
+        if (observed === undefined) {
+          liveHub.publish({
+            type: 'session.created',
+            sessionId: session.id,
+            ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
+            payload: { status: session.status },
+          });
+        } else if (observed.updatedAt !== session.updatedAt || observed.status !== session.status) {
+          liveHub.publish({
+            type: 'session.updated',
+            sessionId: session.id,
+            ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
+            payload: { status: session.status },
+          });
+        }
+        for (const event of events) {
+          liveHub.publish({
+            type: 'event.appended',
+            sessionId: session.id,
+            ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
+            seq: event.seq,
+            cursor: String(event.seq),
+            payload: { eventType: event.event.type },
+          });
+        }
+        observedSessions.set(session.id, {
+          updatedAt: session.updatedAt,
+          status: session.status,
+          lastEventSeq: Math.max(observed?.lastEventSeq ?? 0, ...events.map((event) => event.seq)),
+        });
+      }
+    } finally {
+      externalPollInFlight = false;
+    }
+  };
+  const externalPollTimer =
+    externalPollIntervalMs === 0
+      ? undefined
+      : setInterval(pollExternalChanges, externalPollIntervalMs);
+  externalPollTimer?.unref?.();
   app.addHook('onClose', () => {
     unsubscribeRepository();
     stopHeartbeat();
+    if (externalPollTimer !== undefined) clearInterval(externalPollTimer);
     liveHub.close();
   });
   app.setErrorHandler((error, _request, reply) => {
@@ -339,3 +399,59 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
 
 export type ServerRequest = FastifyRequest;
 export * from './runtime.js';
+
+interface ObservedSession {
+  readonly updatedAt: number;
+  readonly status: SessionStatus;
+  readonly lastEventSeq: number;
+}
+
+function hydrateObservedSessions(
+  repository: StorageRepository,
+  observedSessions: Map<string, ObservedSession>,
+): void {
+  for (const session of listAllSessions(repository)) {
+    let cursor = 0;
+    let lastEventSeq = 0;
+    while (true) {
+      const events = repository.listEvents(session.id, cursor, 100);
+      lastEventSeq = events.items.at(-1)?.seq ?? lastEventSeq;
+      if (events.nextCursor === undefined) break;
+      cursor = Number(events.nextCursor);
+    }
+    observedSessions.set(session.id, {
+      updatedAt: session.updatedAt,
+      status: session.status,
+      lastEventSeq,
+    });
+  }
+}
+
+function listAllSessions(repository: StorageRepository): readonly StoredSession[] {
+  const sessions: StoredSession[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const page = repository.listSessions({
+      limit: 100,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    sessions.push(...page.items);
+    if (page.nextCursor === undefined) return sessions;
+    cursor = page.nextCursor;
+  }
+}
+
+function rememberNotification(
+  observedSessions: Map<string, ObservedSession>,
+  notification: RepositoryNotification,
+): void {
+  const current = observedSessions.get(notification.session.id);
+  observedSessions.set(notification.session.id, {
+    updatedAt: notification.session.updatedAt,
+    status: notification.session.status,
+    lastEventSeq:
+      notification.type === 'event.appended'
+        ? Math.max(current?.lastEventSeq ?? 0, notification.event.seq)
+        : (current?.lastEventSeq ?? 0),
+  });
+}
