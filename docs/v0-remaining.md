@@ -19,7 +19,7 @@ the smaller set that still affects a V0 sign-off.
 ## Remaining engineering measurements
 
 1. **UI end-to-end latency.** Cross-process event-to-WebSocket delivery is now
-   measured (P50 163 ms, P95 287 ms in the isolated Windows smoke), and the
+   measured (final smoke P50 220 ms, P95 396 ms), and the
    server polls external CLI writers. Browser event-to-paint latency is still
    not measured.
 2. **WebSocket backpressure — baseline closed in this cycle.** Cursor catch-up,

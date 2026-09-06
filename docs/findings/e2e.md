@@ -131,7 +131,9 @@ above while continuing to delete its temporary database.
   event notifications. Existing history is hydrated without replaying it to new
   clients, and all session list cursor pages are covered.
 - The isolated smoke received all 10 of 10 event notifications with no missing
-  sequence numbers. Event timestamp to WebSocket receipt latency was P50 163 ms,
-  P95 287 ms, maximum 287 ms on Windows native Node `v24.14.1`.
+  sequence numbers. The final rerun on Windows native Node `v24.14.1` measured
+  event timestamp to WebSocket receipt latency at P50 220 ms, P95 396 ms, and
+  maximum 396 ms. An earlier rerun measured P50 163 ms/P95 287 ms; both remain
+  below the three-second event-delivery target.
 - This is an event-to-WebSocket baseline, not browser paint latency. Slow-client
   backpressure and actual Dashboard paint measurement remain separate items.
