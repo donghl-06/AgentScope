@@ -16,9 +16,13 @@ the ignored `.env.claude-test.ps1` file because it is the local credential bound
   explicit host override.
 - The local Claude configuration remains ignored and is not part of Git history.
 
+The production dependency audit ran with explicit user authorization on 2026-09-06:
+`pnpm audit --prod --json` reported 69 production dependencies, 3 optional
+dependencies, and zero info/low/moderate/high/critical advisories.
+
 This is a targeted evidence scan, not a substitute for a full security review.
 The observer regression suite now covers lexical traversal rejection and a
 workspace junction targeting an outside path; the process-runner suite covers
 shell metacharacter arguments with `shell: false`. Raw-log opt-in retention is
-not implemented and remains disabled by policy. Dependency vulnerability
-review remains an explicit follow-up item.
+not implemented and remains disabled by policy. Windows/WSL process-tree and
+interactive signal behavior remain manual smoke items.
