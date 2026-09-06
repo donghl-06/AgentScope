@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { performance } from 'node:perf_hooks';
 
 import {
   assertAgentEvent,
@@ -131,6 +132,18 @@ export interface AppendEventResult {
   readonly session: StoredSession;
 }
 
+export interface StorageDiagnostics {
+  readonly eventAppendAttempts: number;
+  readonly eventAppendSuccesses: number;
+  readonly duplicateEventErrors: number;
+  readonly busyErrors: number;
+  readonly eventWriteLatencyMs: {
+    readonly count: number;
+    readonly total: number;
+    readonly max: number;
+  };
+}
+
 export type SessionProjectionReducer = (state: SessionState, event: AgentEvent) => SessionState;
 
 export interface ProjectionVerification {
@@ -152,12 +165,33 @@ export type RepositoryNotification =
 
 export class StorageRepository {
   private readonly listeners = new Set<(notification: RepositoryNotification) => void>();
+  private eventAppendAttempts = 0;
+  private eventAppendSuccesses = 0;
+  private duplicateEventErrors = 0;
+  private busyErrors = 0;
+  private eventWriteLatencyCount = 0;
+  private eventWriteLatencyTotal = 0;
+  private eventWriteLatencyMax = 0;
 
   constructor(private readonly client: Database.Database) {}
 
   subscribe(listener: (notification: RepositoryNotification) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  diagnostics(): StorageDiagnostics {
+    return {
+      eventAppendAttempts: this.eventAppendAttempts,
+      eventAppendSuccesses: this.eventAppendSuccesses,
+      duplicateEventErrors: this.duplicateEventErrors,
+      busyErrors: this.busyErrors,
+      eventWriteLatencyMs: {
+        count: this.eventWriteLatencyCount,
+        total: Math.round(this.eventWriteLatencyTotal * 100) / 100,
+        max: Math.round(this.eventWriteLatencyMax * 100) / 100,
+      },
+    };
   }
 
   createSession(input: CreateSessionInput): StoredSession {
@@ -341,6 +375,8 @@ export class StorageRepository {
   }
 
   appendEvent(event: AgentEvent, projection: SessionState, now = Date.now()): AppendEventResult {
+    this.eventAppendAttempts += 1;
+    const writeStartedAt = performance.now();
     assertAgentEvent(event);
     assertSessionState(projection);
     if (event.sessionId !== projection.sessionId) {
@@ -392,10 +428,23 @@ export class StorageRepository {
     } catch (error) {
       // SQLite can acquire the write lock before the transaction callback runs;
       // normalize that boundary error just like INSERT/UPDATE failures.
-      throw mapSqliteError(error, `Event already exists: ${event.id}`);
+      const mapped = mapSqliteError(error, `Event already exists: ${event.id}`);
+      if (mapped.code === 'conflict') this.duplicateEventErrors += 1;
+      if (mapped.code === 'busy') this.busyErrors += 1;
+      this.recordEventWriteLatency(writeStartedAt);
+      throw mapped;
     }
+    this.eventAppendSuccesses += 1;
+    this.recordEventWriteLatency(writeStartedAt);
     this.notify({ type: 'event.appended', ...result });
     return result;
+  }
+
+  private recordEventWriteLatency(startedAt: number): void {
+    const elapsed = Math.max(0, performance.now() - startedAt);
+    this.eventWriteLatencyCount += 1;
+    this.eventWriteLatencyTotal += elapsed;
+    this.eventWriteLatencyMax = Math.max(this.eventWriteLatencyMax, elapsed);
   }
 
   listEvents(sessionId: string, afterSeq = 0, limit = 100): EventPage {

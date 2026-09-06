@@ -103,3 +103,16 @@ above while continuing to delete its temporary database.
 - This confirms the intended recovery contract: WebSocket carries live updates and
   HTTP `after=<lastSeq>` catch-up supplies events missed while disconnected.
 - The temporary server, listener, and database were removed after the smoke.
+
+## Diagnostics and large timeline pagination
+
+- The V0 server now exposes a read-only `/api/diagnostics` snapshot with an
+  `x-request-id` response header, WebSocket client/delivery/error counters, and
+  aggregate normalized-event write latency. The snapshot is process-lifetime
+  state and contains no provider payload or secret.
+- A storage regression appends 250 events and reads them in pages of 17 using the
+  event cursor. It observed exactly sequence numbers 1–250 once each, covering
+  the large-timeline pagination path without duplicates or gaps.
+- These checks close the diagnostics baseline and cursor pagination correctness;
+  sustained slow-client backpressure and browser paint latency remain separate
+  release-hardening measurements.

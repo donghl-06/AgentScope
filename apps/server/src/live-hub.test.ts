@@ -56,6 +56,25 @@ describe('LiveHub', () => {
       type: 'error',
       code: 'unsupported_message',
     });
+    expect(hub.diagnostics()).toMatchObject({ invalidMessages: 1, unsupportedMessages: 1 });
+  });
+
+  it('reports notification delivery and failed-send diagnostics', () => {
+    const hub = new LiveHub();
+    const healthy = new FakeSocket();
+    const broken = new FakeSocket();
+    hub.attach(healthy);
+    hub.attach(broken);
+    broken.closed = true;
+
+    hub.publish({ type: 'event.appended', sessionId: 'session-1', seq: 1 });
+
+    expect(hub.diagnostics()).toMatchObject({
+      clientCount: 1,
+      notificationsPublished: 1,
+      notificationsDelivered: 1,
+      sendFailures: 1,
+    });
   });
 
   it('closes all clients when the hub shuts down', () => {

@@ -128,6 +128,37 @@ describe('StorageRepository', () => {
     });
   });
 
+  it('paginates a large timeline without gaps or duplicate sequence numbers', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-pagination',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-pagination'),
+      });
+      for (let index = 1; index <= 250; index += 1) {
+        repository.appendEvent(
+          event(`pagination-${index}`, 'session-pagination'),
+          state('session-pagination', 'running'),
+          1_700_000_000_000 + index,
+        );
+      }
+
+      const sequences: number[] = [];
+      let cursor = 0;
+      while (sequences.length < 250) {
+        const page = repository.listEvents('session-pagination', cursor, 17);
+        sequences.push(...page.items.map((item) => item.seq));
+        if (page.nextCursor === undefined) break;
+        cursor = Number(page.nextCursor);
+      }
+
+      expect(sequences).toEqual(Array.from({ length: 250 }, (_, index) => index + 1));
+    });
+  });
+
   it('rejects duplicate events and detects corrupt persisted JSON', () => {
     withRepository((repository, client) => {
       repository.createSession({
@@ -142,6 +173,11 @@ describe('StorageRepository', () => {
       expect(() => repository.appendEvent(event('event-1'), state('session-1', 'running'))).toThrow(
         StorageConflictError,
       );
+      expect(repository.diagnostics()).toMatchObject({
+        eventAppendAttempts: 2,
+        eventAppendSuccesses: 1,
+        duplicateEventErrors: 1,
+      });
 
       client.prepare('UPDATE events SET payload_json = ? WHERE id = ?').run('{', 'event-1');
       expect(() => repository.listEvents('session-1')).toThrow(StorageCorruptPayloadError);
@@ -269,6 +305,7 @@ describe('StorageRepository', () => {
       expect(() =>
         secondRepository.appendEvent(event('event-1'), state('session-1', 'running')),
       ).toThrow(StorageBusyError);
+      expect(secondRepository.diagnostics()).toMatchObject({ busyErrors: 1 });
       first.client.exec('ROLLBACK');
     } finally {
       first.client.close();

@@ -13,6 +13,15 @@ export interface LiveNotification {
   readonly payload?: Record<string, unknown>;
 }
 
+export interface LiveHubDiagnostics {
+  readonly clientCount: number;
+  readonly notificationsPublished: number;
+  readonly notificationsDelivered: number;
+  readonly sendFailures: number;
+  readonly invalidMessages: number;
+  readonly unsupportedMessages: number;
+}
+
 interface ClientState {
   readonly socket: LiveSocket;
   readonly alive: boolean;
@@ -22,6 +31,11 @@ interface ClientState {
 
 export class LiveHub {
   private readonly clients = new Map<LiveSocket, ClientState>();
+  private notificationsPublished = 0;
+  private notificationsDelivered = 0;
+  private sendFailures = 0;
+  private invalidMessages = 0;
+  private unsupportedMessages = 0;
 
   attach(socket: LiveSocket, protocolVersion = '0.1'): () => void {
     this.clients.set(socket, { socket, alive: true });
@@ -82,10 +96,12 @@ export class LiveHub {
     try {
       message = JSON.parse(raw);
     } catch {
+      this.invalidMessages += 1;
       this.send(socket, { type: 'error', code: 'invalid_json' });
       return;
     }
     if (!isRecord(message) || typeof message.type !== 'string') {
+      this.invalidMessages += 1;
       this.send(socket, { type: 'error', code: 'invalid_message' });
       return;
     }
@@ -95,6 +111,7 @@ export class LiveHub {
     }
     if (message.type === 'pong') return;
     if (message.type !== 'subscribe') {
+      this.unsupportedMessages += 1;
       this.send(socket, { type: 'error', code: 'unsupported_message' });
       return;
     }
@@ -115,9 +132,10 @@ export class LiveHub {
   }
 
   publish(notification: LiveNotification): void {
+    this.notificationsPublished += 1;
     for (const state of this.clients.values()) {
       if (!matches(state, notification)) continue;
-      this.send(state.socket, notification);
+      if (this.send(state.socket, notification)) this.notificationsDelivered += 1;
     }
   }
 
@@ -125,12 +143,26 @@ export class LiveHub {
     return this.clients.size;
   }
 
-  private send(socket: LiveSocket, payload: unknown): void {
+  diagnostics(): LiveHubDiagnostics {
+    return {
+      clientCount: this.clientCount,
+      notificationsPublished: this.notificationsPublished,
+      notificationsDelivered: this.notificationsDelivered,
+      sendFailures: this.sendFailures,
+      invalidMessages: this.invalidMessages,
+      unsupportedMessages: this.unsupportedMessages,
+    };
+  }
+
+  private send(socket: LiveSocket, payload: unknown): boolean {
     try {
       socket.send(JSON.stringify(payload));
+      return true;
     } catch {
+      this.sendFailures += 1;
       this.detach(socket);
       socket.close?.();
+      return false;
     }
   }
 }

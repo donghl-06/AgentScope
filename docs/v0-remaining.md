@@ -28,9 +28,11 @@ the smaller set that still affects a V0 sign-off.
    file-backed regression now holds an `IMMEDIATE` write lock and verifies the
    second append is normalized to `StorageBusyError`; evidence is in
    `docs/findings/e2e.md`.
-4. **Lightweight diagnostics.** Correlation IDs, dropped/duplicate-event
-   counters, WebSocket client counts, and write-latency metrics are not exposed
-   as a stable V0 diagnostics surface.
+4. **Lightweight diagnostics — baseline closed in this cycle.** `GET
+   /api/diagnostics` now exposes request correlation IDs, WebSocket client and
+   delivery/error counters, duplicate/busy storage counters, and aggregate event
+   write latency. Long-term metrics retention and a full dropped-event taxonomy
+   remain outside the V0 surface.
 
 ## Deliberately not required for the current V0 path
 

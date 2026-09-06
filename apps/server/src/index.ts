@@ -44,6 +44,35 @@ const ProjectOverviewSchema = Type.Object({
   interrupted: Type.Integer({ minimum: 0 }),
   total: Type.Integer({ minimum: 0 }),
 });
+const DiagnosticsSchema = Type.Object({
+  protocolVersion: Type.String(),
+  startedAt: Type.Integer({ minimum: 0 }),
+  uptimeMs: Type.Integer({ minimum: 0 }),
+  process: Type.Object({
+    pid: Type.Integer({ minimum: 0 }),
+    nodeVersion: Type.String(),
+    platform: Type.String(),
+  }),
+  websocket: Type.Object({
+    clientCount: Type.Integer({ minimum: 0 }),
+    notificationsPublished: Type.Integer({ minimum: 0 }),
+    notificationsDelivered: Type.Integer({ minimum: 0 }),
+    sendFailures: Type.Integer({ minimum: 0 }),
+    invalidMessages: Type.Integer({ minimum: 0 }),
+    unsupportedMessages: Type.Integer({ minimum: 0 }),
+  }),
+  storage: Type.Object({
+    eventAppendAttempts: Type.Integer({ minimum: 0 }),
+    eventAppendSuccesses: Type.Integer({ minimum: 0 }),
+    duplicateEventErrors: Type.Integer({ minimum: 0 }),
+    busyErrors: Type.Integer({ minimum: 0 }),
+    eventWriteLatencyMs: Type.Object({
+      count: Type.Integer({ minimum: 0 }),
+      total: Type.Number({ minimum: 0 }),
+      max: Type.Number({ minimum: 0 }),
+    }),
+  }),
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -59,6 +88,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const protocolVersion = options.protocolVersion ?? '0.1';
   const liveHub = options.liveHub ?? new LiveHub();
+  const startedAt = Date.now();
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 30_000;
   const maxWebSocketPayloadBytes = options.maxWebSocketPayloadBytes ?? 64 * 1024;
   if (!Number.isFinite(maxWebSocketPayloadBytes) || maxWebSocketPayloadBytes <= 0) {
@@ -104,6 +134,10 @@ export function createServer(options: ServerOptions): FastifyInstance {
     }
     return sendError(reply, error);
   });
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('x-request-id', request.id);
+    return payload;
+  });
 
   app.register(async (instance) => {
     await instance.register(websocket, { options: { maxPayload: maxWebSocketPayloadBytes } });
@@ -120,6 +154,19 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const stopHeartbeat = liveHub.startHeartbeat(heartbeatIntervalMs);
 
   app.get('/healthz', async () => ({ status: 'ok', protocolVersion }));
+
+  app.get('/api/diagnostics', { schema: { response: { 200: DiagnosticsSchema } } }, async () => ({
+    protocolVersion,
+    startedAt,
+    uptimeMs: Math.max(0, Date.now() - startedAt),
+    process: {
+      pid: process.pid,
+      nodeVersion: process.version,
+      platform: `${process.platform}-${process.arch}`,
+    },
+    websocket: liveHub.diagnostics(),
+    storage: options.repository.diagnostics(),
+  }));
 
   app.get(
     '/api/sessions',

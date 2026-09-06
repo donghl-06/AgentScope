@@ -60,6 +60,13 @@ describe('server HTTP API', () => {
     });
 
     expect((await app.inject('/healthz')).json()).toMatchObject({ status: 'ok' });
+    const diagnostics = await app.inject('/api/diagnostics');
+    expect(diagnostics.statusCode).toBe(200);
+    expect(diagnostics.headers['x-request-id']).toBeDefined();
+    expect(diagnostics.json()).toMatchObject({
+      websocket: { clientCount: 0 },
+      storage: { eventAppendAttempts: 1, eventAppendSuccesses: 1 },
+    });
     expect((await app.inject('/api/sessions?project=project-1')).json()).toMatchObject({
       items: [{ id: 'session-1', status: 'running' }],
     });
