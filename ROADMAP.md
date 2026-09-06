@@ -423,7 +423,7 @@ agentscope/
 ### Step 5.5 — CLI 测试
 
 - [x] 用 synthetic child process 覆盖 stdout/stderr、exit 0/非 0、spawn error、长运行中断和参数边界。
-- [ ] 测试带空格/Unicode 的 cwd 和参数。
+- [x] 测试带空格/Unicode 的 cwd 和参数；`process-runner` 已覆盖 spaced arguments，provider runner 新增了 Unicode/空格 workspace 回归。
 - [x] 测试 cleanup 幂等、孤儿进程防护和 server unavailable；cleanup 有回归覆盖，`agent-scope recover` 提供 stale session 恢复，ServerClient 将网络失败映射为稳定 CLI 错误。
 - [x] 真实 Windows PowerShell Ctrl+C 纳入 manual smoke；provider child exit evidence was captured and `agent-scope recover` converted the stale session to `interrupted`. Direct Ctrl+C remains non-atomic until console-control handling is improved.
 
@@ -942,7 +942,7 @@ MockAdapter
 
 - [ ] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
-- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/169 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 回归也通过。
+- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/170 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 和 Unicode/空格 workspace 回归也通过。
 - [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
 
 ### 12.5 — 第一个必须用户操作的节点

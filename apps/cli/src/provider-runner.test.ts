@@ -279,4 +279,26 @@ describe('provider runner', () => {
       exitCode: 130,
     });
   });
+
+  it('preserves Unicode and spaces in the workspace path', async () => {
+    const directory = path.join(
+      os.tmpdir(),
+      `AgentScope workspace 空格-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    fs.mkdirSync(directory, { recursive: true });
+    try {
+      const result = await runProvider({
+        adapter: 'claude',
+        executable: process.execPath,
+        args: ['-e', script('{"type":"result","subtype":"success","is_error":false}', 0)],
+        filename: path.join(directory, 'session.db'),
+        workspacePath: directory,
+        sessionId: 'session-unicode-workspace',
+      });
+
+      expect(result).toMatchObject({ status: 'completed', exitCode: 0 });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
