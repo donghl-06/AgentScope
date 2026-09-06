@@ -61,6 +61,38 @@ events in the database while Claude Code uses the environment-loaded Kimi
 endpoint. The terminal prints the wrapper's final JSON result; the Dashboard
 updates the same session through WebSocket notifications.
 
+### Running against another project
+
+The observed workspace is the current directory of the wrapper process. It is
+not required to be the AgentScope repository. Start the server from the
+AgentScope repository, then start the provider wrapper from the project you
+actually want Claude Code to edit. Use an absolute path for the wrapper and an
+absolute path for the shared database:
+
+```powershell
+# Terminal 1: keep this in the AgentScope repository
+Set-Location -LiteralPath 'D:\大学\项目\AgentScope'
+$env:AGENTSCOPE_DATABASE = Join-Path (Get-Location) '.agentscope\agentscope.db'
+pnpm start
+
+# Terminal 2: switch to the target project
+Set-Location -LiteralPath 'D:\大学\其他项目\MyProject'
+. 'D:\大学\项目\AgentScope\.env.claude-test.ps1'
+$env:AGENTSCOPE_DATABASE = 'D:\大学\项目\AgentScope\.agentscope\agentscope.db'
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' run claude -- `
+  --bare `
+  -p "Reply with OK only" `
+  --output-format stream-json `
+  --verbose
+```
+
+In this example `D:\大学\其他项目\MyProject` is the workspace sent to Claude,
+and `D:\大学\项目\AgentScope\.agentscope\agentscope.db` is only the shared
+observability database. The Dashboard can therefore show the task while the
+provider edits the other project. File, Git, and process evidence is scoped to
+that target workspace. The PowerShell dot-source syntax is `. <path>`; do not
+omit the space after the first dot.
+
 ## 4. What to observe in the Dashboard
 
 1. The header should say **Live updates connected**.
