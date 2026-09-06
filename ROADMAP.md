@@ -401,7 +401,7 @@ agentscope/
 - [x] 明确 inherited 和 piped 模式下 stdin/stdout/stderr 的策略；structured 模式待事件管线接入。
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
-- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；synthetic child coverage is green. Real Windows console Ctrl+C was observed to terminate the outer CLI before terminal persistence, while `agent-scope recover` safely recovered the stale session; atomic Ctrl+C/parent-exit handling and Ctrl+Break remain hardening items.
+- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；signals are now registered before provider startup and a startup-interrupt regression is covered. Real Windows console Ctrl+C was observed to terminate the outer CLI before terminal persistence, while `agent-scope recover` safely recovered the stale session; atomic Ctrl+C/parent-exit handling and Ctrl+Break remain hardening items.
 - [x] 处理 Windows PATH 中 `.cmd/.bat` shim 到真实 `.exe` 的解析；空格路径、Unicode 路径和长参数仍待补测。
 - [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 
@@ -942,7 +942,7 @@ MockAdapter
 
 - [ ] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
-- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/168 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过。
+- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/169 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 回归也通过。
 - [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
 
 ### 12.5 — 第一个必须用户操作的节点

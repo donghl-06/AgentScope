@@ -79,17 +79,20 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   let observerRuntime: ObserverRuntime | undefined;
   const activeCommandIds: string[] = [];
   const signals = options.signals ?? process;
+  let stopRequested = false;
   const handleSignal = () => {
+    stopRequested = true;
     void attached?.stop('user_requested');
   };
+  signals.once('SIGINT', handleSignal);
+  signals.once('SIGTERM', handleSignal);
   try {
     attached = await adapter.start!({
       sessionId,
       workspacePath: options.workspacePath,
       args: options.args,
     });
-    signals.once('SIGINT', handleSignal);
-    signals.once('SIGTERM', handleSignal);
+    if (stopRequested) await attached.stop('user_requested');
     observerRuntime = new ObserverRuntime({
       sessionId,
       workspacePath: options.workspacePath,

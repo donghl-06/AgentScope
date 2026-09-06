@@ -102,6 +102,11 @@ node .\apps\cli\bin\agent-scope.mjs recover
 It prints only the recovered session ids/statuses. A targeted recovery is safer
 than editing unrelated records or killing every `node`/`claude` process.
 
+The provider runner registers `SIGINT`/`SIGTERM` before launching the provider, so
+interrupts during startup are normalized and cleaned up as well. Windows console
+control events can still terminate the outer CLI before it persists the terminal
+event; in that case the recovery command above is the supported fallback.
+
 ## Unicode and spaces in paths
 
 Use `Set-Location -LiteralPath` and pass child-process arguments as an array. Do

@@ -260,4 +260,23 @@ describe('provider runner', () => {
 
     await expect(running).resolves.toMatchObject({ status: 'interrupted', exitCode: 130 });
   });
+
+  it('honors SIGINT that arrives while the provider is starting', async () => {
+    const signals = new FakeSignals();
+    const running = runProvider({
+      adapter: 'claude',
+      executable: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 10_000)'],
+      filename: ':memory:',
+      workspacePath,
+      sessionId: 'session-interrupted-during-start',
+      signals,
+    });
+    signals.emit('SIGINT');
+
+    await expect(running).resolves.toMatchObject({
+      status: 'interrupted',
+      exitCode: 130,
+    });
+  });
 });
