@@ -23,6 +23,19 @@ This evidence does not establish a supported maximum session count, high-frequen
 filesystem capacity, WebSocket backpressure limits, or resource usage. Those require
 a dedicated benchmark with defined sampling and retention rules.
 
+## Server restart recovery
+
+- Date: 2026-09-06.
+- The live AgentScope server on `127.0.0.1:8787` was stopped and restarted with the
+  same repository-local SQLite database. `/healthz` returned `status=ok` afterward,
+  and all 34 persisted sessions remained queryable.
+- Representative real-provider sessions retained their terminal status and counts:
+  Codex completed (8 events, 8 evidence records), Claude completed (5 events, 31
+  evidence records), and Codex interrupted (3 events, 4 evidence records). No new
+  duplicate events were created by the restart.
+- Browser visual refresh, WebSocket reconnect, and HTTP cursor catch-up remain a
+  separate manual acceptance item; this check establishes server/SQLite/API recovery.
+
 The repeatable local benchmark entry point is:
 
 ```powershell
