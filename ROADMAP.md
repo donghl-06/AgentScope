@@ -942,7 +942,7 @@ MockAdapter
 
 - [ ] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
-- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/167 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描。
+- [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/168 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过。
 - [ ] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；创建最终本地 release-prep commit。
 
 ### 12.5 — 第一个必须用户操作的节点
