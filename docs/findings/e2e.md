@@ -61,3 +61,34 @@ wall-clock time, per-fixture event counts/status/exit code, temporary database s
 Node version, and platform. The temporary database is deleted after the report. Results
 are diagnostic baselines only; they must not be read as a V0 session or event capacity
 guarantee.
+
+## Repeated wrapper performance baseline
+
+- Date: 2026-09-06.
+- Command: `pnpm benchmark:mock -- --iterations 8`.
+- Environment: Windows native PowerShell, Node `v24.14.1`, 32 wrapper samples
+  (eight concurrent rounds of the four standard fixtures).
+- Result: all 32 samples preserved their expected terminal statuses and event counts.
+  Total wall-clock time was 20.728 seconds; wrapper latency P50 was 13.392 seconds
+  and P95 was 18.740 seconds.
+- SQLite growth: the temporary database reached 331,776 bytes after 32 sessions.
+- Resource observation: the benchmark orchestrator used 125 ms user CPU and 172 ms
+  system CPU, with a peak RSS of 58,392,576 bytes. These are orchestrator-only
+  measurements; they are not a whole-process CPU/memory ceiling.
+- Interpretation: this establishes a repeatable wrapper/SQLite baseline, not a UI
+  event-latency SLO, WebSocket backpressure limit, or supported capacity guarantee.
+
+The benchmark accepts `--iterations <1..100>` and emits the latency/resource fields
+above while continuing to delete its temporary database.
+
+## WebSocket disconnect and cursor catch-up
+
+- Date: 2026-09-06.
+- Tool: `scripts/experiments/ws-reconnect-smoke.mjs`, isolated server port 8790.
+- The first and second WebSocket connections both received the protocol `hello`
+  message. The connection was closed before a Mock session ran; after reconnecting,
+  the HTTP events endpoint returned status 200 and all 10 events for the completed
+  session, with sequence range 1–10.
+- This confirms the intended recovery contract: WebSocket carries live updates and
+  HTTP `after=<lastSeq>` catch-up supplies events missed while disconnected.
+- The temporary server, listener, and database were removed after the smoke.

@@ -49,6 +49,13 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 - The current experiment did not establish a stable public contract for every `system` field. Unknown fields must be ignored and retained only inside the adapter boundary when needed for diagnostics.
 - The follow-up smoke emitted a non-fatal `unrecognized_model` diagnostic during session-title generation, then returned a normal assistant response and terminal success. AgentScope persisted the session as `completed` with progress `0.35`, confidence `0.55`, and a completion-unverified reason because no test/build/typecheck verification occurred; this is the expected V0 safety cap, not a parser failure. The persisted normalized timeline contained exactly `session_started → agent_message → session_finished` (3 events).
 
+## Provider availability during interruption retry
+
+- A Ctrl+C attempt on 2026-09-06 could not reach the long-running phase because
+  the compatible endpoint returned HTTP 403 for its concurrent-request limit during
+  request initialization. The session was recorded as provider failure; this is an
+  endpoint/account availability result, not evidence about AgentScope signal cleanup.
+
 ## Fixture policy
 
 `tests/fixtures/raw/claude-code/` contains only representative, redacted event shapes. It deliberately excludes prompts, command text, working directories, session UUIDs, API metadata, and full tool output. A real interrupted fixture remains a Phase 0 follow-up item.

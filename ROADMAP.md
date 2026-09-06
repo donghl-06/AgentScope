@@ -471,7 +471,7 @@ agentscope/
 - [ ] component test 覆盖主要状态和 capability 降级。
 - [ ] MockAdapter 同时运行两个 session，验证卡片实时更新。
 - [ ] smoke test 覆盖 overview → detail → timeline。
-- [ ] 模拟 WS 断线和事件 gap，验证补齐后无重复无缺失。
+- [x] 模拟 WS 断线和事件 gap，验证补齐后无重复无缺失；Dashboard client/API 测试和 2026-09-06 隔离端口真实 smoke 均确认 HTTP cursor 可补齐断线期间的 10 个事件。
 - [ ] 做基本 keyboard/focus、颜色对比和窄屏检查。
 
 **Phase 6 门禁：** 两个 Mock session 可同时实时展示；进入详情可查看完整 timeline；重连后 UI 与数据库状态一致。
@@ -720,7 +720,7 @@ agentscope/
 
 ### Step 12.3 — 状态与故障注入
 
-- [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect；provider/adapter 故障和持久化 server restart 已有回归覆盖，DB busy 与真实 WS disconnect 仍待集成 smoke。
+- [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect；provider/adapter 故障和持久化 server restart 已有回归覆盖，真实 WS disconnect/cursor smoke 已通过，DB busy 和 provider 真实 Ctrl+C 仍受环境限制。
 - [ ] 验证不会把 failed/interrupted/completed 混淆。
 - [ ] 验证 parser/observer 故障不会拖垮其他 session。
 - [x] 验证事务失败时不广播幽灵事件；server regression test 已覆盖 repository duplicate-event rollback。
@@ -935,8 +935,8 @@ MockAdapter
 - [ ] 验证 overview counts、session card、detail、timeline、Progress、ETA 和 evidence summary 在两个并行 Mock session 中实时变化。
 - [x] Mock backend E2E 已在两个并行 session 中验证 overview counts、session detail 的 Progress/ETA、timeline 终态和 observer evidence API；浏览器视觉实时变化仍需手工确认。
 - [x] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致；自动化 server-recovery 覆盖 HTTP cursor catch-up，2026-09-06 同库 server 重启/API 核验通过，Dashboard 刷新、历史数据、Live updates connected 和无 404 人工验收通过。
-- [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；记录 P50/P95、CPU/内存、SQLite 增长，不作无证据容量承诺。
-- [x] 增加 `pnpm benchmark:mock` 可重复四并发诊断基线，并记录 wall-clock、事件数、数据库大小、Node/平台和 SQLite 锁竞争修复结果；P50/P95、CPU/内存和 WS backpressure 仍未宣称完成。
+- [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；UI 端到端延迟、backpressure 和 pagination 仍待测量。
+- [x] 增加 `pnpm benchmark:mock -- --iterations <n>` 可重复诊断基线；2026-09-06 八轮/32 样本记录 wrapper P50 13.392s、P95 18.740s、SQLite 331,776 bytes、编排器 CPU/RSS，结果见 `docs/findings/e2e.md`。这些不是 UI SLO 或容量承诺。
 
 ### 12.4 — 发布前加固
 
