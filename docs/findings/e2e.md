@@ -113,9 +113,10 @@ above while continuing to delete its temporary database.
 - A storage regression appends 250 events and reads them in pages of 17 using the
   event cursor. It observed exactly sequence numbers 1–250 once each, covering
   the large-timeline pagination path without duplicates or gaps.
-- These checks close the diagnostics baseline and cursor pagination correctness;
-  sustained slow-client backpressure and browser paint latency remain separate
-  release-hardening measurements.
+- These checks close the diagnostics baseline and cursor pagination correctness.
+  A LiveHub regression also bounds a slow client's buffered amount and disconnects
+  it for cursor-based recovery; long-duration capacity and browser paint latency
+  remain separate release-hardening measurements.
 
 ## Cross-process live updates and event-to-client latency
 

@@ -66,4 +66,6 @@ Interpretation:
   lifetime. It is a write-path measurement, not a Dashboard paint-latency SLO.
 
 The snapshot resets when the server restarts. It is intentionally a V0
-diagnostic surface rather than a long-term metrics database.
+diagnostic surface rather than a long-term metrics database. The default
+WebSocket buffered-amount threshold is 256 KiB; a future deployment may tune it
+through the server runtime options.
