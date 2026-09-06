@@ -30,7 +30,10 @@ export default tseslint.config(
       globals: {
         URL: 'readonly',
         console: 'readonly',
+        clearInterval: 'readonly',
+        fetch: 'readonly',
         process: 'readonly',
+        setInterval: 'readonly',
       },
     },
   },
