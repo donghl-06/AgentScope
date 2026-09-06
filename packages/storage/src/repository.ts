@@ -386,7 +386,14 @@ export class StorageRepository {
       this.updateSessionProjection(session, projection, now);
       return { event: { seq: nextSeq, event }, session: this.getSession(event.sessionId) };
     }).immediate;
-    const result = transaction();
+    let result: AppendEventResult;
+    try {
+      result = transaction();
+    } catch (error) {
+      // SQLite can acquire the write lock before the transaction callback runs;
+      // normalize that boundary error just like INSERT/UPDATE failures.
+      throw mapSqliteError(error, `Event already exists: ${event.id}`);
+    }
     this.notify({ type: 'event.appended', ...result });
     return result;
   }

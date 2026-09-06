@@ -23,6 +23,17 @@ This evidence does not establish a supported maximum session count, high-frequen
 filesystem capacity, WebSocket backpressure limits, or resource usage. Those require
 a dedicated benchmark with defined sampling and retention rules.
 
+## SQLite busy fault injection
+
+- Date: 2026-09-06.
+- The storage regression opens two repository connections to the same file-backed
+  database, holds an `BEGIN IMMEDIATE` write lock on the first connection, and
+  attempts an event append through the second connection with a 1 ms busy timeout.
+- Result: the append fails deterministically as `StorageBusyError`; the lock is
+  rolled back and both clients close cleanly. The transaction-start boundary is
+  normalized in the same way as insert/update busy errors, so callers do not see a
+  driver-specific `SQLITE_BUSY` exception.
+
 ## Server restart recovery
 
 - Date: 2026-09-06.

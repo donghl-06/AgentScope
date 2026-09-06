@@ -24,8 +24,10 @@ the smaller set that still affects a V0 sign-off.
 2. **WebSocket backpressure and timeline pagination.** Cursor catch-up and a
    real disconnect/reconnect smoke pass, but sustained slow-client/backpressure
    behavior and large timeline pagination still need measurement.
-3. **SQLite busy/fault injection.** Normal concurrent Mock writes pass, but a
-   deliberate DB-busy integration scenario remains.
+3. **SQLite busy/fault injection — closed in this cycle.** A two-connection
+   file-backed regression now holds an `IMMEDIATE` write lock and verifies the
+   second append is normalized to `StorageBusyError`; evidence is in
+   `docs/findings/e2e.md`.
 4. **Lightweight diagnostics.** Correlation IDs, dropped/duplicate-event
    counters, WebSocket client counts, and write-latency metrics are not exposed
    as a stable V0 diagnostics surface.

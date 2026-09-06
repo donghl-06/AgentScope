@@ -15,6 +15,7 @@ import { openStorage } from './database.js';
 import {
   StorageConflictError,
   StorageCorruptPayloadError,
+  StorageBusyError,
   StorageRepository,
 } from './repository.js';
 
@@ -243,6 +244,43 @@ describe('StorageRepository', () => {
       ).toThrow();
       expect(repository.listEvents('session-1').items).toHaveLength(0);
     });
+  });
+
+  it('maps a concurrent SQLite write lock to StorageBusyError', () => {
+    const filename = path.join(
+      os.tmpdir(),
+      `agentscope-repository-busy-${Date.now()}-${Math.random()}.db`,
+    );
+    const first = openStorage({ filename, migrate: true, busyTimeoutMs: 1 });
+    const second = openStorage({ filename, migrate: false, busyTimeoutMs: 1 });
+    try {
+      const firstRepository = new StorageRepository(first.client);
+      const secondRepository = new StorageRepository(second.client);
+      firstRepository.createSession({
+        id: 'session-1',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-1'),
+      });
+
+      first.client.exec('BEGIN IMMEDIATE');
+      expect(() =>
+        secondRepository.appendEvent(event('event-1'), state('session-1', 'running')),
+      ).toThrow(StorageBusyError);
+      first.client.exec('ROLLBACK');
+    } finally {
+      first.client.close();
+      second.client.close();
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.rmSync(filename + suffix);
+        } catch {
+          // Best-effort cleanup for SQLite sidecar files.
+        }
+      }
+    }
   });
 
   it('marks in-flight sessions interrupted while preserving blocked sessions', () => {

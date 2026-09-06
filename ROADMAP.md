@@ -720,7 +720,7 @@ agentscope/
 
 ### Step 12.3 — 状态与故障注入
 
-- [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect；provider/adapter 故障和持久化 server restart 已有回归覆盖，真实 WS disconnect/cursor smoke 已通过，DB busy 和 provider 真实 Ctrl+C 仍受环境限制。
+- [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect；provider/adapter 故障和持久化 server restart 已有回归覆盖，真实 WS disconnect/cursor smoke 已通过，DB busy 已有双连接故障注入回归，真实 provider Ctrl+C 仍受 Windows/外部环境限制。
 - [ ] 验证不会把 failed/interrupted/completed 混淆。
 - [ ] 验证 parser/observer 故障不会拖垮其他 session。
 - [x] 验证事务失败时不广播幽灵事件；server regression test 已覆盖 repository duplicate-event rollback。
