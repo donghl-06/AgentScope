@@ -62,7 +62,8 @@ export class CodexCliAdapter implements AgentAdapter {
       request.args[0] === 'exec'
         ? [...request.args]
         : ['exec', '--json', '--ephemeral', ...request.args];
-    const child = spawn(resolveExecutable(this.executable), args, {
+    const resolved = resolveExecutable(this.executable);
+    const child = spawn(resolved.executable, [...resolved.args, ...args], {
       cwd: request.workspacePath,
       env: { ...process.env, ...request.environment },
       shell: false,
@@ -78,30 +79,63 @@ export class CodexCliAdapter implements AgentAdapter {
   }
 }
 
-function resolveExecutable(executable: string): string {
-  if (process.platform !== 'win32' || path.extname(executable) !== '') return executable;
-  if (executable.includes('/') || executable.includes('\\')) return executable;
+interface ResolvedExecutable {
+  readonly executable: string;
+  readonly args: readonly string[];
+}
+
+function resolveExecutable(executable: string): ResolvedExecutable {
+  if (process.platform !== 'win32' || path.extname(executable) !== '') {
+    return { executable, args: [] };
+  }
+  if (executable.includes('/') || executable.includes('\\')) {
+    return { executable, args: [] };
+  }
   const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
   for (const directory of searchPath) {
     for (const extension of ['.exe', '.com', '.cmd', '.bat']) {
       const candidate = path.join(directory, `${executable}${extension}`);
       if (!fs.existsSync(candidate)) continue;
       if (extension === '.cmd' || extension === '.bat') {
-        const target = fs.readFileSync(candidate, 'utf8').match(/"([^"\r\n]+\.exe)"/iu)?.[1];
-        if (target !== undefined) {
-          const expanded = target.replace(/%~?dp0%/giu, path.dirname(candidate));
-          const resolved = path.resolve(expanded);
-          if (fs.existsSync(resolved)) return resolved;
-        }
-      } else return candidate;
+        const target = resolveShimTarget(candidate);
+        if (target !== undefined) return target;
+      } else return { executable: candidate, args: [] };
     }
   }
-  return executable;
+  return { executable, args: [] };
 }
 
-async function detectExecutable(executable: string, cwd: string): Promise<DetectionResult> {
+function resolveShimTarget(filename: string): ResolvedExecutable | undefined {
+  const text = fs.readFileSync(filename, 'utf8');
+  const directory = path.dirname(filename);
+  const directTarget = text.match(/"([^"\r\n]+\.exe)"/iu)?.[1];
+  if (directTarget !== undefined) {
+    const resolved = expandShimPath(directTarget, directory);
+    if (fs.existsSync(resolved)) return { executable: resolved, args: [] };
+  }
+  const scriptTarget = text.match(/"([^"\r\n]+\.js)"\s+%\*/iu)?.[1];
+  if (scriptTarget === undefined) return undefined;
+  const script = expandShimPath(scriptTarget, directory);
+  if (!fs.existsSync(script)) return undefined;
+  const localNodeTarget = text.match(/SET\s+"_prog=([^"\r\n]*node\.exe)"/iu)?.[1];
+  const localNode =
+    localNodeTarget === undefined ? undefined : expandShimPath(localNodeTarget, directory);
+  return {
+    executable: localNode !== undefined && fs.existsSync(localNode) ? localNode : process.execPath,
+    args: [script],
+  };
+}
+
+function expandShimPath(value: string, directory: string): string {
+  return path.resolve(value.replace(/%~?dp0%/giu, directory));
+}
+
+async function detectExecutable(
+  resolved: ResolvedExecutable,
+  cwd: string,
+): Promise<DetectionResult> {
   return new Promise((resolve) => {
-    const child = spawn(executable, ['--version'], {
+    const child = spawn(resolved.executable, [...resolved.args, '--version'], {
       cwd,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],

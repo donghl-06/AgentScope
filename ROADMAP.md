@@ -923,6 +923,7 @@ MockAdapter
 - [x] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和独立 evidence 同步落库。
 - [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
 - [x] 已用 Codex adapter 的结构化协议 shim 覆盖 runner 级 command started/finished、workspace 文件变化、Git baseline 和 process lifecycle evidence；真实 Claude/Codex CLI 的同场景仍保留为手工 smoke。
+- [x] 真实本机 Codex 最小 smoke 已复验：修复 Windows npm Node+JavaScript shim 后，`run codex -- "Reply with OK only"` 返回 `OK`，session 正确记录为 `completed`；workspace 文件/command 变化与交互式 Ctrl+C 仍需手工复核。
 - [x] provider parser malformed record 隔离：坏记录被忽略时，后续合法 terminal event 仍能完成 session。
 - [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
 - [x] 已补齐 provider runner 的 observer sink error 隔离回归；malformed parser、non-zero exit、SIGINT 和重复 cleanup 已有独立测试，实际 CLI 的跨进程 Ctrl+C 仍需手工复核。
