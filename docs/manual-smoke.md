@@ -60,7 +60,7 @@ node .\apps\cli\bin\agent-scope.mjs run codex -- <codex exec 参数>
 
 ## 5. 中断与失败补测
 
-- 让 Claude/Codex 执行一个短暂运行的命令，在 wrapper 窗口按 `Ctrl+C`，确认最终状态是 `interrupted`，而非 `completed`。
+- 让 Claude/Codex 执行一个短暂运行的命令，在 wrapper 窗口按 `Ctrl+C`，确认最终状态是 `interrupted`，而非 `completed`。Windows PowerShell 可能会先终止外层 CLI，导致 Dashboard 暂时显示 `running`；确认 provider 子进程已结束后，在同一数据库配置下运行 `node .\apps\cli\bin\agent-scope.mjs recover`，再确认会话变为 `interrupted`。
 - 运行一个明确返回非零退出码的测试/命令，确认 timeline 有 command/test failure，最终状态不会伪装成成功。
 - 只提交脱敏后的 status/show 输出和版本信息；不要提交 key、完整 prompt、命令正文、绝对路径或原始 stdout。
 

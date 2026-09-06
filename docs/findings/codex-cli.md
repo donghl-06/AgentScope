@@ -7,6 +7,8 @@
 - After the shim fix, the current local smoke returned `OK` through AgentScope and persisted a `completed` Codex session with `thread.started`, `planning`, `agent_message`, and `session_finished` events.
 - Real local smoke on 2026-09-06 ran `agent-scope run codex -- "Reply with OK only"` through the `codex exec --json --ephemeral` path. Codex emitted `thread.started`, `turn.started`, an `agent_message` item containing `OK`, and `turn.completed`; the AgentScope session completed successfully and is now stored with `provider=codex`, `adapter=codex-cli`. Host/runtime warnings were observed on stderr and were not parsed as protocol events.
 - Parallel smoke on 2026-09-06 ran Codex beside a Claude Code session against the same AgentScope database. Codex returned `OK` and completed independently; the two sessions retained separate provider labels and timelines.
+- Workspace-evidence smoke on 2026-09-06 created/read/deleted a temporary file and ran two successful commands. AgentScope persisted command start/finish evidence (both exit code `0`), filesystem deletion evidence, process lifecycle evidence, and a `completed` session; the workspace and Git tree were clean afterward.
+- A real Windows PowerShell Ctrl+C smoke on 2026-09-06 terminated the outer CLI with exit code `1` while Codex was in `Start-Sleep -Seconds 30`. The provider child process ended and process evidence was captured, but the outer CLI could not append a terminal event after console termination, leaving the session temporarily `running`. Running `agent-scope recover` recovered exactly that stale session as `interrupted`. This is the supported Windows recovery path; direct console Ctrl+C still needs a wrapper/console-control improvement before it can be claimed as an atomic terminal transition.
 - Host: Windows native PowerShell, disposable repository, non-interactive `codex exec` mode.
 - Structured command used: `codex exec --json --ephemeral`.
 - Authentication was already configured on the host; no credentials or account details are recorded here.
@@ -36,7 +38,7 @@ The command-failure run emitted a completed command item with `status=failed` an
 | Session info | observed | `thread.started.thread_id` is available | AgentScope generates its own session id |
 | Resume/session id | CLI surface present | `exec resume` and `fork` subcommands are documented; detailed compatibility needs a separate spike | provider id as optional metadata |
 | Token/cost | observed-but-out-of-scope | `turn.completed.usage` contains counters; no cost contract assumed | ignore by default |
-| User interruption | observed | Ctrl+C during an in-progress command terminated the CLI with process exit code 1; no JSONL terminal event was emitted | process signal handling in Phase 5 |
+| User interruption | observed with recovery | Ctrl+C during an in-progress command terminated the CLI with process exit code 1; no JSONL terminal event was emitted. AgentScope captured child-process exit and `agent-scope recover` normalized the stale session to `interrupted`. | process/console signal forwarding and atomic terminal persistence remain a V0 hardening item |
 | TTY/resize | unavailable | this spike used non-interactive exec; interactive resize behavior remains unverified | document non-interactive V0 path |
 
 ## I/O and lifecycle observations
@@ -44,7 +46,7 @@ The command-failure run emitted a completed command item with `status=failed` an
 - `--json` is suitable for machine-readable stdout capture; stderr contained host/runtime warnings and must not be parsed as protocol events.
 - `--ephemeral` avoids persisting the provider session during the spike; production resume policy remains an AgentScope decision.
 - The CLI can report a command failure at item level without making the enclosing turn fail. Adapter normalization therefore needs separate provider-outcome and workspace-verification signals.
-- During a real Ctrl+C experiment, the process exited with code 1 while the JSONL stream ended after an in-progress command item. Absence of `turn.completed` is therefore not itself a provider failure; the wrapper must combine signal/exit evidence with the partial stream and normalize `interrupted`.
+- During the real Ctrl+C experiment, the process exited with code 1 while the JSONL stream ended after an in-progress command item. The provider child was gone and the observer recorded `process finished`, but the outer CLI was also terminated before it could persist `session_finished`; `agent-scope recover` then marked the stale session `interrupted`. Absence of `turn.completed` is therefore not itself a provider failure.
 - Codex CLI help exposed a stable `exec` command and an experimental `app-server` command; V0 uses `exec` and does not depend on app-server.
 
 ## Fixture policy

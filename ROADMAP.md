@@ -401,7 +401,7 @@ agentscope/
 - [x] 明确 inherited 和 piped 模式下 stdin/stdout/stderr 的策略；structured 模式待事件管线接入。
 - [ ] 原 CLI 输出保持原样；解析副本不得重复打印到 server log。
 - [x] 捕获 pid、start/end、exit code、signal 和 spawn error。
-- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；Ctrl+Break、父进程退出和 process tree cleanup 仍待补测。
+- [x] 处理 SIGINT/SIGTERM，停止 Claude 子进程并映射 interrupted；synthetic child coverage is green. Real Windows console Ctrl+C was observed to terminate the outer CLI before terminal persistence, while `agent-scope recover` safely recovered the stale session; atomic Ctrl+C/parent-exit handling and Ctrl+Break remain hardening items.
 - [x] 处理 Windows PATH 中 `.cmd/.bat` shim 到真实 `.exe` 的解析；空格路径、Unicode 路径和长参数仍待补测。
 - [x] Mock 命令按 session 终态返回 0/1/130；真实 provider exit code 透传待 wrapper 接入。
 
@@ -425,7 +425,7 @@ agentscope/
 - [x] 用 synthetic child process 覆盖 stdout/stderr、exit 0/非 0、spawn error、长运行中断和参数边界。
 - [ ] 测试带空格/Unicode 的 cwd 和参数。
 - [x] 测试 cleanup 幂等、孤儿进程防护和 server unavailable；cleanup 有回归覆盖，`agent-scope recover` 提供 stale session 恢复，ServerClient 将网络失败映射为稳定 CLI 错误。
-- [ ] 真实 TTY 行为纳入 manual smoke checklist。
+- [x] 真实 Windows PowerShell Ctrl+C 纳入 manual smoke；provider child exit evidence was captured and `agent-scope recover` converted the stale session to `interrupted`. Direct Ctrl+C remains non-atomic until console-control handling is improved.
 
 **Phase 5 门禁：** Mock 和 synthetic process 的 I/O、退出码、状态映射均正确；wrapper 不明显破坏被包装 CLI 的使用体验。
 
@@ -923,10 +923,10 @@ MockAdapter
 - [x] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和独立 evidence 同步落库。
 - [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
 - [x] 已用 Codex adapter 的结构化协议 shim 覆盖 runner 级 command started/finished、workspace 文件变化、Git baseline 和 process lifecycle evidence；真实 Claude/Codex CLI 的同场景仍保留为手工 smoke。
-- [x] 真实本机 Codex 最小 smoke 已复验：修复 Windows npm Node+JavaScript shim 后，`run codex -- "Reply with OK only"` 返回 `OK`，session 正确记录为 `completed`；workspace 文件/command 变化与交互式 Ctrl+C 仍需手工复核。
+- [x] 真实本机 Codex smoke 已复验：修复 Windows npm Node+JavaScript shim 后，最小命令返回 `OK` 并落库为 `completed`；workspace 文件/command 变化已捕获并清理；真实 PowerShell Ctrl+C 已复核，子进程证据完整但外层 CLI 需 `agent-scope recover` 才能把遗留 `running` 会话归一为 `interrupted`。
 - [x] provider parser malformed record 隔离：坏记录被忽略时，后续合法 terminal event 仍能完成 session。
 - [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
-- [x] 已补齐 provider runner 的 observer sink error 隔离回归；malformed parser、non-zero exit、SIGINT 和重复 cleanup 已有独立测试，实际 CLI 的跨进程 Ctrl+C 仍需手工复核。
+- [x] 已补齐 provider runner 的 observer sink error 隔离回归；malformed parser、non-zero exit、SIGINT 和重复 cleanup 已有独立测试；实际 CLI 跨进程 Ctrl+C 已手工复核并记录 Windows 外层进程终止与 `recover` 收尾限制。
 - [x] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入 server 集成测试；历史 event/evidence 可通过 API 恢复，重启未新增幽灵记录。
 
 ### 12.3 — API/Dashboard 与重连验证
