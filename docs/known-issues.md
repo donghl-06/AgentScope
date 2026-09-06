@@ -42,10 +42,14 @@ fully reliable V0 transition yet.
 
 ## WSL2 prerequisite
 
-WSL2 itself is installed on the host, but the available Ubuntu environment has
-Linux Node `18.19.0` while the repository requires Node 22+, and its `pnpm`
-command resolves to a Windows Corepack shim. WSL2 remains experimental until a
-Linux Node 22+ and Linux pnpm installation is supplied.
+WSL2 itself is installed on the host, and the user's interactive Ubuntu shell
+already exposes Linux Node `22.14.0` and Linux pnpm `10.33.0` from
+`$HOME/workspace/node-v22.14.0-linux-x64`. A non-interactive shell returns before
+the user's `.bashrc` PATH setup, so WSL commands must run through an interactive
+shell or explicitly source the user's setup. The shared Windows checkout also
+does not contain Linux workspace links/native dependencies under `node_modules`;
+the WSL smoke remains experimental until a separate Linux dependency install or
+clone is used. Do not replace the Windows installation in place.
 
 ## Development Dashboard process
 

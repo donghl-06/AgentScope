@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 import { MOCK_FIXTURES, type MockFixtureName } from '@agentscope/adapter-mock';
 
@@ -119,7 +120,10 @@ function isMockFixtureName(value: string): value is MockFixtureName {
   return Object.prototype.hasOwnProperty.call(MOCK_FIXTURES, value);
 }
 
-if (import.meta.main) {
+const isMainModule =
+  process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMainModule) {
   process.exitCode = await runCli();
 }
 

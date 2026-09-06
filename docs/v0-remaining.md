@@ -12,9 +12,12 @@ the smaller set that still affects a V0 sign-off.
    one-minute retry. Once the limit clears, run one long-lived harmless Claude
    task and interrupt it; then verify `interrupted` and the absence of an
    orphan process.
-2. **WSL2 smoke.** WSL2 is installed, but Ubuntu currently exposes Linux Node
-   18.19.0 and a pnpm command that resolves to a Windows Corepack shim. Install
-   Linux Node 22+ and Linux pnpm before running the second-environment smoke.
+2. **WSL2 smoke.** The user's interactive Ubuntu shell already exposes Linux
+   Node `22.14.0` and pnpm `10.33.0`. The shared Windows checkout still lacks a
+   separate Linux `node_modules` install, and non-interactive WSL shells do not
+   load the user's `.bashrc` PATH automatically. A separate Linux clone/install
+   is needed before the second-environment smoke; the Windows checkout must not
+   have its native dependencies replaced in place.
 
 ## Remaining engineering measurements
 
