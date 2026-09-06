@@ -3,11 +3,13 @@ import path from 'node:path';
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_DATABASE = '.agentscope/agentscope.db';
+export const DEFAULT_DASHBOARD_PORT = 5173;
 
 export interface CliConfigOverrides {
   readonly host?: string;
   readonly port?: number;
   readonly database?: string;
+  readonly dashboardPort?: number;
 }
 
 export interface CliConfig {
@@ -16,6 +18,7 @@ export interface CliConfig {
   readonly database: string;
   readonly serverUrl: string;
   readonly workspacePath: string;
+  readonly dashboardPort: number;
 }
 
 export interface ResolveCliConfigOptions extends CliConfigOverrides {
@@ -29,6 +32,8 @@ export function resolveCliConfig(options: ResolveCliConfigOptions = {}): CliConf
   const host = options.host ?? env.AGENTSCOPE_HOST ?? DEFAULT_HOST;
   const port = options.port ?? parsePort(env.AGENTSCOPE_PORT, DEFAULT_PORT);
   const database = options.database ?? env.AGENTSCOPE_DATABASE ?? DEFAULT_DATABASE;
+  const dashboardPort =
+    options.dashboardPort ?? parsePort(env.AGENTSCOPE_DASHBOARD_PORT, DEFAULT_DASHBOARD_PORT);
   const serverUrl = env.AGENTSCOPE_SERVER_URL ?? `http://${host}:${port}`;
 
   validateHost(host);
@@ -41,6 +46,7 @@ export function resolveCliConfig(options: ResolveCliConfigOptions = {}): CliConf
     database: database === ':memory:' ? ':memory:' : path.resolve(cwd, database),
     serverUrl,
     workspacePath: cwd,
+    dashboardPort,
   };
 }
 

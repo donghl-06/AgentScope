@@ -28,6 +28,7 @@ describe('start command runtime', () => {
       cwd: 'C:/workspace',
       env: {},
       signals,
+      dashboard: false,
       write: (text) => output.push(text),
       startServer: async (options) => {
         expect(options).toMatchObject({
@@ -44,10 +45,50 @@ describe('start command runtime', () => {
       },
     });
 
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     signals.emit('SIGINT');
     expect(await pending).toBe(0);
     expect(closed).toBe(1);
     expect(output).toEqual(['AgentScope server listening at http://127.0.0.1:8787\n']);
+  });
+
+  it('starts and closes the Dashboard with the server', async () => {
+    const signals = new FakeSignals();
+    const output: string[] = [];
+    let serverClosed = 0;
+    let dashboardClosed = 0;
+    const pending = runStartCommand({
+      cwd: 'C:/workspace',
+      env: {},
+      signals,
+      dashboard: true,
+      write: (text) => output.push(text),
+      startServer: async () => ({
+        address: 'http://127.0.0.1:8787',
+        close: async () => {
+          serverClosed += 1;
+        },
+      }),
+      startDashboard: async (options) => {
+        expect(options).toEqual({ cwd: 'C:/workspace', host: '127.0.0.1', port: 5173 });
+        return {
+          address: 'http://127.0.0.1:5173',
+          close: async () => {
+            dashboardClosed += 1;
+          },
+          waitForExit: () => new Promise<number | null>(() => {}),
+        };
+      },
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    signals.emit('SIGINT');
+    expect(await pending).toBe(0);
+    expect(serverClosed).toBe(1);
+    expect(dashboardClosed).toBe(1);
+    expect(output).toEqual([
+      'AgentScope server listening at http://127.0.0.1:8787\n',
+      'AgentScope Dashboard listening at http://127.0.0.1:5173\n',
+    ]);
   });
 });

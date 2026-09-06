@@ -12,13 +12,15 @@ describe('CLI executable entry', () => {
       env: {},
       write: (text) => output.push(text),
       writeError: (text) => errors.push(text),
-      start: {
-        run: async (options) => {
-          expect(options).toMatchObject({
-            cwd: 'C:/workspace',
-            host: '127.0.0.1',
-            port: 8787,
-          });
+        start: {
+          run: async (options) => {
+            expect(options).toMatchObject({
+              cwd: 'C:/workspace',
+              host: '127.0.0.1',
+              port: 8787,
+              dashboard: true,
+              dashboardPort: 5173,
+            });
           return 0;
         },
       },

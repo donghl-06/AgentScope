@@ -7,12 +7,25 @@ describe('CLI argument parser', () => {
     expect(parseCliArgs([])).toEqual({ kind: 'help' });
     expect(parseCliArgs(['start'])).toEqual({ kind: 'start' });
     expect(
-      parseCliArgs(['start', '--host', '0.0.0.0', '--port', '9000', '--db', 'data.db']),
+      parseCliArgs([
+        'start',
+        '--host',
+        '0.0.0.0',
+        '--port',
+        '9000',
+        '--db',
+        'data.db',
+        '--dashboard-port',
+        '5174',
+        '--no-dashboard',
+      ]),
     ).toEqual({
       kind: 'start',
       host: '0.0.0.0',
       port: 9000,
       database: 'data.db',
+      dashboard: false,
+      dashboardPort: 5174,
     });
     expect(parseCliArgs(['sessions'])).toEqual({ kind: 'sessions' });
     expect(parseCliArgs(['recover'])).toEqual({ kind: 'recover' });

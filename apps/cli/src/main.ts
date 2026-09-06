@@ -43,7 +43,12 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env === undefined ? {} : { env: options.env }),
       ...(command.kind === 'start'
-        ? { host: command.host, port: command.port, database: command.database }
+        ? {
+            host: command.host,
+            port: command.port,
+            database: command.database,
+            dashboardPort: command.dashboardPort,
+          }
         : {}),
     });
     return await executeCliCommand(command, {
@@ -57,6 +62,8 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 host: config.host,
                 port: config.port,
                 database: config.database,
+                dashboardPort: config.dashboardPort,
+                dashboard: command.dashboard !== false,
                 write,
               }),
           }

@@ -5,6 +5,8 @@ export type CliCommand =
       readonly host?: string;
       readonly port?: number;
       readonly database?: string;
+      readonly dashboard?: boolean;
+      readonly dashboardPort?: number;
     }
   | { readonly kind: 'sessions' }
   | { readonly kind: 'recover' }
@@ -58,7 +60,7 @@ export function formatCliHelp(): string {
     'Usage: agent-scope <command>',
     '',
     'Commands:',
-    '  start                         Start the local AgentScope server.',
+    '  start                         Start the local server and Dashboard.',
     '  run <adapter> -- <args...>   Run an adapter and preserve argument boundaries.',
     '  run mock --fixture <name>    Run a deterministic mock fixture.',
     '  sessions                     List stored sessions.',
@@ -94,13 +96,29 @@ function parseStart(argv: readonly string[]): Extract<CliCommand, { kind: 'start
   let host: string | undefined;
   let port: number | undefined;
   let database: string | undefined;
+  let dashboard: boolean | undefined;
+  let dashboardPort: number | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (flag === '--host' || flag === '--port' || flag === '--database' || flag === '--db') {
+    if (flag === '--no-dashboard') {
+      dashboard = false;
+      continue;
+    }
+    if (flag === '--dashboard') {
+      dashboard = true;
+      continue;
+    }
+    if (
+      flag === '--host' ||
+      flag === '--port' ||
+      flag === '--database' ||
+      flag === '--db' ||
+      flag === '--dashboard-port'
+    ) {
       if (value === undefined || value.startsWith('-')) {
         throw new CliUsageError(
-          'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>]',
+          'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>] [--dashboard-port <port>] [--no-dashboard]',
         );
       }
       if (flag === '--host') host = value;
@@ -110,12 +128,20 @@ function parseStart(argv: readonly string[]): Extract<CliCommand, { kind: 'start
           throw new CliUsageError('The --port value must be an integer between 0 and 65535.');
         }
         port = parsed;
+      } else if (flag === '--dashboard-port') {
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+          throw new CliUsageError(
+            'The --dashboard-port value must be an integer between 0 and 65535.',
+          );
+        }
+        dashboardPort = parsed;
       } else database = value;
       index += 1;
       continue;
     }
     throw new CliUsageError(
-      'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>]',
+      'Usage: agent-scope start [--host <host>] [--port <port>] [--database <path>] [--dashboard-port <port>] [--no-dashboard]',
     );
   }
   return {
@@ -123,6 +149,8 @@ function parseStart(argv: readonly string[]): Extract<CliCommand, { kind: 'start
     ...(host === undefined ? {} : { host }),
     ...(port === undefined ? {} : { port }),
     ...(database === undefined ? {} : { database }),
+    ...(dashboard === undefined ? {} : { dashboard }),
+    ...(dashboardPort === undefined ? {} : { dashboardPort }),
   };
 }
 
