@@ -730,7 +730,7 @@ agentscope/
 
 - [x] 至少测试 4 个并发 Mock session；2026-09-06 四个 fixture 并行运行约 2.4 秒，SQLite 无锁错误，结果记录在 `docs/findings/e2e.md`。
 - [ ] 记录事件写入吞吐、UI 延迟、内存、CPU、DB 增长速度。
-- [ ] 确认 debounce、WS backpressure 和 timeline pagination 有效。
+- [ ] 确认 debounce、WS backpressure 和 timeline pagination 有效；250 事件游标分页已通过，慢客户端 backpressure/debounce 压力仍待测量。
 - [ ] 给出 V0 支持的合理 session/event 数量边界，不作无证据承诺。
 
 ### Step 12.5 — 安全与隐私审查

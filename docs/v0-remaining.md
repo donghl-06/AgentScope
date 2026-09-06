@@ -22,9 +22,9 @@ the smaller set that still affects a V0 sign-off.
    measured (P50 163 ms, P95 287 ms in the isolated Windows smoke), and the
    server polls external CLI writers. Browser event-to-paint latency is still
    not measured.
-2. **WebSocket backpressure and timeline pagination.** Cursor catch-up and a
-   real disconnect/reconnect smoke pass, but sustained slow-client/backpressure
-   behavior and large timeline pagination still need measurement.
+2. **WebSocket backpressure.** Cursor catch-up, real disconnect/reconnect, and
+   250-event multi-page timeline pagination now pass. Sustained slow-client
+   backpressure and queue/resource limits still need measurement.
 3. **SQLite busy/fault injection — closed in this cycle.** A two-connection
    file-backed regression now holds an `IMMEDIATE` write lock and verifies the
    second append is normalized to `StorageBusyError`; evidence is in
