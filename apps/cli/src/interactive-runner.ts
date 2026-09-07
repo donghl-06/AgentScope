@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { reduceSessionState } from '@agentscope/core';
+import {
+  classifyTurnInput,
+  PtyTurnSignalDetector,
+  reduceSessionState,
+  TurnCoordinator,
+  TurnSignalArbiter,
+} from '@agentscope/core';
 import {
   createInitialSessionState,
   type AgentEvent,
@@ -103,9 +109,43 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const environment = prepareInteractiveEnvironment(options.env ?? process.env);
   const signals = options.signals ?? process;
   const driver = options.terminalDriver ?? nodePtyDriver;
+  const coordinator = new TurnCoordinator({
+    sessionId,
+    onUpdate: (update) => {
+      if (update.kind === 'started') {
+        repository.createTurn({ state: update.turn, now: now() });
+      } else {
+        repository.updateTurnState(update.turn.turnId, update.turn, now());
+      }
+    },
+  });
+  const arbiter = new TurnSignalArbiter(coordinator);
+  const detector = new PtyTurnSignalDetector({
+    enablePromptCompletion: !options.args.includes('--bare'),
+  });
+  let inputBuffer = '';
   const onInput = (chunk: Buffer | string) => {
     if (terminal?.state !== 'running') return;
-    terminal.write(typeof chunk === 'string' ? chunk : chunk.toString());
+    const text = typeof chunk === 'string' ? chunk : chunk.toString();
+    terminal.write(text);
+    inputBuffer += text;
+    const lines = inputBuffer.split(/[\r\n]/u);
+    inputBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const classification = classifyTurnInput(line);
+      if (!classification.accepted) continue;
+      if (coordinator.mode === 'idle') {
+        arbiter.apply({
+          kind: 'task_submitted',
+          prompt: line,
+          source: 'manual',
+          confidence: 1,
+          timestamp: now(),
+        });
+      } else if (coordinator.mode === 'waiting' || coordinator.mode === 'blocked') {
+        arbiter.apply({ kind: 'resumed', source: 'manual', confidence: 1, timestamp: now() });
+      }
+    }
   };
   const onResize = () => {
     if (terminal?.state !== 'running') return;
@@ -119,6 +159,15 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     if (interruptCount === 0) {
       interruptCount += 1;
       interrupted = true;
+      if (coordinator.current !== undefined) {
+        arbiter.apply({
+          kind: 'finished',
+          reason: 'interrupted',
+          source: 'manual',
+          confidence: 1,
+          timestamp: now(),
+        });
+      }
       terminal.interrupt();
     } else {
       terminal.kill();
@@ -171,6 +220,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     let apiKeyAccepted = false;
     terminal.onData((chunk) => {
       output.write(chunk);
+      for (const signal of detector.ingest(chunk, now())) arbiter.apply(signal);
       if (
         options.autoAcceptApiKey !== true ||
         apiKeyAccepted ||
@@ -199,6 +249,15 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         : exit.exitCode === 0
           ? 'completed'
           : 'failed';
+    if (coordinator.current !== undefined) {
+      arbiter.apply({
+        kind: 'finished',
+        reason,
+        source: 'manual',
+        confidence: 1,
+        timestamp: now(),
+      });
+    }
     state = appendEvent(
       repository,
       state,

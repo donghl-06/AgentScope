@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
@@ -5,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { prepareInteractiveEnvironment, runInteractiveProvider } from './interactive-runner.js';
 import type { TerminalDriver, TerminalProcess } from '@agentscope/terminal';
+import { openStorage, StorageRepository } from '@agentscope/storage';
 
 class FakeTerminalProcess implements TerminalProcess {
   readonly pid = 777;
@@ -12,6 +16,7 @@ class FakeTerminalProcess implements TerminalProcess {
   private exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined;
   readonly writes: string[] = [];
   killCount = 0;
+  writeHandler: ((data: string) => void) | undefined;
 
   readonly onData = (listener: (data: string) => void) => {
     this.dataListener = listener;
@@ -25,6 +30,7 @@ class FakeTerminalProcess implements TerminalProcess {
 
   write(data: string): void {
     this.writes.push(data);
+    this.writeHandler?.(data);
   }
 
   resize(): void {}
@@ -129,5 +135,55 @@ describe('interactive provider runner', () => {
 
     expect(exitCode).toBe(0);
     expect(terminalProcess.writes).toEqual(['yes\r']);
+  });
+
+  it('persists two normal interactive turns from PTY activity and prompts', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    terminalProcess.writeHandler = (data) => {
+      if (data === 'FIRST\r') {
+        terminalProcess.emitData('Working on first...\r\n> Try "next"');
+      } else if (data === 'SECOND\r') {
+        terminalProcess.emitData('Working on second...\r\n> Try "next"');
+        setTimeout(() => terminalProcess.finish(0), 0);
+      }
+    };
+    const driver: TerminalDriver = {
+      spawn: () => {
+        setTimeout(() => terminalProcess.emitData('> Try "task"'), 0);
+        return terminalProcess;
+      },
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-tty-'));
+    const filename = path.join(directory, 'session.db');
+    const running = runInteractiveProvider({
+      adapter: 'claude',
+      args: [],
+      filename,
+      workspacePath: process.cwd(),
+      executable: process.execPath,
+      sessionId: 'session-tty',
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+    setTimeout(() => input.write('FIRST\r'), 5);
+    setTimeout(() => input.write('SECOND\r'), 15);
+    const exitCode = await running;
+    const storage = openStorage({ filename, migrate: false });
+    try {
+      const turns = new StorageRepository(storage.client).listTurns('session-tty');
+      expect(exitCode).toBe(0);
+      expect(turns).toHaveLength(2);
+      expect(turns.map((turn) => [turn.title, turn.status])).toEqual([
+        ['FIRST', 'completed'],
+        ['SECOND', 'completed'],
+      ]);
+    } finally {
+      storage.client.close();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

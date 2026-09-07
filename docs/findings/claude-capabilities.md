@@ -100,3 +100,11 @@ ANTHROPIC_AUTH_TOKEN 后，普通完整模式可以正常完成请求；--bare �
 AgentScope 现已在启动交互式 Claude 子进程时自动执行这一兼容补齐，且不覆盖显式
 AUTH_TOKEN。2026-09-07 真实验收使用原有本地 GLM 配置，在不加 --bare 的 AgentScope
 普通模式中返回 AGENTSCOPE_AUTH_OK，随后正常 /exit；未再出现 Not logged in。
+
+## 普通模式多轮 turn 投影
+
+普通交互模式现在将用户以回车提交的普通文本接入 turn coordinator，并在观察到实际
+PTY 活动后，把 Claude 回到输入提示识别为高置信度的 `completed` 候选。明确的授权或
+审批提示只进入 `waiting`，`y/n`、slash 命令和空输入不会创建新 turn。`--bare` 仍保留
+保守的 PTY 识别策略，不作为完整交互体验的目标路径；推荐日常使用
+`--agent-scope-accept-api-key` 保留 Claude 的完整功能。

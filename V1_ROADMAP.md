@@ -276,16 +276,17 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 #### Step 4.1 — 实现 turn coordinator
 
 - 基础 coordinator 已实现：提供显式 submitTask/observe/markWaiting/markBlocked/resume/finish 边界，
-  并以确定性测试保护任务输入分类和单调 turn identity。PTY 输入接线、provider idle 识别和 hook 融合仍待后续步骤完成。
+  并以确定性测试保护任务输入分类和单调 turn identity。普通交互模式的 PTY 输入已经接线，
+  `--agent-scope-accept-api-key` 路径会记录多轮任务；`--bare` 保持保守兼容路径。
 - 双通道 signal arbiter 已实现：hook/manual 信号优先，PTY fallback 必须达到置信度门槛，
-  低置信度信号只返回诊断结果，不改变 turn 状态；hook/PTY 具体 detector 接线仍待后续完成。
-- hook event mapper 和保守 PTY detector 已实现并测试：结构化 turn 生命周期为高置信度，
-  普通终端 prompt 只产生 0.55 的 waiting 候选，显式 AgentScope marker 才可产生高置信度
-  PTY signal；真实 Claude 输出接线仍待手工验收和后续 adapter 集成。
-- [ ] 识别终端何时等待用户输入、何时提交任务开始工作、何时 Claude 回到 idle/waiting。
+  低置信度信号只返回诊断结果，不改变 turn 状态。
+- hook event mapper 和 PTY detector 已实现并测试：结构化 turn 生命周期为高置信度；普通模式
+  在观察到实际活动后，回到 Claude 输入提示会产生高置信度完成候选；显式 AgentScope marker
+  仍可产生高置信度 PTY signal；审批/授权提示保持 waiting，不会被完成提示覆盖。
+- [x] 识别终端何时等待用户输入、何时提交任务开始工作、何时 Claude 回到 idle/waiting。
 - [ ] 有稳定 hook 信号时，将输入边界与 hook 信号合并。
-- [ ] 不把审批按键、slash 命令导航或多行编辑误判成新任务。
-- [ ] 分配单调递增的 turn 序号和稳定 id。
+- [x] 不把审批按键、slash 命令导航或多行编辑误判成新任务。
+- [x] 分配单调递增的 turn 序号和稳定 id。
 
 验证：fake terminal transcript 覆盖单行、多行、审批、取消、重试和快速连续 turn。
 
@@ -294,11 +295,11 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 #### Step 4.2 — 捕获有用的本地任务身份
 
 - 基础 prompt/title 策略已实现：标题从脱敏后的首行生成，常见 token/key/password 形状会在进入 turn projection 前替换为
-  [REDACTED]；可通过 persistPrompt: false 只保留标题。CLI/PTY 接线与 Dashboard 配置入口仍待后续步骤完成。
-- [ ] 在本地保存提交的任务文本，并生成 Dashboard 紧凑标题。
+  [REDACTED]；可通过 persistPrompt: false 只保留标题。普通 CLI/PTY 路径已接入该策略。
+- [x] 在本地保存提交的任务文本，并生成 Dashboard 紧凑标题。
 - [ ] 脱敏明显的 secret 格式，环境变量内容不能进入标题。
 - [ ] 提供“只保存标题”或“关闭 prompt 持久化”的配置开关。
-- [ ] 默认不持久化隐藏推理或完整终端 transcript。
+- [x] 默认不持久化隐藏推理或完整终端 transcript。
 
 验证：凭据样例被脱敏；Unicode 和多行 prompt 能正确往返。
 

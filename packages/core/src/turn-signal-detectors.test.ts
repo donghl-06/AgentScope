@@ -57,4 +57,25 @@ describe('turn signal detectors', () => {
     ]);
     expect(detector.ingest('[agentscope:turn-finished:completed]\r\n', 200)).toEqual([]);
   });
+
+  it('recognizes completion after activity in normal interactive mode', () => {
+    const detector = new PtyTurnSignalDetector({ enablePromptCompletion: true });
+    expect(detector.ingest('> Try "task"\r\n', 300)).toEqual([
+      { kind: 'waiting', source: 'pty', confidence: 0.55, timestamp: 300 },
+    ]);
+    expect(detector.ingest('Working on the task...\r\n', 310)).toEqual([]);
+    expect(detector.ingest('> Try "next"\r\n', 320)).toEqual([
+      { kind: 'finished', reason: 'completed', source: 'pty', confidence: 0.88, timestamp: 320 },
+    ]);
+  });
+
+  it('keeps approval prompts waiting instead of completing a turn', () => {
+    const detector = new PtyTurnSignalDetector({ enablePromptCompletion: true });
+    expect(detector.ingest('Working...\r\nAllow this command? [y/N]\r\n', 400)).toEqual([
+      { kind: 'waiting', source: 'pty', confidence: 0.9, timestamp: 400 },
+    ]);
+    expect(detector.ingest('> Try "next"\r\n', 410)).toEqual([
+      { kind: 'waiting', source: 'pty', confidence: 0.55, timestamp: 410 },
+    ]);
+  });
 });

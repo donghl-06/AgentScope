@@ -61,49 +61,98 @@ export function signalFromHookEvent(event: AgentEvent): TurnSignal | undefined {
 
 export class PtyTurnSignalDetector {
   private buffer = '';
+  private lineBuffer = '';
+  private activitySincePrompt = false;
+  private approvalPrompt = false;
   private readonly emittedMarkers = new Set<string>();
 
+  constructor(private readonly options: { readonly enablePromptCompletion?: boolean } = {}) {}
+
   ingest(chunk: string, timestamp: number): readonly TurnSignal[] {
-    this.buffer = stripAnsi(this.buffer + chunk).slice(-8_192);
+    const cleanedChunk = stripAnsi(chunk);
+    this.buffer = stripAnsi(this.buffer + cleanedChunk).slice(-8_192);
     const signals: TurnSignal[] = [];
-    for (const line of this.buffer.split(/\r?\n/u).slice(-8)) {
+    this.lineBuffer += cleanedChunk;
+    const lines = this.lineBuffer.split(/\r?\n/u);
+    this.lineBuffer = lines.pop() ?? '';
+    for (const line of lines) {
       const marker = line.match(
         /^\s*\[agentscope:turn-(waiting|blocked|resumed|finished)(?::([a-z]+))?\]\s*$/iu,
       );
-      if (marker?.[1] === undefined) continue;
-      const kind = marker[1].toLowerCase();
-      const markerKey = kind + ':' + (marker[2] ?? '') + ':' + timestamp;
-      if (this.emittedMarkers.has(markerKey)) continue;
-      this.emittedMarkers.add(markerKey);
-      if (kind === 'finished') {
-        const reason =
-          marker[2] === 'failed' || marker[2] === 'interrupted' ? marker[2] : 'completed';
-        signals.push({
-          kind: 'finished',
-          reason,
-          source: 'pty',
-          confidence: 0.95,
-          timestamp,
-        });
-      } else {
-        signals.push({
-          kind: kind as 'waiting' | 'blocked' | 'resumed',
-          source: 'pty',
-          confidence: 0.95,
-          timestamp,
-        });
+      if (marker?.[1] !== undefined) {
+        const kind = marker[1].toLowerCase();
+        const markerKey = kind + ':' + (marker[2] ?? '') + ':' + timestamp;
+        if (this.emittedMarkers.has(markerKey)) continue;
+        this.emittedMarkers.add(markerKey);
+        if (kind === 'finished') {
+          const reason =
+            marker[2] === 'failed' || marker[2] === 'interrupted' ? marker[2] : 'completed';
+          signals.push({ kind: 'finished', reason, source: 'pty', confidence: 0.95, timestamp });
+        } else {
+          signals.push({
+            kind: kind as 'waiting' | 'blocked' | 'resumed',
+            source: 'pty',
+            confidence: 0.95,
+            timestamp,
+          });
+        }
+        continue;
+      }
+
+      if (isApprovalPrompt(line)) {
+        this.approvalPrompt = true;
+        signals.push({ kind: 'waiting', source: 'pty', confidence: 0.9, timestamp });
+        continue;
+      }
+
+      if (isPromptLine(line)) {
+        const completed =
+          this.options.enablePromptCompletion === true &&
+          this.activitySincePrompt &&
+          !this.approvalPrompt;
+        signals.push(
+          completed
+            ? { kind: 'finished', reason: 'completed', source: 'pty', confidence: 0.88, timestamp }
+            : { kind: 'waiting', source: 'pty', confidence: 0.55, timestamp },
+        );
+        this.activitySincePrompt = false;
+        this.approvalPrompt = false;
+        continue;
+      }
+
+      if (line.trim().length > 0) {
+        this.activitySincePrompt = true;
+        if (this.approvalPrompt) this.approvalPrompt = false;
       }
     }
-    if (/(?:^|\n)\s*(?:>|❯)\s?$/u.test(this.buffer)) {
-      signals.push({
-        kind: 'waiting',
-        source: 'pty',
-        confidence: 0.55,
-        timestamp,
-      });
+
+    // A prompt can arrive without a newline while the PTY is still active.
+    if (isPromptLine(this.lineBuffer)) {
+      const completed =
+        this.options.enablePromptCompletion === true &&
+        this.activitySincePrompt &&
+        !this.approvalPrompt;
+      signals.push(
+        completed
+          ? { kind: 'finished', reason: 'completed', source: 'pty', confidence: 0.88, timestamp }
+          : { kind: 'waiting', source: 'pty', confidence: 0.55, timestamp },
+      );
+      this.lineBuffer = '';
+      this.activitySincePrompt = false;
+      this.approvalPrompt = false;
+    } else if (/(?:^|\n)\s*(?:>|❯)\s?$/u.test(this.buffer)) {
+      signals.push({ kind: 'waiting', source: 'pty', confidence: 0.55, timestamp });
     }
     return deduplicateSignals(signals);
   }
+}
+
+function isPromptLine(line: string): boolean {
+  return /^\s*(?:>|❯)\s*(?:Try\b.*)?$/iu.test(line);
+}
+
+function isApprovalPrompt(line: string): boolean {
+  return /\b(?:allow|approve|permission|do you want to|yes\/no|y\/n)\b/iu.test(line);
 }
 
 function deduplicateSignals(signals: readonly TurnSignal[]): readonly TurnSignal[] {
