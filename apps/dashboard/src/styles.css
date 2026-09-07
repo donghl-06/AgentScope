@@ -569,6 +569,54 @@ h3 {
   color: #8598b2;
   font-size: 11px;
 }
+.turn-projection {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 0 43px;
+  padding: 12px;
+  border: 1px solid #28405e;
+  border-radius: 8px;
+  background: rgba(8, 19, 34, 0.35);
+}
+.turn-projection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.turn-projection-heading .eyebrow {
+  margin-bottom: 0;
+}
+.turn-projection .signal-grid {
+  gap: 8px;
+}
+.turn-projection .signal-card {
+  padding: 10px;
+}
+.turn-projection .signal-card-heading strong {
+  font-size: 15px;
+}
+.turn-projection-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.turn-projection-facts span {
+  display: grid;
+  gap: 3px;
+  min-width: 125px;
+  color: #b9c8d9;
+  font-size: 11px;
+}
+.turn-projection-facts b {
+  color: #7189a5;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.turn-projection .verification-row {
+  gap: 6px;
+}
 .turn-evidence {
   margin: 10px 0 0 43px;
   padding: 10px 12px;

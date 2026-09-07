@@ -478,8 +478,58 @@ function TurnListItem({
           </small>
         </span>
       </button>
-      {expanded && <TurnEvidenceDetails evidence={evidence} />}
+      {expanded && (
+        <>
+          <TurnProjectionDetails turn={turn} />
+          <TurnEvidenceDetails evidence={evidence} />
+        </>
+      )}
     </li>
+  );
+}
+
+function TurnProjectionDetails({ turn }: { turn: StoredTurn }) {
+  const { state } = turn;
+  const eta = state.eta;
+
+  return (
+    <div className="turn-projection" aria-label="Turn progress and verification">
+      <div className="turn-projection-heading">
+        <span className="eyebrow">TURN PROJECTION</span>
+        <span className={`status-pill status-pill-${state.status}`}>
+          {statusLabel(state.status)}
+        </span>
+      </div>
+      <div className="signal-grid">
+        <Signal
+          label="Progress"
+          value={`${Math.round(state.progress.value * 100)}%`}
+          confidence={state.progress.confidence}
+          detail={state.progress.reasons[0]?.message ?? 'No turn progress reason.'}
+        />
+        <Signal
+          label="ETA"
+          value={eta === undefined ? 'Unavailable' : formatEta(eta.minSeconds, eta.maxSeconds)}
+          confidence={eta?.confidence ?? 0}
+          detail={eta?.reasons[0]?.message ?? 'No turn ETA signal has been observed.'}
+        />
+      </div>
+      <div className="turn-projection-facts">
+        <span>
+          <b>Activity</b>
+          {state.currentActivity?.label ?? 'No activity signal'}
+        </span>
+        <span>
+          <b>Verification</b>
+          {statusLabel(state.verification.overall)}
+        </span>
+      </div>
+      <div className="verification-row">
+        <Verification label="Tests" value={state.verification.tests} />
+        <Verification label="Build" value={state.verification.build} />
+        <Verification label="Typecheck" value={state.verification.typecheck} />
+      </div>
+    </div>
   );
 }
 
