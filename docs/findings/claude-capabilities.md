@@ -79,4 +79,7 @@ Ctrl+C 中断实验，因此当前仍不宣称交互式中断体验已完成。
 
 随后在同一 Windows VS Code PowerShell 终端中执行了长任务 Ctrl+C 验收：第一次 Ctrl+C
 中断当前动作但保留 Claude 交互会话，之后仍可继续提交任务；会话最终可正常退出。
-终端 resize 尚未进行专门的人工验证。
+
+随后完成终端 resize 人工验收：反复缩放 VS Code 终端时，Claude 界面正常重排，
+没有乱码、残留字符或光标错位；输入仍可用，Dashboard 保持实时连接，session 没有重复或
+404 数据。Windows 交互式终端的基础缩放行为通过。
