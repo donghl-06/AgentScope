@@ -873,6 +873,8 @@ agentscope/
 
 ## 10. V1+ Backlog（不进入 V0 关键路径）
 
+交互式 Claude Code、多轮任务与 TTY/PTY 的完整实施计划见 `V1_ROADMAP.md`；本节仅保留原始长期 backlog 摘要。
+
 - Codex App 的官方/稳定可观测接口 spike；若无接口，仅做 External Level C。
 - IDE Agent、Kimi/Gemini CLI、Docker、SSH/remote adapters。
 - Project/session group 与 Planner/Worker 多 Agent 编排集成。
