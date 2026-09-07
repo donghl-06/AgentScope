@@ -1,587 +1,538 @@
-# AgentScope V1 / Interactive TTY Roadmap
+# AgentScope V1 / 交互式 TTY 路线图
 
-- Status: planning baseline
-- Primary target: Windows 11 + VS Code PowerShell + Claude Code harness + compatible Kimi API
-- Secondary target: WSL2 Ubuntu
-- Starting point: V0 local-first structured/non-interactive monitoring is complete and remains the compatibility fallback.
+- 状态：规划基线
+- 主要目标环境：Windows 11 + VS Code PowerShell + Claude Code harness + 兼容 Kimi API
+- 第二目标环境：WSL2 Ubuntu
+- 起点：V0 的本地优先、结构化/非交互式监控已经完成，并继续作为兼容性回退路径。
 
-## 1. V1 objective
+## 1. V1 总目标
 
-V1 turns AgentScope from a wrapper for one structured prompt into a companion for normal,
-long-lived Claude Code usage. The intended experience is:
+V1 要把 AgentScope 从“单个结构化 prompt 的 wrapper”升级为“日常 Claude Code 使用的伴随式监控器”。目标体验是：
 
 ```text
-Terminal A: agent-scope start
-Terminal B: agent-scope claude
+终端 A：agent-scope start
+终端 B：agent-scope claude
 
-User submits turn 1 ─┐
-Claude works          ├─ AgentScope Dashboard updates in real time
-User submits turn 2 ──┤
-Claude works          └─ each turn keeps its own status and evidence
+用户提交第 1 轮任务 ─┐
+Claude 执行           ├─ Dashboard 实时更新
+用户提交第 2 轮任务 ─┤
+Claude 执行           └─ 每一轮保留独立状态和证据
 ```
 
-The Claude terminal must remain recognizably native: colors, cursor movement, multiline input,
-approval UI, slash commands, resize and interruption should behave as they do when the user runs
-`claude` directly. AgentScope observes and projects the session; it does not replace Claude Code's
-conversation UI.
+Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、多行输入、审批界面、slash 命令、窗口缩放和中断都不能被 AgentScope 破坏。AgentScope 负责观察和投影 session，不替换 Claude Code 的对话界面。
 
-## 2. Product decisions already made
+## 2. 已确定的产品决策
 
-- [x] Use route 1 as the reliability baseline: transparent PTY/ConPTY plus process, filesystem,
-      Git and verification observers.
-- [x] Use route 2 as an additive enhancement: stable Claude hooks or documented side-channel
-      events when available, with capability detection and graceful fallback.
-- [x] Do not implement route 3: AgentScope will not build a replacement chat UI around repeated
-      non-interactive provider calls.
-- [x] Preserve compatibility with Claude Code using a compatible Kimi endpoint. AgentScope wraps
-      the local Claude harness and does not require an Anthropic account or call an Anthropic API.
-- [x] Optimize for practical local experience. User-submitted turn text may be stored locally to
-      provide useful task titles and history, while obvious credentials remain redacted and raw
-      chain-of-thought/provider internals remain excluded.
-- [x] Keep the V0 structured path working as a fallback and for automation/CI.
+- [x] 以路线一作为可靠底座：透明 PTY/ConPTY，加上进程、文件系统、Git 和验证 observer。
+- [x] 以路线二作为增强通道：在可用时接入稳定的 Claude hooks 或旁路事件，并具备能力检测和优雅回退。
+- [x] 不实现路线三：AgentScope 不开发一个围绕重复非交互式 provider 调用的替代聊天界面。
+- [x] 保持 Claude Code 使用兼容 Kimi endpoint 的方式。AgentScope 包装本地 Claude harness，不要求 Anthropic 账号，也不直接调用 Anthropic API。
+- [x] 优先提升实际使用体验。用户提交的任务文本可以在本地保存，用于任务标题和历史记录；明显凭据仍然自动脱敏，隐藏推理和 provider 内部数据不保存。
+- [x] 保留 V0 结构化路径，用于自动化、CI 和不需要交互式终端的任务。
 
-## 3. V1 scope and priorities
+## 3. V1 范围和优先级
 
-### P0 — required for the first usable V1
+### P0 — 第一版可用 V1 必须包含
 
-- Transparent Windows ConPTY and WSL2/Linux PTY runtime.
-- A new interactive CLI entry point, tentatively `agent-scope claude`.
-- One terminal session containing multiple task turns.
-- Per-turn lifecycle, duration, current activity, Progress, ETA and evidence.
-- Correct input/output forwarding, resize, Ctrl+C, normal exit and crash recovery.
-- Process, file, Git and known verification signals correlated to the active turn.
-- Dashboard session/turn hierarchy and live updates.
-- The existing Kimi-backed Claude Code configuration must pass through unchanged.
+- Windows ConPTY 和 WSL2/Linux PTY 透明运行时。
+- 新的交互式 CLI 入口，暂定为 `agent-scope claude`。
+- 一个终端 session 中包含多轮任务。
+- 每轮任务独立的生命周期、持续时间、当前活动、Progress、ETA 和 evidence。
+- 正确的输入/输出转发、窗口缩放、Ctrl+C、正常退出和崩溃恢复。
+- 将进程、文件、Git 和已知验证信号关联到当前 turn。
+- Dashboard 展示 session/turn 层级和实时更新。
+- 当前 Kimi-backed Claude Code 配置能够原样透传。
 
-### P1 — experience improvements after the TTY path is stable
+### P1 — TTY 稳定后增加的体验增强
 
-- Claude `--resume`/`--continue` correlation.
-- Reliable waiting-for-user and blocked-state indication.
-- Per-turn file changes, test results and Git commit association.
-- Multiple simultaneous Claude/Codex session groups.
-- Long-task desktop notification and blocker notification.
-- Timeline search, filters and turn navigation.
+- Claude `--resume`/`--continue` 关联。
+- 可靠显示等待用户和 blocked 状态。
+- 每轮文件变化、测试结果和 Git commit 关联。
+- 多个 Claude/Codex session 并行分组。
+- 长任务完成通知和阻塞通知。
+- Timeline 搜索、筛选和 turn 导航。
 
-### P2 — optional evidence-dependent improvements
+### P2 — 依赖证据质量的可选增强
 
-- CPU, memory, process-tree and long-duration capacity metrics.
-- Token/cost display only when the provider exposes stable and trustworthy values.
-- Local turn summaries and searchable history.
-- Trend views such as task duration and verification success rate.
+- CPU、内存、进程树和长时间运行容量指标。
+- 只有 provider 提供稳定可信数据时才展示 token/cost。
+- 本地 turn 摘要和可搜索历史。
+- 任务耗时、验证成功率等趋势视图。
 
-### Explicit non-goals for the first V1 release
+### 第一版 V1 明确不做
 
-- Replacing the native Claude Code terminal or approval UI.
-- Attaching reliably to an arbitrary `claude` process that was started outside AgentScope.
-- Remote execution, accounts, multi-device sync or a hosted control plane.
-- Persisting hidden reasoning, chain-of-thought, credentials or raw provider internals.
-- Making undocumented Claude internal files the only source of truth.
+- 替换原生 Claude Code 终端或审批界面。
+- 可靠 attach 到一个不是由 AgentScope 启动的任意 `claude` 进程。
+- 远程执行、账号、多设备同步或 hosted control plane。
+- 持久化隐藏推理、chain-of-thought、凭据或 provider 内部数据。
+- 把未公开的 Claude 内部文件作为唯一事实来源。
 
-## 4. Target architecture
+## 4. 目标架构
 
 ```text
-VS Code terminal
-    │ keyboard, resize, Ctrl+C
+VS Code 终端
+    │ 键盘、窗口缩放、Ctrl+C
     ▼
 AgentScope interactive CLI
     │
-    ├── PTY runtime ───────────────► Claude Code native TUI
-    │       │ terminal lifecycle
-    │       └──────────────────────► process evidence
+    ├── PTY runtime ───────────────► Claude Code 原生 TUI
+    │       │ 终端生命周期
+    │       └──────────────────────► 进程 evidence
     │
-    ├── turn coordinator ◄───────── user input boundaries
+    ├── turn coordinator ◄───────── 用户输入边界
     │       │
-    │       ├── filesystem/Git/test observers
-    │       └── optional Claude hooks side channel
+    │       ├── 文件系统/Git/测试 observer
+    │       └── 可选 Claude hooks 旁路
     │
     ▼
-SQLite: terminal sessions + turns + normalized events + evidence
+SQLite：terminal session + turn + 归一化 event + evidence
     │
     ▼
-AgentScope server ── HTTP cursor recovery + WebSocket ──► Dashboard
+AgentScope server ── HTTP cursor 恢复 + WebSocket ──► Dashboard
 ```
 
-The PTY path is responsible for terminal fidelity. The observer and optional hook paths are
-responsible for semantic progress. A hook outage must reduce detail, not terminate Claude or the
-interactive terminal.
+PTY 路径负责终端保真度；observer 和可选 hooks 负责语义化进度。hooks 失效时只能降低信息丰富度，不能终止 Claude 或交互式终端。
 
-## 5. Data model direction
+## 5. 数据模型方向
 
-V0's session remains the top-level execution record. V1 adds a turn layer:
+V0 的 session 仍然是顶层执行记录。V1 增加 turn 层：
 
 ```text
 AgentSession
-├── Terminal metadata and provider session id
+├── 终端元数据和 provider session id
 ├── Turn 1
-│   ├── submitted text/title
-│   ├── lifecycle and activity
-│   ├── events and evidence
-│   └── verification/Progress/ETA snapshots
+│   ├── 提交文本/标题
+│   ├── 生命周期和当前活动
+│   ├── event 和 evidence
+│   └── verification/Progress/ETA snapshot
 ├── Turn 2
 └── Turn N
 ```
 
-Planned storage additions:
+计划增加的存储内容：
 
-- `turns`: id, session id, sequence, title/text, status, started/ended timestamps and source.
-- `turn_events` or a nullable `turn_id` on normalized events, chosen through an ADR and migration
-  experiment before implementation.
-- Turn-scoped observer evidence and verification snapshots.
-- Provider resume identity separated from the AgentScope session id.
-- Terminal capability metadata: platform, PTY driver, interactive/hook capabilities and fallbacks.
+- `turns`：id、session id、顺序、标题/文本、状态、开始/结束时间和来源。
+- `turn_events`，或在归一化 event 上增加可空 `turn_id`；先通过 ADR 和迁移实验决定具体方案。
+- turn 范围内的 observer evidence 和 verification snapshot。
+- 将 provider resume identity 与 AgentScope session id 分开保存。
+- 终端能力元数据：平台、PTY 驱动、交互/hooks 能力和回退模式。
 
-Migration must preserve every V0 database. Existing sessions without turns remain readable and
-are displayed as legacy single-task sessions.
+迁移必须保留所有 V0 数据库。没有 turn 的历史 session 仍然可读，并以 legacy 单任务 session 展示。
 
-## 6. Implementation plan
+## 6. 实施计划
 
-### Phase 0 — freeze the interactive contract and choose the PTY driver
+### Phase 0 — 冻结交互契约并选择 PTY 驱动
 
-#### Step 0.1 — define the terminal behavior contract
+#### Step 0.1 — 定义终端行为契约
 
-- [ ] Record the exact expected behavior for colors, cursor control, multiline input, paste,
-      approval screens, slash commands, resize, Ctrl+C, Ctrl+Break, EOF and normal exit.
-- [ ] Define the difference between interrupting the current Claude action and terminating the
-      entire interactive session.
-- [ ] Define supported launch forms and pass-through argument boundaries.
-- [ ] Add a decision record describing why AgentScope owns the child PTY instead of attaching to
-      an unrelated already-running process.
+- [ ] 记录颜色、光标控制、多行输入、粘贴、审批界面、slash 命令、窗口缩放、Ctrl+C、Ctrl+Break、EOF 和正常退出的预期行为。
+- [ ] 区分“中断当前 Claude 动作”和“终止整个交互式 session”。
+- [ ] 定义支持的启动方式和参数透传边界。
+- [ ] 增加 ADR，说明为什么由 AgentScope 拥有子进程 PTY，而不是 attach 到任意已运行进程。
 
-Verification:
+验证：使用 fake interactive CLI，在不调用真实 provider 的情况下覆盖契约；明确覆盖 Windows PowerShell、VS Code Terminal 和 WSL2。
 
-- A deterministic fake interactive CLI exercises the contract without a real provider.
-- The contract explicitly covers Windows PowerShell, VS Code Terminal and WSL2.
+提交边界：只提交终端契约、ADR 和 fake fixture。
 
-Commit boundary: terminal contract, ADR and fake fixture only.
+#### Step 0.2 — 比较 PTY/ConPTY 驱动选项
 
-#### Step 0.2 — compare PTY/ConPTY driver options
+- [ ] 评估支持 Windows ConPTY 和 Unix PTY 的维护中 Node 驱动。
+- [ ] 比较原生构建要求、Node 22/24 兼容性、Windows ARM/x64、缩放/信号、Unicode、版本健康度和供应链风险。
+- [ ] 在 Windows 和 WSL2 用 fake TUI 做一次隔离 PoC。
+- [ ] 选择一个驱动，记录拒绝的方案和回退行为。
 
-- [ ] Evaluate maintained Node-compatible drivers for Windows ConPTY and Unix PTY support.
-- [ ] Compare native build requirements, Node 22/24 compatibility, Windows ARM/x64 coverage,
-      resize/signal behavior, Unicode handling, release health and supply-chain surface.
-- [ ] Run a disposable proof of concept with a fake TUI on Windows and WSL2.
-- [ ] Select one driver and document rejected alternatives and fallback behavior.
+验证：Windows 和 WSL2 的 spawn、输入、输出、缩放和终止都通过；依赖审计和 clean-install 通过后才能进入主 workspace。
 
-Verification:
+提交边界：驱动决策和隔离 spike，暂不接入生产路径。
 
-- Spawn, input, output, resize and termination pass on Windows and WSL2.
-- Dependency audit and clean-install experiment pass before the driver enters the main workspace.
+#### Step 0.3 — 检查 Claude 交互和 hooks 能力
 
-Commit boundary: driver decision and isolated spike; no production wiring yet.
+- [ ] 为当前安装的 Claude Code 版本生成脱敏 capability matrix。
+- [ ] 验证在兼容 Kimi endpoint 下，交互 turn、tool call、notification 和 stop 期间哪些文档化 hooks 会触发。
+- [ ] 验证 `--resume` 和 `--continue` 的 identity 及失败行为。
+- [ ] 确认基础 PTY 运行不依赖 hooks。
 
-#### Step 0.3 — inspect Claude interactive and hook capabilities
+验证：fixture 只包含形状，不包含 prompt、API key 或原始推理；hooks 缺失或变化时进入明确的低能力模式。
 
-- [ ] Capture a redacted capability matrix for the installed Claude Code version.
-- [ ] Verify which documented hooks fire during interactive turns, tool calls, notifications and
-      stop events when the harness uses the configured Kimi endpoint.
-- [ ] Verify `--resume` and `--continue` identifiers and failure behavior.
-- [ ] Confirm no hook is required for basic PTY operation.
+提交边界：capability findings、脱敏 fixture 和 parser 测试。
 
-Verification:
+### Phase 1 — 协议和存储基础
 
-- Redacted fixtures contain shapes only, never prompt text, API keys or raw reasoning.
-- Missing/changed hooks produce a declared low-capability mode.
+#### Step 1.1 — 增加 turn 协议
 
-Commit boundary: capability findings, fixtures and parser tests.
+- [ ] 定义 `TurnStatus`、`TurnState`、`TurnStarted`、`TurnUpdated` 和 `TurnFinished` schema。
+- [ ] 定义 turn 范围内的 activity、verification、Progress 和 ETA projection。
+- [ ] 以兼容方式扩展协议，让 V0 consumer 可以忽略 V1 notification。
+- [ ] 增加 malformed、未知字段和 replay 顺序测试。
 
-### Phase 1 — protocol and storage foundations
+验证：schema、parser 和兼容性测试通过，且不改变 V0 event 含义。
 
-#### Step 1.1 — add the turn protocol
+提交边界：协议类型和测试。
 
-- [ ] Define `TurnStatus`, `TurnState`, `TurnStarted`, `TurnUpdated` and `TurnFinished` schemas.
-- [ ] Define turn-scoped activity, verification, Progress and ETA projections.
-- [ ] Version the protocol additively so V0 consumers can ignore V1 notifications.
-- [ ] Add malformed, unknown-field and replay-order tests.
+#### Step 1.2 — 增加向后兼容的存储迁移
 
-Verification: schema, parser and compatibility tests pass without changing V0 event meaning.
+- [ ] 增加 turn 表和 session/顺序/时间查询所需索引。
+- [ ] 通过 ADR 决定 event 直接引用 turn，还是使用映射表。
+- [ ] 增加 turn 的创建、开始、更新、结束和列表 repository。
+- [ ] 增加迁移、回滚/备份说明和 V0 数据库兼容测试。
+- [ ] 保持 transaction-before-broadcast 顺序。
 
-Commit boundary: protocol types and tests.
+验证：复制出的 V0 fixture 数据库可以迁移并正常读取；并发写入和 busy-error 归一化仍然正确。
 
-#### Step 1.2 — add backward-compatible storage migrations
+提交边界：migration、repository 和 storage 测试。
 
-- [ ] Add the turn table and indexes needed for session/sequence/time queries.
-- [ ] Decide through an ADR whether events reference turns directly or through a mapping table.
-- [ ] Add repositories for create/start/update/finish/list turn operations.
-- [ ] Add migration, rollback/backup instructions and V0 database compatibility tests.
-- [ ] Preserve transaction-before-broadcast behavior.
+#### Step 1.3 — 实现 turn reducer
 
-Verification: a copied V0 fixture database migrates and remains readable; concurrent writers and
-busy-error normalization remain correct.
+- [ ] 为 queued/running/waiting/blocked/completed/failed/interrupted 实现确定性的状态转换。
+- [ ] 不让单个可恢复的工具错误自动覆盖后续成功的 turn 结果；失败工具仍保留为 evidence。
+- [ ] 区分 terminal session 失败和单个 turn 失败。
+- [ ] 增加 replay、重复、乱序和崩溃恢复测试。
 
-Commit boundary: migration, repository and storage tests.
+验证：从已存 event 重放时，session 和 turn 状态保持可重复。
 
-#### Step 1.3 — implement the turn reducer
+提交边界：reducer 和 projection 测试。
 
-- [ ] Add deterministic lifecycle transitions for queued/running/waiting/blocked/completed/failed/
-      interrupted turns.
-- [ ] Prevent one recoverable tool failure from automatically overriding a later successful turn
-      outcome; preserve the failed tool as evidence.
-- [ ] Keep terminal-session failure separate from individual-turn failure.
-- [ ] Add replay, duplicate, out-of-order and crash-recovery tests.
+### Phase 2 — 跨平台 PTY runtime
 
-Verification: session and turn states remain reproducible from stored events.
+#### Step 2.1 — 创建 provider-neutral terminal package
 
-Commit boundary: reducer and projection tests.
+- [ ] 提供 spawn、write、resize、interrupt、terminate 和 async output API。
+- [ ] 归一化终端生命周期，但不改写 ANSI 输出。
+- [ ] 限制输出 buffer，在不阻塞子进程的情况下处理 backpressure。
+- [ ] 默认只在内存中保留原始终端 chunk。
 
-### Phase 2 — cross-platform PTY runtime
+验证：fake TUI 覆盖碎片化 UTF-8、ANSI 序列、大量输出和慢读取方。
 
-#### Step 2.1 — create a provider-neutral terminal package
+提交边界：独立 terminal package 和测试。
 
-- [ ] Add a package exposing spawn, write, resize, interrupt, terminate and async output APIs.
-- [ ] Normalize terminal lifecycle without rewriting ANSI output.
-- [ ] Bound output buffers and apply backpressure without blocking the child process.
-- [ ] Keep raw terminal chunks ephemeral by default.
+#### Step 2.2 — 实现 Windows ConPTY 行为
 
-Verification: fake TUI tests cover fragmented UTF-8, ANSI sequences, large output and slow readers.
+- [ ] 保持 VS Code PowerShell 的输入、Unicode、粘贴和窗口缩放。
+- [ ] 在 Claude 允许的范围内区分 Ctrl+C 当前动作和整个 session 终止。
+- [ ] wrapper 退出时清理自己拥有的进程树，不误杀无关进程。
+- [ ] 终端突然关闭后恢复 stale session。
 
-Commit boundary: isolated terminal package and tests.
+验证：自动 fake-process 测试，加一次真实 Windows 手工 smoke。
 
-#### Step 2.2 — implement Windows ConPTY behavior
+提交边界：Windows runtime 和平台测试。
 
-- [ ] Preserve VS Code PowerShell input, Unicode, paste and resize.
-- [ ] Distinguish Ctrl+C for the current action from full session termination where Claude permits.
-- [ ] Clean the owned process tree on wrapper exit without killing unrelated processes.
-- [ ] Recover stale sessions after abrupt terminal closure.
+#### Step 2.3 — 实现 WSL2/Linux PTY 行为
 
-Verification: automated fake-process tests plus a manual native Windows smoke checkpoint.
+- [ ] 使用 Unix PTY 语义提供同一套 provider-neutral contract。
+- [ ] 独立验证 Linux 路径、信号、缩放和 UTF-8，不能把 Windows `node_modules` 带入 Linux。
+- [ ] 保持 WSL2 server、CLI 和数据库使用 Linux checkout 的原生路径。
 
-Commit boundary: Windows runtime and platform tests.
+验证：fake TUI 和 Mock interactive session 在隔离 WSL2 checkout 中通过。
 
-#### Step 2.3 — implement WSL2/Linux PTY behavior
+提交边界：Unix runtime 和 WSL2 smoke 文档。
 
-- [ ] Provide the same provider-neutral contract using Unix PTY semantics.
-- [ ] Verify Linux paths, signals, resize and UTF-8 independently from Windows `node_modules`.
-- [ ] Keep WSL2 server/CLI/database paths native to the Linux checkout.
+### Phase 3 — 交互式 Claude wrapper MVP
 
-Verification: fake TUI and Mock interactive sessions pass in an isolated WSL2 checkout.
+#### Step 3.1 — 增加 interactive CLI 命令
 
-Commit boundary: Unix runtime and WSL2 smoke documentation.
+- [ ] 增加 `agent-scope claude`，透明透传参数和环境。
+- [ ] 从调用方当前目录解析 workspace。
+- [ ] 使用运行中 Dashboard 的同一个数据库。
+- [ ] PTY 驱动或 Claude executable 不可用时给出可操作错误。
+- [ ] 保持 `agent-scope run claude -- -p ...` 不变。
 
-### Phase 3 — interactive Claude wrapper MVP
+验证：fake Claude CLI 收到一致的 cwd、环境 allow-list、参数和终端尺寸。
 
-#### Step 3.1 — add the interactive CLI command
+提交边界：CLI 入口和 fake-provider 集成。
 
-- [ ] Add `agent-scope claude` with transparent argument and environment forwarding.
-- [ ] Resolve the observed workspace from the caller's current directory.
-- [ ] Use the same configured database as the running Dashboard.
-- [ ] Fall back with an actionable error when a PTY driver or Claude executable is unavailable.
-- [ ] Keep `agent-scope run claude -- -p ...` unchanged.
+#### Step 3.2 — 保持原生交互体验
 
-Verification: fake Claude CLI sees identical cwd, environment allow-list, arguments and terminal
-dimensions.
+- [ ] 转发键盘和输出，不在 Claude UI 中插入 AgentScope 自己的提示。
+- [ ] 转发窗口缩放，并在正常/异常退出后恢复本地终端状态。
+- [ ] 保留 exit code，并分别识别 wrapper/provider/terminal failure。
+- [ ] AgentScope diagnostics 输出到独立且安全的通道或日志。
 
-Commit boundary: CLI surface and fake-provider integration.
+验证：ANSI snapshot/fake TUI 测试和终端恢复测试。
 
-#### Step 3.2 — preserve the native interaction experience
+提交边界：交互式 stream 和生命周期行为。
 
-- [ ] Forward keystrokes and output without AgentScope prompts appearing inside Claude's UI.
-- [ ] Forward resize events and restore local terminal state after normal or abnormal exit.
-- [ ] Preserve exit codes and classify wrapper/provider/terminal failures separately.
-- [ ] Ensure AgentScope diagnostics go to a separate safe channel or log.
+#### 第一个用户验收点
 
-Verification: ANSI snapshot/fake TUI tests and terminal restoration tests.
+Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工 smoke：
 
-Commit boundary: interactive stream and lifecycle behavior.
+1. 启动 AgentScope 和 Dashboard。
+2. 在可信的 disposable project 中运行 `agent-scope claude`。
+3. 使用普通 Claude 输入、多行粘贴、一次审批和一次 Ctrl+C。
+4. 确认原生界面仍然可用，且没有 orphan process。
 
-#### First user checkpoint
+如果 wrapper 破坏了日常 Claude 使用体验，不进入 turn 语义识别阶段。
 
-After Steps 3.1–3.2 pass automatically, request one manual Windows VS Code Terminal smoke:
+### Phase 4 — 多轮任务识别
 
-1. Start AgentScope and open the Dashboard.
-2. Run `agent-scope claude` in a trusted disposable project.
-3. Use ordinary Claude input, multiline paste, one approval and one Ctrl+C.
-4. Confirm that the native UI remains usable and no orphan process remains.
+#### Step 4.1 — 实现 turn coordinator
 
-Do not continue to semantic turn detection if the wrapper degrades normal Claude usage.
+- [ ] 识别终端何时等待用户输入、何时提交任务开始工作、何时 Claude 回到 idle/waiting。
+- [ ] 有稳定 hook 信号时，将输入边界与 hook 信号合并。
+- [ ] 不把审批按键、slash 命令导航或多行编辑误判成新任务。
+- [ ] 分配单调递增的 turn 序号和稳定 id。
 
-### Phase 4 — multi-turn task detection
+验证：fake terminal transcript 覆盖单行、多行、审批、取消、重试和快速连续 turn。
 
-#### Step 4.1 — implement the turn coordinator
+提交边界：coordinator 和确定性测试。
 
-- [ ] Detect when the terminal is ready for user input, when a submission begins work and when
-      Claude returns to an idle/waiting state.
-- [ ] Combine input boundaries with stable hook signals when present.
-- [ ] Avoid treating approval keystrokes, slash-command navigation or multiline editing as new
-      tasks.
-- [ ] Assign a monotonic turn sequence and stable id.
+#### Step 4.2 — 捕获有用的本地任务身份
 
-Verification: recorded fake terminal transcripts cover single-line, multiline, approval, cancel,
-retry and rapid consecutive turns.
+- [ ] 在本地保存提交的任务文本，并生成 Dashboard 紧凑标题。
+- [ ] 脱敏明显的 secret 格式，环境变量内容不能进入标题。
+- [ ] 提供“只保存标题”或“关闭 prompt 持久化”的配置开关。
+- [ ] 默认不持久化隐藏推理或完整终端 transcript。
 
-Commit boundary: coordinator and deterministic tests.
+验证：凭据样例被脱敏；Unicode 和多行 prompt 能正确往返。
 
-#### Step 4.2 — capture useful local task identity
+提交边界：本地 prompt/title 策略和测试。
 
-- [ ] Store the submitted task text locally and generate a compact Dashboard title.
-- [ ] Redact obvious secret formats and never promote environment values into the title.
-- [ ] Provide a configuration switch to store title only or disable prompt persistence.
-- [ ] Do not persist raw hidden reasoning or the complete terminal transcript by default.
+#### Step 4.3 — 分类 waiting、blocked 和终态
 
-Verification: credential-like fixtures are redacted; Unicode and multiline prompts round-trip.
+- [ ] 区分 Claude 工作中、工具运行中、等待审批、等待用户、blocked、completed、failed 和 interrupted。
+- [ ] 把单个工具错误作为 evidence；turn 结果根据 provider、verification 和 recovery 信号判断，而不是只看一个错误位。
+- [ ] 定义超时/stale 行为，不能伪造完成状态。
 
-Commit boundary: local prompt/title policy and tests.
+验证：失败工具后恢复、最终回答成功等状态机 fixture 通过。
 
-#### Step 4.3 — classify waiting, blocked and terminal outcomes
+提交边界：turn 生命周期语义和回归测试。
 
-- [ ] Distinguish Claude working, tool running, waiting for approval, waiting for user, blocked,
-      completed, failed and interrupted.
-- [ ] Treat individual tool errors as evidence; determine the turn outcome from final provider,
-      verification and recovery signals instead of one error bit alone.
-- [ ] Define timeout/staleness behavior without inventing completion.
+### Phase 5 — 按 turn 关联 observer
 
-Verification: state-machine fixtures cover recovery after a failed tool and a successful final
-answer.
+#### Step 5.1 — 将现有 observer 绑定到活动 turn
 
-Commit boundary: turn lifecycle semantics and regression tests.
+- [ ] 将进程、文件系统和 Git evidence 绑定到活动 turn，同时保留 session 级来源信息。
+- [ ] 在 turn 开始/结束时 snapshot workspace，只计算路径和统计，不读取无关文件。
+- [ ] 防止延迟 debounce event 泄漏到下一个 turn。
+- [ ] 通过 fusion ledger 对 native、hook 和 observer evidence 去重。
 
-### Phase 5 — observer correlation per turn
+验证：两个快速 turn 修改不同文件时，证据仍然正确分开。
 
-#### Step 5.1 — scope existing observers to the active turn
+提交边界：turn-aware observer runtime。
 
-- [ ] Attach process, filesystem and Git evidence to the active turn while retaining session-level
-      provenance.
-- [ ] Snapshot the workspace at turn start/end and calculate paths/statistics without reading
-      unrelated files.
-- [ ] Prevent delayed debounce events from leaking into the next turn.
-- [ ] Deduplicate native/hook/observer evidence through the fusion ledger.
+#### Step 5.2 — 关联 verification 和 Git 结果
 
-Verification: two rapid turns modifying different files remain correctly separated.
+- [ ] 识别已知的 test、build、typecheck 和 lint 命令。
+- [ ] 将 start/result/exit code 关联到正确 turn。
+- [ ] 使用 hash、subject 和 changed-file summary 关联 turn 中创建的 commit。
+- [ ] 保持 provider `completed` 与客观 verification 状态的区别。
 
-Commit boundary: turn-aware observer runtime.
+验证：成功、测试失败、重试后通过和 commit 场景均可确定性复现。
 
-#### Step 5.2 — correlate verification and Git results
+提交边界：verification/Git 关联和测试。
 
-- [ ] Recognize known tests, build, typecheck and lint commands.
-- [ ] Associate their start/result/exit code with the correct turn.
-- [ ] Link a commit created during a turn using hash, subject and changed-file summary.
-- [ ] Keep a provider `completed` result distinct from objective verification status.
+### Phase 6 — 可选的 Claude hooks 增强
 
-Verification: success, failed test, retry-to-pass and commit scenarios are deterministic.
+#### Step 6.1 — 构建能力门控的 hook adapter
 
-Commit boundary: verification/Git correlation and tests.
+- [ ] 只消费文档化或实验确认稳定的 hook 字段。
+- [ ] 关联 provider session、turn、tool start/finish、approval 和 stop 信号。
+- [ ] 持久化前校验、脱敏和归一化 hook record。
+- [ ] 已安装 Claude 版本不兼容时自动关闭 hook 路径。
 
-### Phase 6 — optional Claude hook enhancement
+验证：启用 hooks 和仅 observer 两种模式产生兼容的 turn projection。
 
-#### Step 6.1 — build a capability-gated hook adapter
+提交边界：hook adapter 和脱敏 fixture。
 
-- [ ] Consume only documented or experimentally stable hook fields.
-- [ ] Correlate provider session, turn, tool start/finish, approval and stop signals.
-- [ ] Validate, redact and normalize hook records before persistence.
-- [ ] Disable the hook path automatically when the installed Claude version is incompatible.
+#### Step 6.2 — 明确 Kimi/harness 兼容性
 
-Verification: hook-enabled and observer-only modes produce compatible turn projections.
+- [ ] 使用当前兼容 endpoint 和 model 重复 hook/TTY 测试。
+- [ ] 记录与官方账号示例不同的字段或行为。
+- [ ] provider 限流/错误不能破坏终端 session 或数据库。
 
-Commit boundary: hook adapter and redacted fixtures.
+验证：限流重试、工具失败和正常多轮 session 都可恢复。
 
-#### Step 6.2 — keep Kimi/harness compatibility explicit
+提交边界：兼容性测试和 findings。
 
-- [ ] Repeat hook/TTY tests with the configured compatible endpoint and model.
-- [ ] Document fields or behaviors that differ from official-account examples.
-- [ ] Ensure provider rate-limit/error responses do not damage the terminal session or database.
+### Phase 7 — server、实时更新和恢复
 
-Verification: a rate-limit retry, tool failure and normal multi-turn session remain recoverable.
+#### Step 7.1 — 增加 turn API 和 WebSocket notification
 
-Commit boundary: compatibility tests and findings.
+- [ ] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
+- [ ] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification。
+- [ ] Dashboard 断线/重连后保留 HTTP cursor catch-up。
+- [ ] 轮询外部 interactive CLI writer，避免重复广播。
 
-### Phase 7 — server, realtime and recovery
+验证：跨进程 server/CLI 测试覆盖两个 turn，并在两轮之间断线重连。
 
-#### Step 7.1 — add turn APIs and WebSocket notifications
+提交边界：server API、live protocol 和测试。
 
-- [ ] Add paginated session-turn and turn-event/evidence endpoints.
-- [ ] Publish `turn.created`, `turn.updated` and `turn.finished` notifications.
-- [ ] Preserve HTTP cursor catch-up after Dashboard disconnect/reconnect.
-- [ ] Poll external interactive CLI writers without duplicate broadcasts.
+#### Step 7.2 — 恢复中断的交互式 session
 
-Verification: cross-process server/CLI tests cover two turns and reconnect between them.
+- [ ] 扩展 `agent-scope recover`，区分 stale terminal session 和 stale active turn。
+- [ ] 只标记真正 stale 的记录，不能中断另一个进程拥有的 live PTY。
+- [ ] 记录 recovery reason，保留最后一份安全 evidence。
+- [ ] server 重启与 interactive CLI 生命周期相互独立。
 
-Commit boundary: server API, live protocol and tests.
+验证：wrapper 突然终止、Dashboard 重启和模拟机器重启后都收敛到一致状态。
 
-#### Step 7.2 — recover interrupted interactive sessions
+提交边界：恢复行为和故障注入测试。
 
-- [ ] Extend `agent-scope recover` to distinguish stale terminal sessions and stale active turns.
-- [ ] Mark only genuinely stale records; do not interrupt a live PTY owned by another process.
-- [ ] Record a recovery reason and retain the last safe evidence.
-- [ ] Handle server restart independently from the interactive CLI lifecycle.
+### Phase 8 — 多轮 Dashboard 体验
 
-Verification: abrupt wrapper kill, Dashboard restart and machine-restart simulations converge to a
-consistent state.
+#### Step 8.1 — 增加 session 和 turn 导航
 
-Commit boundary: recovery behavior and fault-injection tests.
+- [ ] 一个 interactive Claude session 下显示有序 turn 列表。
+- [ ] 高亮 active turn，展示标题、状态、持续时间和当前活动。
+- [ ] 保持 legacy V0 单任务 session 的展示兼容。
+- [ ] hooks 或 verification 不可用时显示清晰的能力标签。
 
-### Phase 8 — multi-turn Dashboard experience
+验证：legacy、interactive 和混合 session 列表的数据流/组件测试通过。
 
-#### Step 8.1 — add session and turn navigation
+提交边界：session/turn UI 骨架。
 
-- [ ] Show one interactive Claude session with an ordered turn list.
-- [ ] Highlight the active turn and display its title, status, duration and current activity.
-- [ ] Preserve legacy V0 single-task session rendering.
-- [ ] Add clear capability labels when hooks or verification signals are unavailable.
+#### Step 8.2 — 增加每轮 Progress 和 evidence 视图
 
-Verification: component/data-flow tests cover legacy, interactive and mixed session lists.
+- [ ] 对选中 turn 展示 Progress、ETA、文件、命令、测试、Git evidence 和 timeline。
+- [ ] 解释 confidence 和 reasons，避免伪精确。
+- [ ] 突出等待用户和需要审批的状态。
+- [ ] 重连或分页后不重复 event。
 
-Commit boundary: session/turn UI skeleton.
+验证：两个实时 turn 更新时不丢失选中项，也不重复 timeline。
 
-#### Step 8.2 — add per-turn progress and evidence views
+提交边界：turn detail view 和 UI 测试。
 
-- [ ] Show Progress, ETA, files, commands, tests, Git evidence and timeline for the selected turn.
-- [ ] Explain confidence and reasons instead of presenting false precision.
-- [ ] Show waiting-for-user and approval-required states prominently.
-- [ ] Prevent duplicate events after reconnect or pagination.
+#### Step 8.3 — 增加搜索、筛选和通知
 
-Verification: two live turns update without losing selection or duplicating timeline entries.
+- [ ] 按本地 turn 标题、workspace、状态、文件和 Git commit 搜索。
+- [ ] 筛选 active、waiting、blocked、failed 和 completed turn。
+- [ ] 对长任务完成和 blocked/approval 状态增加可选桌面通知。
+- [ ] 重连/replay 后避免重复通知。
 
-Commit boundary: detailed turn view and UI tests.
+验证：通知幂等性和索引查询测试通过。
 
-#### Step 8.3 — add search, filters and notifications
+提交边界：发现和通知体验。
 
-- [ ] Search by local turn title, workspace, status, file and Git commit.
-- [ ] Filter active, waiting, blocked, failed and completed turns.
-- [ ] Add opt-in desktop notifications for long-task completion and blocked/approval states.
-- [ ] Avoid repeated notifications after reconnect/replay.
+### Phase 9 — resume、continue 和 session 分组
 
-Verification: notification idempotency and indexed-query tests pass.
+#### Step 9.1 — 关联 Claude resume identity
 
-Commit boundary: discovery and notification experience.
+- [ ] 将 provider session id 与 AgentScope execution id 分开保存。
+- [ ] 在可靠时将 `--resume`/`--continue` 关联到原有逻辑 conversation。
+- [ ] 创建新的 execution record，同时保留一个 conversation group。
+- [ ] provider id 缺失、变化或不明确时采取保守策略。
 
-### Phase 9 — resume, continue and session grouping
+验证：resume 成功、无效 id 和并发 resume 不会合并无关任务。
 
-#### Step 9.1 — correlate Claude resume identities
+提交边界：conversation grouping 和 resume 测试。
 
-- [ ] Persist provider session ids separately from AgentScope execution ids.
-- [ ] Associate `--resume`/`--continue` with the existing logical conversation when reliable.
-- [ ] Start a new execution record while keeping one conversation group for auditability.
-- [ ] Handle missing, changed or ambiguous provider ids conservatively.
+#### Step 9.2 — 支持多个并行 agent
 
-Verification: resume success, invalid id and concurrent resume cases do not merge unrelated work.
+- [ ] 按 workspace 和可选用户项目分组 Claude/Codex session。
+- [ ] 并发写入时每个终端和 turn timeline 保持隔离。
+- [ ] 增加紧凑的 overview counts 和 blocked/attention 指标。
 
-Commit boundary: conversation grouping and resume tests.
+验证：至少四个并发 interactive/mock session 仍然正确分离。
 
-#### Step 9.2 — support multiple simultaneous agents
+提交边界：分组和并发 UI/API 测试。
 
-- [ ] Group Claude/Codex sessions by workspace and optional user-defined project.
-- [ ] Keep each terminal and turn timeline isolated under concurrent writes.
-- [ ] Add compact overview counts and blocked/attention indicators.
+### Phase 10 — 性能和可靠性加固
 
-Verification: at least four concurrent interactive/mock sessions remain correctly separated.
+#### Step 10.1 — 终端和 event 路径性能
 
-Commit boundary: grouping and concurrency UI/API tests.
+- [ ] 测量 PTY 输入/输出延迟、CPU、RSS 和 buffer 增长。
+- [ ] 测量 interactive turn 的 event-to-WebSocket 和 event-to-browser-paint 延迟。
+- [ ] 压测 ANSI 输出、大量工具输出、窗口缩放风暴和慢 Dashboard client。
+- [ ] 根据证据设定限制和 diagnostics，不能让 queue 静默无界增长。
 
-### Phase 10 — performance and reliability hardening
+验证：发布 P50/P95 测量结果和各平台支持的容量边界。
 
-#### Step 10.1 — terminal and event-path performance
+提交边界：benchmark 脚本、diagnostics 和 findings。
 
-- [ ] Measure PTY input/output latency, CPU, RSS and buffer growth.
-- [ ] Measure event-to-WebSocket and event-to-browser-paint latency for interactive turns.
-- [ ] Stress ANSI output, large tool output, resize storms and slow Dashboard clients.
-- [ ] Set evidence-backed limits and diagnostics rather than silent unbounded queues.
+#### Step 10.2 — 长时间和故障测试
 
-Verification: publish P50/P95 measurements and capacity boundaries for the supported platforms.
+- [ ] 运行多小时 fake 和真实 provider session，包含多轮 turn。
+- [ ] 注入 PTY child crash、hook failure、database busy、server restart、WebSocket disconnect 和外层终端关闭。
+- [ ] 验证无 orphan process、丢失的 completed turn 或重复 timeline event。
+- [ ] 验证数据库备份/恢复和从真实 V0 副本迁移。
 
-Commit boundary: benchmark scripts, diagnostics and findings.
+验证：自动故障矩阵和有界的手工 provider smoke 通过。
 
-#### Step 10.2 — long-duration and fault testing
+提交边界：故障测试和 known-issues 更新。
 
-- [ ] Run multi-hour fake and real-provider sessions with many turns.
-- [ ] Inject PTY child crash, hook failure, database busy, server restart, WebSocket disconnect and
-      outer-terminal closure.
-- [ ] Verify no orphan process, lost completed turn or duplicate timeline event.
-- [ ] Verify database backup/restore and migration from a real V0 copy.
+#### Step 10.3 — 安全和本地数据控制
 
-Verification: automated fault matrix plus bounded manual provider smoke.
+- [ ] 在加入原生驱动和 prompt 持久化后重新执行依赖、路径边界、secret 和 shell-injection 审计。
+- [ ] 增加 prompt 保留控制和本地删除/导出功能。
+- [ ] 原始 transcript 持久化继续保持关闭，除非后续设计了明确 opt-in 功能。
+- [ ] 说明 PTY wrapper、hooks 和 observer 能看到哪些数据。
 
-Commit boundary: fault tests and known-issue updates.
+验证：secret fixture 仍然脱敏；删除 turn 的本地 prompt 数据不会破坏 session timeline。
 
-#### Step 10.3 — security and local data controls
+提交边界：数据控制、隐私文档和审计证据。
 
-- [ ] Re-run dependency, path-boundary, secret and shell-injection audits after the native driver
-      and prompt persistence changes.
-- [ ] Add prompt retention controls and a local delete/export flow.
-- [ ] Keep raw transcript persistence disabled unless a later explicit opt-in feature is designed.
-- [ ] Document exactly what the PTY wrapper, hooks and observers can see.
+### Phase 11 — V1 发布验收
 
-Verification: secret fixtures stay redacted and deleting a turn removes its local prompt data
-without corrupting the session timeline.
+#### Step 11.1 — 自动化发布门禁
 
-Commit boundary: data controls, privacy documentation and audit evidence.
+- [ ] lint、typecheck、unit、integration、migration、fixture 和 build 检查通过。
+- [ ] V0 结构化 Claude/Codex workflow 继续通过。
+- [ ] Windows ConPTY 和 WSL2 PTY fake/integration suite 通过。
+- [ ] 跨进程 turn broadcast、分页和重启恢复通过。
 
-### Phase 11 — V1 release acceptance
+#### Step 11.2 — 手工体验验收
 
-#### Step 11.1 — automated release gates
+- [ ] Windows VS Code PowerShell：一个 session 中完成至少五轮普通 Claude 任务。
+- [ ] 多行 prompt、审批、文件修改、失败后恢复的命令和测试运行。
+- [ ] 中断当前动作、正常退出 session 和突然关闭终端。
+- [ ] 在 WSL2 重复受支持的交互流程。
+- [ ] Dashboard 正确分离 turns，并能经受刷新/重连。
+- [ ] resume/continue 行为与文档声明的支持级别一致。
 
-- [ ] Lint, typecheck, unit, integration, migration, fixture and build checks pass.
-- [ ] V0 structured Claude/Codex workflows remain green.
-- [ ] Windows ConPTY and WSL2 PTY fake/integration suites pass.
-- [ ] Cross-process turn broadcasts, pagination and restart recovery pass.
+#### Step 11.3 — 发布文档
 
-#### Step 11.2 — manual experience acceptance
+- [ ] 更新 README、配置、troubleshooting、adapter guide 和 known issues。
+- [ ] 发布 V1 acceptance matrix，为每个支持声明提供证据。
+- [ ] 将未覆盖的终端主机/provider 版本记录为 experimental。
+- [ ] 创建最终本地 release-prep commit；只有得到用户明确确认后才 push/tag。
 
-- [ ] Windows VS Code PowerShell: at least five normal Claude turns in one session.
-- [ ] Multiline prompt, approval, file edit, failed-then-recovered command and test run.
-- [ ] Ctrl+C current action, normal session exit and abrupt terminal close.
-- [ ] WSL2 repeat of the supported interactive flow.
-- [ ] Dashboard accurately separates turns and survives refresh/reconnect.
-- [ ] Resume/continue behavior matches its documented support level.
-
-#### Step 11.3 — release documentation
-
-- [ ] Update README, configuration, troubleshooting, adapter guide and known issues.
-- [ ] Publish a V1 acceptance matrix with evidence for every supported claim.
-- [ ] Record unsupported terminal hosts/provider versions as experimental.
-- [ ] Create the final local release-prep commit; push/tag only after explicit user approval.
-
-## 7. Delivery sequence and dependencies
+## 7. 交付顺序和依赖关系
 
 ```text
-Phase 0 driver/hook spike
+Phase 0 驱动/hooks spike
     ↓
-Phase 1 turn protocol/storage
+Phase 1 turn 协议/存储
     ↓
 Phase 2 PTY runtime
     ↓
-Phase 3 usable interactive wrapper ── first user experience checkpoint
+Phase 3 可用的交互式 wrapper ── 第一个用户体验验收点
     ↓
-Phase 4 turn detection
+Phase 4 turn 识别
     ↓
-Phase 5 observer correlation
+Phase 5 observer 关联
     ↓
-Phase 6 optional hook enrichment
+Phase 6 可选 hooks 增强
     ↓
-Phase 7 server/recovery
+Phase 7 server/恢复
     ↓
 Phase 8 Dashboard
     ↓
-Phase 9 resume/groups
+Phase 9 resume/分组
     ↓
-Phase 10 hardening
+Phase 10 加固
     ↓
-Phase 11 V1 acceptance
+Phase 11 V1 验收
 ```
 
-The first usable milestone is Phase 3: native Claude remains pleasant to use through AgentScope.
-The first product-complete milestone is Phase 8: Dashboard understands and displays individual
-turns. Resume/grouping and advanced metrics follow only after those two milestones are stable.
+第一个可用里程碑是 Phase 3：通过 AgentScope 使用 Claude 时，原生交互体验保持良好。第一个产品完整里程碑是 Phase 8：Dashboard 能理解并展示独立 turn。只有这两个里程碑稳定后，才进入 resume/分组和高级指标。
 
-## 8. Definition of done for each step
+## 8. 每个 Step 的完成定义
 
-Every completed step must include:
+每个完成的 step 都必须包含：
 
-1. Implementation or documentation committed locally as one coherent change.
-2. Targeted tests plus proportional typecheck/lint/integration verification.
-3. No secrets, prompts or raw provider internals added to tracked fixtures.
-4. Backward compatibility or an explicit migration note.
-5. Failure and cleanup behavior, not only the happy path.
-6. Updates to this roadmap and relevant findings/known-issues documents.
+1. 一个连贯的实现或文档本地提交。
+2. 定向测试，以及与风险相称的 typecheck/lint/integration 验证。
+3. tracked fixture 中不包含 secret、完整 prompt 或 raw provider internals。
+4. 向后兼容，或者明确的迁移说明。
+5. 不只验证 happy path，也验证失败和 cleanup 行为。
+6. 同步更新本路线图及相关 findings/known-issues 文档。
 
-## 9. Expected user checkpoints
+## 9. 预计需要用户参与的节点
 
-User action should be requested only where real terminal feel or provider behavior cannot be
-faithfully automated:
+只有真实终端体验或 provider 行为无法可靠自动化时，才请求用户操作：
 
-1. After Phase 3: native Windows Claude interaction, approval, resize and Ctrl+C feel.
-2. After Phase 4/6: whether turn boundaries and waiting/blocked labels match real usage.
-3. After Phase 8: Dashboard usability during a real multi-turn coding session.
-4. During Phase 11: final Windows and WSL2 release acceptance.
+1. Phase 3 之后：确认 Windows 原生 Claude 交互、审批、缩放和 Ctrl+C 的体验。
+2. Phase 4/6 之后：确认 turn 边界、waiting/blocked 标签是否符合真实使用。
+3. Phase 8 之后：在真实多轮编码任务中确认 Dashboard 是否好用。
+4. Phase 11：最终 Windows 和 WSL2 发布验收。
 
-All other implementation, fixtures, automated tests, migrations, diagnostics and local commits can
-proceed without per-step user approval unless a dependency install or external credential action
-requires it.
+其他实现、fixture、自动化测试、迁移、diagnostics 和本地提交，都可以不要求用户逐步审批；只有依赖安装或外部凭据操作需要用户介入时才暂停。
