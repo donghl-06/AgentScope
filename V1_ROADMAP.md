@@ -182,12 +182,12 @@ hooks 缺失或变化时进入明确的低能力模式。真实 provider hook/�
 
 提交边界：migration、repository 和 storage 测试。
 
-#### Step 1.3 — 实现 turn reducer
+#### Step 1.3 — 实现 turn reducer ✅
 
-- [ ] 为 queued/running/waiting/blocked/completed/failed/interrupted 实现确定性的状态转换。
-- [ ] 不让单个可恢复的工具错误自动覆盖后续成功的 turn 结果；失败工具仍保留为 evidence。
-- [ ] 区分 terminal session 失败和单个 turn 失败。
-- [ ] 增加 replay、重复、乱序和崩溃恢复测试。
+- [x] 为 queued/running/waiting/blocked/completed/failed/interrupted 实现确定性的状态转换。
+- [x] 不让单个可恢复的工具错误自动覆盖后续成功的 turn 结果；失败工具仍保留为 evidence。
+- [x] 区分 terminal session 失败和单个 turn 失败。
+- [x] 增加 replay、重复、乱序和崩溃恢复测试。
 
 验证：从已存 event 重放时，session 和 turn 状态保持可重复。
 
