@@ -8,6 +8,7 @@ class FakeProcess implements TerminalProcess {
   readonly dataListeners = new Set<(data: string) => void>();
   readonly exitListeners = new Set<(event: { exitCode: number; signal?: number }) => void>();
   killCount = 0;
+  releaseCount = 0;
   writes: string[] = [];
   resizeCalls: Array<[number, number]> = [];
 
@@ -33,6 +34,10 @@ class FakeProcess implements TerminalProcess {
     this.killCount += 1;
   }
 
+  release(): void {
+    this.releaseCount += 1;
+  }
+
   emitData(data: string): void {
     for (const listener of this.dataListeners) listener(data);
   }
@@ -52,7 +57,7 @@ describe('TerminalSession', () => {
   it('forwards data, input, resize, and interrupt', () => {
     const { process, session } = setup();
     const output: string[] = [];
-    session.onData(data => output.push(data));
+    session.onData((data) => output.push(data));
 
     process.emitData('hello');
     session.write('input');
@@ -67,7 +72,7 @@ describe('TerminalSession', () => {
   it('does not kill an already exited process', () => {
     const { process, session } = setup();
     const exits: Array<{ exitCode: number }> = [];
-    session.onExit(event => exits.push(event));
+    session.onExit((event) => exits.push(event));
 
     process.emitExit({ exitCode: 0 });
     session.dispose();
@@ -76,6 +81,7 @@ describe('TerminalSession', () => {
     expect(session.state).toBe('exited');
     expect(session.exit).toEqual({ exitCode: 0 });
     expect(process.killCount).toBe(0);
+    expect(process.releaseCount).toBe(1);
     expect(exits).toEqual([{ exitCode: 0 }]);
   });
 
@@ -92,6 +98,7 @@ describe('TerminalSession', () => {
     process.emitExit({ exitCode: 143, signal: 15 });
     expect(session.state).toBe('disposed');
     expect(session.exit).toEqual({ exitCode: 143, signal: 15 });
+    expect(process.releaseCount).toBe(1);
     expect(() => session.write('after-exit')).toThrow(/state disposed/);
   });
 

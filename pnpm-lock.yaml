@@ -71,6 +71,9 @@ importers:
       '@agentscope/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@agentscope/terminal':
+        specifier: workspace:*
+        version: link:../../packages/terminal
 
   apps/dashboard:
     dependencies:

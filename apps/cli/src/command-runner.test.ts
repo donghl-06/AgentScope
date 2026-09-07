@@ -114,4 +114,21 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(7);
     expect(received).toEqual([{ adapter: 'claude', args: ['--bare'] }]);
   });
+
+  it('delegates interactive Claude runs without rewriting their argument list', async () => {
+    const received: { adapter: 'claude'; args: readonly string[] }[] = [];
+    const exitCode = await executeCliCommand(
+      parseCliArgs(['claude', '--permission-mode', 'manual']),
+      {
+        runInteractive: async (adapter, args) => {
+          received.push({ adapter, args });
+          return 130;
+        },
+        write: () => {},
+      },
+    );
+
+    expect(exitCode).toBe(130);
+    expect(received).toEqual([{ adapter: 'claude', args: ['--permission-mode', 'manual'] }]);
+  });
 });

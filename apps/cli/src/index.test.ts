@@ -29,6 +29,13 @@ describe('CLI argument parser', () => {
     });
     expect(parseCliArgs(['sessions'])).toEqual({ kind: 'sessions' });
     expect(parseCliArgs(['recover'])).toEqual({ kind: 'recover' });
+    expect(parseCliArgs(['claude', '--dangerously-skip-permissions', '-p', 'hello world'])).toEqual(
+      {
+        kind: 'interactive',
+        adapter: 'claude',
+        args: ['--dangerously-skip-permissions', '-p', 'hello world'],
+      },
+    );
     expect(parseCliArgs(['show', 'session-1'])).toEqual({
       kind: 'show',
       sessionId: 'session-1',
@@ -65,5 +72,6 @@ describe('CLI argument parser', () => {
 
   it('renders stable help text', () => {
     expect(formatCliHelp()).toContain('run <adapter> -- <args...>');
+    expect(formatCliHelp()).toContain('claude [args...]');
   });
 });

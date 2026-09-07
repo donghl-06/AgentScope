@@ -28,11 +28,11 @@ export class TerminalSession {
     this.pid = process.pid;
     this.outputBuffer = new TerminalOutputBuffer(outputOptions);
     this.subscriptions.push(
-      process.onData(data => {
+      process.onData((data) => {
         this.outputBuffer.push(data);
         for (const listener of this.dataListeners) listener(data);
       }),
-      process.onExit(event => this.handleExit(event)),
+      process.onExit((event) => this.handleExit(event)),
     );
   }
 
@@ -115,6 +115,7 @@ export class TerminalSession {
     this.currentState = this.currentState === 'disposing' ? 'disposed' : 'exited';
     this.outputBuffer.close();
     for (const listener of this.exitListeners) listener(event);
+    this.process.release?.();
     this.disposeSubscriptions();
   }
 

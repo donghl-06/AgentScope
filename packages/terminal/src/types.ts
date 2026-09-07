@@ -31,6 +31,8 @@ export interface TerminalProcess {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
+  /** Release PTY transport resources after the child has already exited. */
+  release?(): void;
 }
 
 export interface TerminalDriver {

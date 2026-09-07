@@ -9,6 +9,7 @@ export interface CliCommandRunnerOptions {
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
   readonly recover?: () => Promise<RecoverySummary>;
   readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
+  readonly runInteractive?: (adapter: 'claude', args: readonly string[]) => Promise<number>;
   readonly start?: () => Promise<number>;
   readonly write: (text: string) => void;
 }
@@ -67,6 +68,12 @@ export async function executeCliCommand(
       throw new CliExecutionError('Provider runner is not configured.', 'missing_runtime');
     }
     return options.runAdapter(command.adapter, command.args);
+  }
+  if (command.kind === 'interactive') {
+    if (options.runInteractive === undefined) {
+      throw new CliExecutionError('Interactive runner is not configured.', 'missing_runtime');
+    }
+    return options.runInteractive(command.adapter, command.args);
   }
   if (command.kind === 'start') {
     if (options.start !== undefined) return options.start();

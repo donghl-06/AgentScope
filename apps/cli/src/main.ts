@@ -10,6 +10,7 @@ import { CliExecutionError, executeCliCommand } from './command-runner.js';
 import { CliUsageError, formatCliHelp, parseCliArgs, type CliCommand } from './index.js';
 import { runMockFixture } from './mock-runner.js';
 import { runProvider } from './provider-runner.js';
+import { runInteractiveProvider } from './interactive-runner.js';
 import { recoverSessions } from './recover-runner.js';
 import { ServerClient } from './server-client.js';
 import { runStartCommand } from './start-runtime.js';
@@ -105,6 +106,17 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 writeStderr,
               }).then((result) => result.exitCode);
             },
+          }
+        : {}),
+      ...(command.kind === 'interactive'
+        ? {
+            runInteractive: (adapter: 'claude', args: readonly string[]) =>
+              runInteractiveProvider({
+                adapter,
+                args,
+                filename: config.database,
+                workspacePath: config.workspacePath,
+              }),
           }
         : {}),
     });

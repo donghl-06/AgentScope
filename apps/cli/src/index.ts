@@ -12,6 +12,7 @@ export type CliCommand =
   | { readonly kind: 'recover' }
   | { readonly kind: 'show'; readonly sessionId: string }
   | { readonly kind: 'run'; readonly adapter: string; readonly args: readonly string[] }
+  | { readonly kind: 'interactive'; readonly adapter: 'claude'; readonly args: readonly string[] }
   | { readonly kind: 'run-mock'; readonly fixture: string };
 
 export * from './process-runner.js';
@@ -50,6 +51,8 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
       return { kind: 'show', sessionId: rest[0] };
     case 'run':
       return parseRun(rest);
+    case 'claude':
+      return { kind: 'interactive', adapter: 'claude', args: rest };
     default:
       throw new CliUsageError(`Unknown command: ${command}`);
   }
@@ -62,6 +65,7 @@ export function formatCliHelp(): string {
     'Commands:',
     '  start                         Start the local server and Dashboard.',
     '  run <adapter> -- <args...>   Run an adapter and preserve argument boundaries.',
+    '  claude [args...]              Run Claude Code in a monitored interactive PTY.',
     '  run mock --fixture <name>    Run a deterministic mock fixture.',
     '  sessions                     List stored sessions.',
     '  recover                      Mark stale sessions as interrupted.',

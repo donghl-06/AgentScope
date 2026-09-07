@@ -147,12 +147,13 @@ AgentSession
 
 #### Step 0.3 — 检查 Claude 交互和 hooks 能力
 
-- [ ] 为当前安装的 Claude Code 版本生成脱敏 capability matrix。
+- [x] 为当前安装的 Claude Code 版本生成脱敏 capability matrix。
 - [ ] 验证在兼容 Kimi endpoint 下，交互 turn、tool call、notification 和 stop 期间哪些文档化 hooks 会触发。
 - [ ] 验证 `--resume` 和 `--continue` 的 identity 及失败行为。
-- [ ] 确认基础 PTY 运行不依赖 hooks。
+- [x] 确认基础 PTY 运行不依赖 hooks。
 
-验证：fixture 只包含形状，不包含 prompt、API key 或原始推理；hooks 缺失或变化时进入明确的低能力模式。
+验证：已记录 `docs/findings/claude-capabilities.md`；fixture 只包含形状，不包含 prompt、API key 或原始推理；
+hooks 缺失或变化时进入明确的低能力模式。真实 provider hook/续接行为留到 Phase 3 disposable project 验收。
 
 提交边界：capability findings、脱敏 fixture 和 parser 测试。
 
@@ -231,13 +232,14 @@ AgentSession
 
 #### Step 3.1 — 增加 interactive CLI 命令
 
-- [ ] 增加 `agent-scope claude`，透明透传参数和环境。
-- [ ] 从调用方当前目录解析 workspace。
-- [ ] 使用运行中 Dashboard 的同一个数据库。
-- [ ] PTY 驱动或 Claude executable 不可用时给出可操作错误。
-- [ ] 保持 `agent-scope run claude -- -p ...` 不变。
+- [x] 增加 `agent-scope claude`，透明透传参数和环境。
+- [x] 从调用方当前目录解析 workspace。
+- [x] 使用运行中 Dashboard 的同一个数据库。
+- [x] PTY 驱动或 Claude executable 不可用时返回可诊断错误。
+- [x] 保持 `agent-scope run claude -- -p ...` 不变。
 
-验证：fake Claude CLI 收到一致的 cwd、环境 allow-list、参数和终端尺寸。
+验证：fake PTY 集成测试和 Windows `claude --version` smoke 已通过；真实交互 provider、环境
+allow-list 和终端尺寸人工验收仍待完成。
 
 提交边界：CLI 入口和 fake-provider 集成。
 

@@ -66,10 +66,7 @@ export class TerminalOutputBuffer implements AsyncIterable<string> {
       return true;
     }
 
-    while (
-      this.chunks.length >= this.maxChunks ||
-      this.queuedBytes + bytes > this.maxBytes
-    ) {
+    while (this.chunks.length >= this.maxChunks || this.queuedBytes + bytes > this.maxBytes) {
       const evicted = this.chunks.shift();
       if (evicted === undefined) break;
       this.queuedBytes -= Buffer.byteLength(evicted, 'utf8');
@@ -97,7 +94,7 @@ export class TerminalOutputBuffer implements AsyncIterable<string> {
       return { done: false, value: chunk };
     }
     if (this.closed) return { done: true, value: undefined };
-    return new Promise(resolve => this.waiters.push(resolve));
+    return new Promise((resolve) => this.waiters.push(resolve));
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<string> {
