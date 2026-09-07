@@ -14,6 +14,7 @@ import {
   type AgentEvent,
   type EventSource,
   type SessionState,
+  type TurnState,
 } from '@agentscope/protocol';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
@@ -152,6 +153,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           turnEventPayload(update.kind, update.turn),
         ),
       );
+      syncTurnProjection(repository, update.turn, state, timestamp);
     },
   });
   const arbiter = new TurnSignalArbiter(coordinator);
@@ -366,6 +368,48 @@ function appendEvent(
   const projected = { ...next, progress };
   repository.updateSessionState(next.sessionId, projected, { now: event.timestamp });
   return projected;
+}
+
+function syncTurnProjection(
+  repository: StorageRepository,
+  turn: TurnState,
+  session: SessionState,
+  timestamp: number,
+): void {
+  const turnSession: SessionState = {
+    sessionId: turn.sessionId,
+    status: sessionStatusForTurn(turn.status),
+    startedAt: turn.startedAt ?? turn.submittedAt,
+    ...(turn.endedAt === undefined ? {} : { endedAt: turn.endedAt }),
+    ...(session.currentActivity === undefined ? {} : { currentActivity: session.currentActivity }),
+    milestones: [],
+    progress: turn.progress,
+    ...(turn.eta === undefined ? {} : { eta: turn.eta }),
+    verification: turn.verification,
+  };
+  const progress = computeProgress({
+    state: turnSession,
+    capabilities: { fileEvents: true },
+    now: timestamp,
+    lastSignalAt: timestamp,
+  });
+  repository.updateTurnState(
+    turn.turnId,
+    {
+      ...turn,
+      ...(session.currentActivity === undefined
+        ? {}
+        : { currentActivity: session.currentActivity }),
+      progress,
+    },
+    timestamp,
+  );
+}
+
+function sessionStatusForTurn(status: TurnState['status']): SessionState['status'] {
+  if (status === 'queued') return 'starting';
+  if (status === 'waiting') return 'running';
+  return status;
 }
 
 function createEvent(

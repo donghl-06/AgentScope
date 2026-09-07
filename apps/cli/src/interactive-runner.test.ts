@@ -205,6 +205,11 @@ describe('interactive provider runner', () => {
         ['FIRST', 'completed'],
         ['SECOND', 'completed'],
       ]);
+      expect(turns.map((turn) => Math.round(turn.state.progress.value * 100))).toEqual([60, 60]);
+      expect(turns.map((turn) => turn.state.currentActivity?.label)).toEqual([
+        'task completed',
+        'task completed',
+      ]);
       expect(repository.getSession('session-tty').state.currentActivity?.label).toBe(
         'task completed',
       );
