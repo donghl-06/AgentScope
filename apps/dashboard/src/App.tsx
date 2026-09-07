@@ -363,7 +363,7 @@ function SessionDetail({
         </span>
       </div>
       <AgentCard session={session} events={events} />
-      <TurnList turns={turns} />
+      <TurnList turns={turns} evidence={evidence} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
         <strong>{session.state.currentActivity?.label ?? 'No activity signal'}</strong>
@@ -414,7 +414,13 @@ function SessionDetail({
   );
 }
 
-function TurnList({ turns }: { turns: readonly StoredTurn[] }) {
+function TurnList({
+  turns,
+  evidence,
+}: {
+  turns: readonly StoredTurn[];
+  evidence: readonly StoredObserverEvidence[];
+}) {
   return (
     <div className="evidence-card">
       <span className="eyebrow">TURNS</span>
@@ -431,7 +437,8 @@ function TurnList({ turns }: { turns: readonly StoredTurn[] }) {
               <div>
                 <strong>{turn.title ?? 'Untitled task'}</strong>
                 <small>
-                  {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)}
+                  {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)} ·{' '}
+                  {evidence.filter((item) => item.turnId === turn.id).length} evidence
                 </small>
               </div>
             </li>
