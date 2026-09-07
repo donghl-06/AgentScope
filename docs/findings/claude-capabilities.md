@@ -38,3 +38,8 @@ node apps/cli/bin/agent-scope.mjs claude --version
 
 结果：原生 Claude 版本输出透传为 `2.1.261 (Claude Code)`，PTY 正常释放，wrapper 退出码为 `0`。
 该 smoke 只证明 executable 解析、cwd/参数透传和正常收尾，不等同于真实 provider 多轮交互验收。
+
+随后一次 Kimi-backed smoke 触发了 endpoint 的并发限制；中断后本机 Claude Code 自动更新留下了
+未完成的 native 安装（`bin/claude.exe` 变成 postinstall 占位文件，旧 binary 被保留为带时间戳的
+备份）。wrapper 现已在 spawn 前识别这种状态并给出可操作错误。继续真实 provider 验收前，必须先
+在用户实际运行 Claude 的 PowerShell 中恢复安装，并确认 `claude --version` 成功。
