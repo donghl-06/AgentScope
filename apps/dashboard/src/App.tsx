@@ -438,7 +438,7 @@ function TurnList({
                 <strong>{turn.title ?? 'Untitled task'}</strong>
                 <small>
                   {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)} ·{' '}
-                  {evidence.filter((item) => item.turnId === turn.id).length} evidence
+                  {evidence.filter((item) => evidenceBelongsToTurn(item, turn.id)).length} evidence
                 </small>
               </div>
             </li>
@@ -456,6 +456,13 @@ function observerEvidenceSummary(evidence: readonly StoredObserverEvidence[]): s
   return latest === undefined
     ? `Sources: ${sources}`
     : `Sources: ${sources}. Latest: ${latest.reason}`;
+}
+
+function evidenceBelongsToTurn(evidence: StoredObserverEvidence, turnId: string): boolean {
+  if (evidence.turnId === turnId) return true;
+  if (typeof evidence.payload !== 'object' || evidence.payload === null) return false;
+  const payload = evidence.payload as { readonly turnId?: unknown };
+  return payload.turnId === turnId;
 }
 
 function AgentCard({
