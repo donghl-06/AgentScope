@@ -68,6 +68,8 @@ describe('interactive provider runner', () => {
     expect(decoder.decode(one.slice(0, 8))).toBe('');
     expect(decoder.decode(one.slice(8) + release + enter)).toBe('1\r');
     expect(decoder.decode('\u001b[<35;57;11MReply with OK\r')).toBe('Reply with OK\r');
+    expect(decoder.decode('\u001b[82;1u\u001b[13;1u')).toBe('R\r');
+    expect(decoder.decode('\u001b[82;1:3u')).toBe('');
   });
 
   it('aliases a custom endpoint API key as auth token without overwriting an explicit token', () => {

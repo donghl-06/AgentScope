@@ -119,3 +119,8 @@ Unicode 字符。AgentScope 已加入该兼容层，并用真实 Windows PTY、�
 不会进入 turn 标题或 prompt。交互式 CLI 同时会持久化 turn lifecycle timeline event 和
 不含完整 prompt 的 task-boundary evidence，因此 Dashboard 能显示当前任务和提交/完成信号；
 这不等同于进程、文件或 Git observer，后者仍需在 Phase 5 接入。
+
+VS Code/Windows Terminal 还可能用 CSI-u/Kitty 键盘协议发送普通按键。该协议的 key-down
+Unicode 码现会在 task boundary parser 中还原；key-release、鼠标与窗口控制序列会忽略。
+因此三种已观察到的输入编码（Windows Console record、CSI-u、普通文本/粘贴）均能生成
+同一份本地 turn 投影，同时保持传给 Claude 的原始字节不变。
