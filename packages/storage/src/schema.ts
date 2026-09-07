@@ -114,6 +114,7 @@ export const observerEvidence = sqliteTable(
     sessionId: text('session_id')
       .notNull()
       .references(() => sessions.id, { onDelete: 'cascade' }),
+    turnId: text('turn_id').references(() => turns.id, { onDelete: 'set null' }),
     evidenceKey: text('evidence_key').notNull(),
     timestamp: integer('timestamp', { mode: 'number' }).notNull(),
     source: text('source').notNull(),
@@ -125,6 +126,7 @@ export const observerEvidence = sqliteTable(
   (table) => [
     uniqueIndex('observer_evidence_session_key_unique').on(table.sessionId, table.evidenceKey),
     index('observer_evidence_session_timestamp_idx').on(table.sessionId, table.timestamp),
+    index('observer_evidence_turn_timestamp_idx').on(table.turnId, table.timestamp),
   ],
 );
 

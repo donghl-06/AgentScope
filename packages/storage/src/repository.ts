@@ -90,6 +90,7 @@ export interface StoredEvent {
 export interface ObserverEvidenceInput {
   readonly id: string;
   readonly sessionId: string;
+  readonly turnId?: string;
   readonly key: string;
   readonly timestamp: number;
   readonly source: string;
@@ -607,10 +608,11 @@ export class StorageRepository {
       this.client
         .prepare(
           `INSERT INTO observer_evidence
-            (id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(session_id, evidence_key) DO UPDATE SET
              id = excluded.id,
+             turn_id = excluded.turn_id,
              timestamp = excluded.timestamp,
              source = excluded.source,
              kind = excluded.kind,
@@ -622,6 +624,7 @@ export class StorageRepository {
         .run(
           input.id,
           input.sessionId,
+          input.turnId ?? null,
           input.key,
           input.timestamp,
           input.source,
@@ -640,7 +643,7 @@ export class StorageRepository {
     this.ensureSession(sessionId);
     const rows = this.client
       .prepare(
-        `SELECT id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
          WHERE session_id = ?
          ORDER BY timestamp, evidence_key
@@ -653,7 +656,7 @@ export class StorageRepository {
   private getObserverEvidence(sessionId: string, key: string): StoredObserverEvidence {
     const row = this.client
       .prepare(
-        `SELECT id, session_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
          WHERE session_id = ? AND evidence_key = ?`,
       )
@@ -822,6 +825,7 @@ interface EtaRow {
 interface ObserverEvidenceRow {
   id: string;
   session_id: string;
+  turn_id: string | null;
   evidence_key: string;
   timestamp: number;
   source: string;
@@ -894,6 +898,7 @@ function decodeObserverEvidence(row: ObserverEvidenceRow): StoredObserverEvidenc
   return {
     id: row.id,
     sessionId: row.session_id,
+    ...(row.turn_id === null ? {} : { turnId: row.turn_id }),
     key: row.evidence_key,
     timestamp: row.timestamp,
     source: row.source,
