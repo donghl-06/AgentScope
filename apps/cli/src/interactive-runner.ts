@@ -152,11 +152,15 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     enablePromptCompletion: !options.args.includes('--bare'),
   });
   const inputDecoder = new ConsoleInputDecoder();
+  const inputObservation = new TerminalInputObservation();
   let inputBuffer = '';
   const onInput = (chunk: Buffer | string) => {
     if (terminal?.state !== 'running') return;
     const text = typeof chunk === 'string' ? chunk : chunk.toString();
-    inputBuffer += inputDecoder.decode(text);
+    const normalized = inputDecoder.decode(text);
+    const snapshotNeeded = inputObservation.observe(text, normalized);
+    if (snapshotNeeded) saveInputObservation(repository, sessionId, inputObservation, now());
+    inputBuffer += normalized;
     const lines = inputBuffer.split(/[\r\n]/u);
     inputBuffer = lines.pop() ?? '';
     for (const line of lines) {
@@ -280,6 +284,9 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         : exit.exitCode === 0
           ? 'completed'
           : 'failed';
+    if (inputObservation.hasInput) {
+      saveInputObservation(repository, sessionId, inputObservation, now());
+    }
     if (coordinator.current !== undefined) {
       arbiter.apply({
         kind: 'finished',
@@ -369,6 +376,67 @@ function turnEvidenceReason(kind: 'started' | 'updated' | 'finished', status: st
     : kind === 'finished'
       ? `Interactive task ${status}.`
       : `Interactive task is ${status}.`;
+}
+
+class TerminalInputObservation {
+  private chunks = 0;
+  private rawCharacters = 0;
+  private normalizedCharacters = 0;
+  private sawSubmission = false;
+  private readonly encodings = new Set<string>();
+
+  get hasInput(): boolean {
+    return this.chunks > 0;
+  }
+
+  observe(raw: string, normalized: string): boolean {
+    this.chunks += 1;
+    this.rawCharacters += raw.length;
+    this.normalizedCharacters += normalized.length;
+    const submission = /[\r\n]/u.test(normalized);
+    const encoding = describeInputEncoding(raw);
+    const changedEncoding = !this.encodings.has(encoding);
+    this.encodings.add(encoding);
+    this.sawSubmission ||= submission;
+    return this.chunks === 1 || submission || changedEncoding;
+  }
+
+  payload(): Record<string, unknown> {
+    return {
+      chunks: this.chunks,
+      rawCharacters: this.rawCharacters,
+      normalizedCharacters: this.normalizedCharacters,
+      sawSubmission: this.sawSubmission,
+      encodings: [...this.encodings].sort(),
+    };
+  }
+}
+
+function saveInputObservation(
+  repository: StorageRepository,
+  sessionId: string,
+  observation: TerminalInputObservation,
+  timestamp: number,
+): void {
+  repository.saveObserverEvidence({
+    id: randomUUID(),
+    sessionId,
+    key: 'interactive-terminal-input',
+    timestamp,
+    source: 'interactive-pty',
+    kind: 'input-observation',
+    confidence: 1,
+    reason: 'Interactive terminal input observed (content not stored).',
+    payload: observation.payload(),
+  });
+}
+
+function describeInputEncoding(raw: string): string {
+  if (raw.includes(CONSOLE_RECORD_PREFIX)) return 'windows-console-record';
+  if (raw.includes(CONSOLE_ESCAPE + '[<')) return 'sgr-mouse';
+  if (raw.includes(CONSOLE_ESCAPE + '[') && raw.includes('u')) return 'csi-u';
+  if (raw.includes(CONSOLE_ESCAPE + '[200~')) return 'bracketed-paste';
+  return 'plain-text';
 }
 
 /**

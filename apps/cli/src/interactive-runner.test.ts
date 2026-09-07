@@ -201,7 +201,9 @@ describe('interactive provider runner', () => {
         ['SECOND', 'completed'],
       ]);
       expect(repository.getSession('session-tty').state.currentActivity?.label).toBe('SECOND');
-      expect(evidence).toHaveLength(4);
+      // One content-free terminal-input observation plus lifecycle evidence
+      // for the two submitted turns.
+      expect(evidence).toHaveLength(5);
       expect(events.map(({ event }) => event.type)).toEqual([
         'session_started',
         'turn_started',
