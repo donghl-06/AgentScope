@@ -108,3 +108,9 @@ PTY 活动后，把 Claude 回到输入提示识别为高置信度的 `completed
 审批提示只进入 `waiting`，`y/n`、slash 命令和空输入不会创建新 turn。`--bare` 仍保留
 保守的 PTY 识别策略，不作为完整交互体验的目标路径；推荐日常使用
 `--agent-scope-accept-api-key` 保留 Claude 的完整功能。
+
+Windows 真实 PTY 诊断发现，现代终端有时会将按键输入编码为 Console VT 键盘记录，
+而不是普通文本。Claude 本身能处理该编码，但任务边界解析必须额外还原 key-down 的
+Unicode 字符。AgentScope 已加入该兼容层，并用真实 Windows PTY、无网络的 Node REPL
+验证：`1+1` 被记录为一个 completed turn。该层只服务本地投影，传给 Claude 的原始输入
+字节不变。

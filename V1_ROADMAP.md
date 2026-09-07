@@ -246,6 +246,8 @@ backpressure 和 clean-install CI 仍待补齐。
 写入一次 yes，不启用 --bare，也不改变其他交互输入。
 针对自定义 endpoint 的普通模式认证差异，交互式子进程会在 AUTH_TOKEN 未显式设置时从
 ANTHROPIC_API_KEY 补齐；GLM 真实普通模式已通过，不再出现 Not logged in。
+Windows 现代终端使用 Console VT 键盘记录时，AgentScope 会仅为本地 turn 边界识别还原
+按键文本；转发给 Claude 的原始键盘字节保持不变，避免改变原生交互行为。
 
 提交边界：CLI 入口和 fake-provider 集成。
 

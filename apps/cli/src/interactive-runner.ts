@@ -123,12 +123,12 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const detector = new PtyTurnSignalDetector({
     enablePromptCompletion: !options.args.includes('--bare'),
   });
+  const inputDecoder = new ConsoleInputDecoder();
   let inputBuffer = '';
   const onInput = (chunk: Buffer | string) => {
     if (terminal?.state !== 'running') return;
     const text = typeof chunk === 'string' ? chunk : chunk.toString();
-    terminal.write(text);
-    inputBuffer += text;
+    inputBuffer += inputDecoder.decode(text);
     const lines = inputBuffer.split(/[\r\n]/u);
     inputBuffer = lines.pop() ?? '';
     for (const line of lines) {
@@ -146,6 +146,9 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         arbiter.apply({ kind: 'resumed', source: 'manual', confidence: 1, timestamp: now() });
       }
     }
+    // node-pty can synchronously surface provider output while handling write().
+    // Establish the task boundary first so that output belongs to this turn.
+    terminal.write(text);
   };
   const onResize = () => {
     if (terminal?.state !== 'running') return;
@@ -301,6 +304,60 @@ function createEvent(
 function isInterruptExit(exitCode: number): boolean {
   return exitCode === 130 || exitCode === -1073741510;
 }
+
+/**
+ * Decodes Windows Console input records emitted by modern terminal hosts while
+ * preserving all other input unchanged. The original bytes still go to Claude;
+ * this normalized text is only used to identify submitted task boundaries.
+ */
+export class ConsoleInputDecoder {
+  private pending = '';
+
+  decode(chunk: string): string {
+    this.pending += chunk;
+    let decoded = '';
+    while (this.pending.length > 0) {
+      const start = this.pending.indexOf(CONSOLE_RECORD_PREFIX);
+      if (start === -1) {
+        decoded += this.pending;
+        this.pending = '';
+        break;
+      }
+      decoded += this.pending.slice(0, start);
+      this.pending = this.pending.slice(start);
+      const end = this.pending.indexOf('_');
+      if (end === -1) {
+        if (CONSOLE_RECORD_PARTIAL_PATTERN.test(this.pending)) break;
+        decoded += this.pending;
+        this.pending = '';
+        break;
+      }
+      const record = this.pending.slice(0, end + 1);
+      this.pending = this.pending.slice(end + 1);
+      const match = record.match(CONSOLE_RECORD_PATTERN);
+      if (match === null) {
+        decoded += record;
+        continue;
+      }
+      const unicode = Number(match[3]);
+      const keyDown = match[4] === '1';
+      if (keyDown && Number.isInteger(unicode) && unicode > 0 && unicode <= 0x10ffff) {
+        decoded += String.fromCodePoint(unicode);
+      }
+    }
+    return decoded;
+  }
+}
+
+const CONSOLE_RECORD_PREFIX = String.fromCharCode(0x1b) + '[';
+const CONSOLE_RECORD_PARTIAL_PATTERN = new RegExp(
+  '^' + String.fromCharCode(0x1b) + '\\[[0-9;]*$',
+  'u',
+);
+const CONSOLE_RECORD_PATTERN = new RegExp(
+  '^' + String.fromCharCode(0x1b) + '\\[(\\d+);(\\d+);(\\d+);([01]);(\\d+);(\\d+)_$',
+  'u',
+);
 
 const API_KEY_CONFIRMATION_PATTERN =
   /(?:do you want to use|use)\s+(?:this|the current)?\s*api key/iu;

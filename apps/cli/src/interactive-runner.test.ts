@@ -6,7 +6,11 @@ import { PassThrough } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
 
-import { prepareInteractiveEnvironment, runInteractiveProvider } from './interactive-runner.js';
+import {
+  ConsoleInputDecoder,
+  prepareInteractiveEnvironment,
+  runInteractiveProvider,
+} from './interactive-runner.js';
 import type { TerminalDriver, TerminalProcess } from '@agentscope/terminal';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
@@ -56,6 +60,15 @@ class FakeSignals extends EventEmitter {
 }
 
 describe('interactive provider runner', () => {
+  it('decodes Windows Console key-down records for task boundary detection', () => {
+    const decoder = new ConsoleInputDecoder();
+    const one = '\u001b[49;2;49;1;0;1_';
+    const release = '\u001b[49;2;49;0;0;1_';
+    const enter = '\u001b[13;28;13;1;0;1_';
+    expect(decoder.decode(one.slice(0, 8))).toBe('');
+    expect(decoder.decode(one.slice(8) + release + enter)).toBe('1\r');
+  });
+
   it('aliases a custom endpoint API key as auth token without overwriting an explicit token', () => {
     expect(
       prepareInteractiveEnvironment({
