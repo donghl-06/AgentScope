@@ -7,6 +7,7 @@ import type {
   SessionFinishedPayload,
   SessionStatus,
   TurnStartedPayload,
+  TurnFinishedPayload,
   TurnUpdatedPayload,
   TestFailedPayload,
   TestPassedPayload,
@@ -183,6 +184,25 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
         };
       }
       return state;
+    }
+    case 'turn_finished': {
+      const payload = event.payload as TurnFinishedPayload;
+      const label =
+        payload.reason === 'completed'
+          ? 'task completed'
+          : payload.reason === 'interrupted'
+            ? 'task interrupted'
+            : payload.reason === 'blocked'
+              ? 'task blocked'
+              : 'task failed';
+      return {
+        ...state,
+        currentActivity: activity(
+          payload.reason === 'blocked' ? 'blocked' : 'implementation',
+          label,
+          event,
+        ),
+      };
     }
     case 'planning':
       return {

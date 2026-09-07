@@ -70,6 +70,11 @@ describe('interactive provider runner', () => {
     expect(decoder.decode('\u001b[<35;57;11MReply with OK\r')).toBe('Reply with OK\r');
     expect(decoder.decode('\u001b[82;1u\u001b[13;1u')).toBe('R\r');
     expect(decoder.decode('\u001b[82;1:3u')).toBe('');
+    expect(
+      decoder.decode(
+        '\u001bP>|xterm.js(6.1.0-beta.292)\u001b\\\u001b[200~请只回复：TTY_DIAG_OK\u001b[201~\r',
+      ),
+    ).toBe('请只回复：TTY_DIAG_OK\r');
   });
 
   it('aliases a custom endpoint API key as auth token without overwriting an explicit token', () => {
@@ -200,7 +205,9 @@ describe('interactive provider runner', () => {
         ['FIRST', 'completed'],
         ['SECOND', 'completed'],
       ]);
-      expect(repository.getSession('session-tty').state.currentActivity?.label).toBe('SECOND');
+      expect(repository.getSession('session-tty').state.currentActivity?.label).toBe(
+        'task completed',
+      );
       // One content-free terminal-input observation plus lifecycle evidence
       // for the two submitted turns.
       expect(evidence).toHaveLength(5);

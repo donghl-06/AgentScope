@@ -469,46 +469,41 @@ export class ConsoleInputDecoder {
         this.pending = this.pending.slice(1);
         continue;
       }
-      const end = this.pending.indexOf('_');
-      if (end === -1) {
-        const keyboard = this.pending.match(CSI_U_KEYBOARD_PATTERN);
-        if (keyboard !== null) {
-          this.pending = this.pending.slice(keyboard[0].length);
-          const codePoint = Number(keyboard[1]);
-          const eventType = keyboard[3] === undefined ? 1 : Number(keyboard[3]);
-          if (
-            eventType !== 3 &&
-            Number.isInteger(codePoint) &&
-            codePoint > 0 &&
-            codePoint <= 0x10ffff
-          ) {
-            decoded += String.fromCodePoint(codePoint);
-          }
-          continue;
+      const consoleRecord = this.pending.match(CONSOLE_RECORD_PREFIX_PATTERN);
+      if (consoleRecord !== null) {
+        this.pending = this.pending.slice(consoleRecord[0].length);
+        const unicode = Number(consoleRecord[3]);
+        const keyDown = consoleRecord[4] === '1';
+        if (keyDown && Number.isInteger(unicode) && unicode > 0 && unicode <= 0x10ffff) {
+          decoded += String.fromCodePoint(unicode);
         }
-        if (CSI_U_KEYBOARD_PARTIAL_PATTERN.test(this.pending)) break;
-        if (CONSOLE_RECORD_PARTIAL_PATTERN.test(this.pending)) break;
-        const control = this.pending.match(VT_CONTROL_PATTERN);
-        if (control !== null) {
-          this.pending = this.pending.slice(control[0].length);
-          continue;
-        }
-        if (VT_CONTROL_PARTIAL_PATTERN.test(this.pending)) break;
-        this.pending = this.pending.slice(1);
-        break;
-      }
-      const record = this.pending.slice(0, end + 1);
-      this.pending = this.pending.slice(end + 1);
-      const match = record.match(CONSOLE_RECORD_PATTERN);
-      if (match === null) {
-        decoded += record;
         continue;
       }
-      const unicode = Number(match[3]);
-      const keyDown = match[4] === '1';
-      if (keyDown && Number.isInteger(unicode) && unicode > 0 && unicode <= 0x10ffff) {
-        decoded += String.fromCodePoint(unicode);
+      const keyboard = this.pending.match(CSI_U_KEYBOARD_PATTERN);
+      if (keyboard !== null) {
+        this.pending = this.pending.slice(keyboard[0].length);
+        const codePoint = Number(keyboard[1]);
+        const eventType = keyboard[3] === undefined ? 1 : Number(keyboard[3]);
+        if (
+          eventType !== 3 &&
+          Number.isInteger(codePoint) &&
+          codePoint > 0 &&
+          codePoint <= 0x10ffff
+        ) {
+          decoded += String.fromCodePoint(codePoint);
+        }
+        continue;
       }
+      if (CSI_U_KEYBOARD_PARTIAL_PATTERN.test(this.pending)) break;
+      if (CONSOLE_RECORD_PARTIAL_PATTERN.test(this.pending)) break;
+      const control = this.pending.match(VT_CONTROL_PATTERN);
+      if (control !== null) {
+        this.pending = this.pending.slice(control[0].length);
+        continue;
+      }
+      if (VT_CONTROL_PARTIAL_PATTERN.test(this.pending)) break;
+      this.pending = this.pending.slice(1);
+      break;
     }
     return decoded;
   }
@@ -517,8 +512,8 @@ export class ConsoleInputDecoder {
 const CONSOLE_ESCAPE = String.fromCharCode(0x1b);
 const CONSOLE_RECORD_PREFIX = CONSOLE_ESCAPE + '[';
 const CONSOLE_RECORD_PARTIAL_PATTERN = new RegExp('^' + CONSOLE_ESCAPE + '\\[[0-9;]*$', 'u');
-const CONSOLE_RECORD_PATTERN = new RegExp(
-  '^' + CONSOLE_ESCAPE + '\\[(\\d+);(\\d+);(\\d+);([01]);(\\d+);(\\d+)_$',
+const CONSOLE_RECORD_PREFIX_PATTERN = new RegExp(
+  '^' + CONSOLE_ESCAPE + '\\[(\\d+);(\\d+);(\\d+);([01]);(\\d+);(\\d+)_',
   'u',
 );
 const CSI_U_KEYBOARD_PATTERN = new RegExp(
@@ -534,11 +529,13 @@ const VT_CONTROL_PATTERN = new RegExp(
     CONSOLE_ESCAPE +
     '(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u0007]*(?:\\u0007|' +
     CONSOLE_ESCAPE +
-    '\\\\))',
+    '\\\\)|P[\\s\\S]*?' +
+    CONSOLE_ESCAPE +
+    '\\\\)',
   'u',
 );
 const VT_CONTROL_PARTIAL_PATTERN = new RegExp(
-  '^' + CONSOLE_ESCAPE + '(?:\\[[0-?]*[ -/]*|\\][^\\u0007]*)$',
+  '^' + CONSOLE_ESCAPE + '(?:\\[[0-?]*[ -/]*|\\][^\\u0007]*|P[\\s\\S]*)$',
   'u',
 );
 

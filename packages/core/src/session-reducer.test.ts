@@ -93,12 +93,20 @@ describe('reduceSessionState', () => {
       started,
       event('turn_updated', { turnId: 'turn-1', status: 'waiting' }),
     );
+    const finished = reduceSessionState(
+      waiting,
+      event('turn_finished', { turnId: 'turn-1', reason: 'completed' }),
+    );
 
     expect(started.currentActivity).toMatchObject({
       kind: 'implementation',
       label: 'Inspect workspace',
     });
     expect(waiting.currentActivity).toMatchObject({ kind: 'planning', label: 'waiting for input' });
+    expect(finished.currentActivity).toMatchObject({
+      kind: 'implementation',
+      label: 'task completed',
+    });
   });
 
   it('maps completed-with-failed-verification to failed and never reopens terminal state', () => {
