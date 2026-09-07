@@ -149,6 +149,15 @@ function normalizeMilestoneWeights(
 
 function activityValue(state: SessionState, reasons: ProgressReason[]): number {
   const kind = state.currentActivity?.kind;
+  const completedInteractiveTask =
+    state.status === 'completed' && state.currentActivity?.label === 'task completed';
+  if (completedInteractiveTask) {
+    reasons.push({
+      code: 'interactive_completion',
+      message: 'Interactive task completed; verification evidence is still unavailable.',
+    });
+    return 0.6;
+  }
   const value =
     kind === 'planning'
       ? DEFAULT_PROGRESS_WEIGHTS.planning

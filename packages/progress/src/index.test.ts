@@ -33,6 +33,20 @@ describe('progress engine', () => {
     expect(result.reasons.map((reason) => reason.code)).toContain('verified_completion');
   });
 
+  it('projects an unverified interactive completion to the guarded completion cap', () => {
+    const result = computeProgress({
+      state: state({
+        status: 'completed',
+        endedAt: 100,
+        currentActivity: { kind: 'implementation', label: 'task completed', startedAt: 90 },
+      }),
+      capabilities: { fileEvents: true },
+    });
+    expect(result.value).toBe(0.6);
+    expect(result.reasons.map((reason) => reason.code)).toContain('interactive_completion');
+    expect(result.reasons.map((reason) => reason.code)).toContain('completion_unverified');
+  });
+
   it('caps blocked and failed sessions and preserves deterministic reasons', () => {
     const blocked = computeProgress({
       state: state({
