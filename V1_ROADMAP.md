@@ -356,6 +356,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 7.1 — 增加 turn API 和 WebSocket notification
 
+- session turns 列表和单 turn 查询 API 已提供，repository 的 turn.created/turn.updated
+  notification 已经通过现有 WebSocket live hub 广播；分页 turn-event/evidence 与 Dashboard 展示仍待后续完善。
 - [ ] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
 - [ ] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification。
 - [ ] Dashboard 断线/重连后保留 HTTP cursor catch-up。

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createInitialSessionState } from '@agentscope/protocol';
+import { createInitialSessionState, createInitialTurnState } from '@agentscope/protocol';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { createServer } from './index.js';
@@ -72,6 +72,18 @@ describe('server HTTP API', () => {
     });
     expect((await app.inject('/api/sessions/session-1/events')).json()).toMatchObject({
       items: [{ seq: 1, event: { id: 'event-1' } }],
+    });
+    const turn = createInitialTurnState('turn-1', 'session-1', 1, 1_700_000_000_200, {
+      title: 'Inspect project',
+      prompt: 'Inspect project files',
+    });
+    repository.createTurn({ state: { ...turn, status: 'running', startedAt: 1_700_000_000_201 } });
+    expect((await app.inject('/api/sessions/session-1/turns')).json()).toMatchObject([
+      { id: 'turn-1', sequence: 1, status: 'running', title: 'Inspect project' },
+    ]);
+    expect((await app.inject('/api/turns/turn-1')).json()).toMatchObject({
+      id: 'turn-1',
+      prompt: 'Inspect project files',
     });
     repository.saveObserverEvidence({
       id: 'evidence-1',

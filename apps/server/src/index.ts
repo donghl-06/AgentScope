@@ -11,6 +11,7 @@ import {
   StorageNotFoundError,
   type SessionListFilter,
   type StoredSession,
+  type TurnListFilter,
   type StorageRepository,
 } from '@agentscope/storage';
 
@@ -26,6 +27,10 @@ const SessionListQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ minLength: 1 })),
 });
 const SessionParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
+const TurnListQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
 const EventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
@@ -310,6 +315,55 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.repository.listEvents(id, after, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/sessions/:id/turns',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: TurnListQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const filter: TurnListFilter = {
+          ...(typeof query.status === 'string'
+            ? { status: query.status as NonNullable<TurnListFilter['status']> }
+            : {}),
+          ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
+        };
+        return reply.send(options.repository.listTurns(id, filter));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/turns/:id',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: { 200: Type.Unknown(), 404: ErrorResponseSchema, 500: ErrorResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.repository.getTurn(id));
       } catch (error) {
         return sendError(reply, error);
       }
