@@ -1,9 +1,9 @@
 # AgentScope V1 / Interactive TTY Roadmap
 
-Status: planning baseline  
-Primary target: Windows 11 + VS Code PowerShell + Claude Code harness + compatible Kimi API  
-Secondary target: WSL2 Ubuntu  
-Starting point: V0 local-first structured/non-interactive monitoring is complete and remains the compatibility fallback.
+- Status: planning baseline
+- Primary target: Windows 11 + VS Code PowerShell + Claude Code harness + compatible Kimi API
+- Secondary target: WSL2 Ubuntu
+- Starting point: V0 local-first structured/non-interactive monitoring is complete and remains the compatibility fallback.
 
 ## 1. V1 objective
 
