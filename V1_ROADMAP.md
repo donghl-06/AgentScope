@@ -279,6 +279,9 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
   并以确定性测试保护任务输入分类和单调 turn identity。PTY 输入接线、provider idle 识别和 hook 融合仍待后续步骤完成。
 - 双通道 signal arbiter 已实现：hook/manual 信号优先，PTY fallback 必须达到置信度门槛，
   低置信度信号只返回诊断结果，不改变 turn 状态；hook/PTY 具体 detector 接线仍待后续完成。
+- hook event mapper 和保守 PTY detector 已实现并测试：结构化 turn 生命周期为高置信度，
+  普通终端 prompt 只产生 0.55 的 waiting 候选，显式 AgentScope marker 才可产生高置信度
+  PTY signal；真实 Claude 输出接线仍待手工验收和后续 adapter 集成。
 - [ ] 识别终端何时等待用户输入、何时提交任务开始工作、何时 Claude 回到 idle/waiting。
 - [ ] 有稳定 hook 信号时，将输入边界与 hook 信号合并。
 - [ ] 不把审批按键、slash 命令导航或多行编辑误判成新任务。
