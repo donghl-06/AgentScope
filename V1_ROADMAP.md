@@ -324,12 +324,13 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 5.1 — 将现有 observer 绑定到活动 turn
 
+- [x] 将 turn lifecycle/task-boundary evidence 绑定到活动 turn，同时保留 session 级来源信息；兼容旧数据中把 `turnId` 放在 payload 的记录。
 - [ ] 将进程、文件系统和 Git evidence 绑定到活动 turn，同时保留 session 级来源信息。
 - [ ] 在 turn 开始/结束时 snapshot workspace，只计算路径和统计，不读取无关文件。
 - [ ] 防止延迟 debounce event 泄漏到下一个 turn。
 - [ ] 通过 fusion ledger 对 native、hook 和 observer evidence 去重。
 
-验证：两个快速 turn 修改不同文件时，证据仍然正确分开。
+验证：turn lifecycle evidence 的 repository/API 归属测试已通过；两个快速 turn 修改不同文件时，完整 observer 证据仍需验证正确分开。
 
 提交边界：turn-aware observer runtime。
 
@@ -373,7 +374,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 - session turns 列表和单 turn 查询 API 已提供；repository 的 turn.created/turn.updated
   notification 已通过 WebSocket live hub 广播，并增加了对外部 SQLite writer 的 turn created/updated
-  轮询和去重测试。分页 turn-event/evidence 与 Dashboard 展示仍待后续完善。
+ 轮询和去重测试。按 turn 的 evidence endpoint（limit 查询）和 Dashboard evidence 数量/展开详情已提供；
+ 游标分页和更完整的 turn event 查询仍待后续完善。
 - [ ] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
 - [ ] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification。
 - [ ] Dashboard 断线/重连后保留 HTTP cursor catch-up。
@@ -399,7 +401,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 #### Step 8.1 — 增加 session 和 turn 导航
 
 - Dashboard session detail 已接入 turns API：显示有序 turn 列表、标题、状态和持续时间，并响应
-  turn.created/turn.updated 实时通知自动刷新；更完整的 turn detail 视图仍待后续完成。
+  turn.created/turn.updated 实时通知自动刷新；turn 条目现在可展开查看已归属的 evidence 摘要，
+  更完整的 Progress/ETA/文件/命令/验证详情仍待后续完成。
 - [ ] 一个 interactive Claude session 下显示有序 turn 列表。
 - [ ] 高亮 active turn，展示标题、状态、持续时间和当前活动。
 - [ ] 保持 legacy V0 单任务 session 的展示兼容。
@@ -411,6 +414,7 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 8.2 — 增加每轮 Progress 和 evidence 视图
 
+- [x] 在 Dashboard turn 列表显示每轮 evidence 数量，并可展开查看来源、类型、原因、时间和置信度。
 - [ ] 对选中 turn 展示 Progress、ETA、文件、命令、测试、Git evidence 和 timeline。
 - [ ] 解释 confidence 和 reasons，避免伪精确。
 - [ ] 突出等待用户和需要审批的状态。
