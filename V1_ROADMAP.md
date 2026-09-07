@@ -271,6 +271,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 4.1 — 实现 turn coordinator
 
+- 基础 coordinator 已实现：提供显式 submitTask/observe/markWaiting/markBlocked/resume/finish 边界，
+  并以确定性测试保护任务输入分类和单调 turn identity。PTY 输入接线、provider idle 识别和 hook 融合仍待后续步骤完成。
 - [ ] 识别终端何时等待用户输入、何时提交任务开始工作、何时 Claude 回到 idle/waiting。
 - [ ] 有稳定 hook 信号时，将输入边界与 hook 信号合并。
 - [ ] 不把审批按键、slash 命令导航或多行编辑误判成新任务。
