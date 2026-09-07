@@ -51,6 +51,9 @@ describe('Protocol runtime schemas', () => {
     const payloads: Record<(typeof AGENT_EVENT_TYPES)[number], unknown> = {
       session_started: {},
       session_finished: { reason: 'completed' },
+      turn_started: { turnId: 'turn-1', sequence: 1 },
+      turn_updated: { turnId: 'turn-1', status: 'running' },
+      turn_finished: { turnId: 'turn-1', reason: 'completed' },
       planning: {},
       agent_message: {},
       tool_call_started: { toolName: 'tool' },

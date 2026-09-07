@@ -1,6 +1,9 @@
 export const AGENT_EVENT_TYPES = [
   'session_started',
   'session_finished',
+  'turn_started',
+  'turn_updated',
+  'turn_finished',
   'planning',
   'agent_message',
   'tool_call_started',
@@ -37,6 +40,31 @@ export interface SessionStartedPayload {
 export interface SessionFinishedPayload {
   readonly exitCode?: number;
   readonly reason: SessionFinishReason;
+  readonly providerOutcome?: string;
+}
+
+export interface TurnStartedPayload {
+  readonly turnId: string;
+  readonly sequence: number;
+  readonly title?: string;
+  readonly prompt?: string;
+  readonly providerTurnId?: string;
+}
+
+export interface TurnUpdatedPayload {
+  readonly turnId: string;
+  readonly status?: import('./turn.js').TurnStatus;
+  readonly title?: string;
+  readonly currentActivity?: import('./session.js').Activity;
+  readonly progress?: import('./session.js').ProgressResult;
+  readonly eta?: import('./session.js').EtaResult;
+  readonly verification?: import('./session.js').VerificationState;
+}
+
+export interface TurnFinishedPayload {
+  readonly turnId: string;
+  readonly reason: import('./turn.js').TurnFinishReason;
+  readonly exitCode?: number;
   readonly providerOutcome?: string;
 }
 
@@ -112,6 +140,9 @@ export interface ErrorPayload {
 export interface AgentEventPayloadMap {
   readonly session_started: SessionStartedPayload;
   readonly session_finished: SessionFinishedPayload;
+  readonly turn_started: TurnStartedPayload;
+  readonly turn_updated: TurnUpdatedPayload;
+  readonly turn_finished: TurnFinishedPayload;
   readonly planning: PlanningPayload;
   readonly agent_message: AgentMessagePayload;
   readonly tool_call_started: ToolCallStartedPayload;

@@ -159,12 +159,12 @@ hooks 缺失或变化时进入明确的低能力模式。真实 provider hook/�
 
 ### Phase 1 — 协议和存储基础
 
-#### Step 1.1 — 增加 turn 协议
+#### Step 1.1 — 增加 turn 协议 ✅
 
-- [ ] 定义 `TurnStatus`、`TurnState`、`TurnStarted`、`TurnUpdated` 和 `TurnFinished` schema。
-- [ ] 定义 turn 范围内的 activity、verification、Progress 和 ETA projection。
-- [ ] 以兼容方式扩展协议，让 V0 consumer 可以忽略 V1 notification。
-- [ ] 增加 malformed、未知字段和 replay 顺序测试。
+- [x] 定义 `TurnStatus`、`TurnState`、`TurnStarted`、`TurnUpdated` 和 `TurnFinished` schema。
+- [x] 定义 turn 范围内的 activity、verification、Progress 和 ETA projection。
+- [x] 以兼容方式扩展协议，让 V0 consumer 可以忽略 V1 notification。
+- [x] 增加 malformed、未知字段和 replay 顺序测试。
 
 验证：schema、parser 和兼容性测试通过，且不改变 V0 event 含义。
 

@@ -3,6 +3,7 @@ import { Value } from '@sinclair/typebox/value';
 
 import { AGENT_EVENT_TYPES, type AgentEvent, type AgentEventType } from './events.js';
 import type { SessionState } from './session.js';
+import { TURN_STATUSES, type TurnState } from './turn.js';
 
 const sourceSchema = Type.Object(
   {
@@ -21,10 +22,99 @@ const finishReasonSchema = Type.Union([
   Type.Literal('blocked'),
   Type.Literal('unknown'),
 ]);
+const turnStatusSchema = Type.Union(
+  TURN_STATUSES.map((status) => Type.Literal(status)) as unknown as [TSchema, ...TSchema[]],
+);
+const turnFinishReasonSchema = Type.Union([
+  Type.Literal('completed'),
+  Type.Literal('failed'),
+  Type.Literal('interrupted'),
+  Type.Literal('blocked'),
+  Type.Literal('unknown'),
+]);
 const payloadSchemas: Record<AgentEventType, TSchema> = {
   session_started: Type.Object({ providerSessionId: Type.Optional(Type.String({ minLength: 1 })) }),
   session_finished: Type.Object({
     reason: finishReasonSchema,
+    exitCode: Type.Optional(Type.Number()),
+    providerOutcome: Type.Optional(Type.String()),
+  }),
+  turn_started: Type.Object({
+    turnId: Type.String({ minLength: 1 }),
+    sequence: Type.Integer({ minimum: 1 }),
+    title: Type.Optional(Type.String()),
+    prompt: Type.Optional(Type.String()),
+    providerTurnId: Type.Optional(Type.String({ minLength: 1 })),
+  }),
+  turn_updated: Type.Object({
+    turnId: Type.String({ minLength: 1 }),
+    status: Type.Optional(turnStatusSchema),
+    title: Type.Optional(Type.String()),
+    currentActivity: Type.Optional(
+      Type.Object({
+        kind: Type.String({ minLength: 1 }),
+        label: Type.String({ minLength: 1 }),
+        startedAt: Type.Number({ minimum: 0 }),
+        source: Type.Optional(Type.String({ minLength: 1 })),
+      }),
+    ),
+    progress: Type.Optional(
+      Type.Object({
+        value: Type.Number({ minimum: 0, maximum: 1 }),
+        confidence: Type.Number({ minimum: 0, maximum: 1 }),
+        reasons: Type.Array(
+          Type.Object({
+            code: Type.String({ minLength: 1 }),
+            message: Type.String({ minLength: 1 }),
+          }),
+        ),
+      }),
+    ),
+    eta: Type.Optional(
+      Type.Object({
+        minSeconds: Type.Number({ minimum: 0 }),
+        maxSeconds: Type.Number({ minimum: 0 }),
+        confidence: Type.Number({ minimum: 0, maximum: 1 }),
+        reasons: Type.Array(
+          Type.Object({
+            code: Type.String({ minLength: 1 }),
+            message: Type.String({ minLength: 1 }),
+          }),
+        ),
+      }),
+    ),
+    verification: Type.Optional(
+      Type.Object({
+        tests: Type.Union([
+          Type.Literal('unknown'),
+          Type.Literal('pending'),
+          Type.Literal('passed'),
+          Type.Literal('failed'),
+        ]),
+        build: Type.Union([
+          Type.Literal('unknown'),
+          Type.Literal('pending'),
+          Type.Literal('passed'),
+          Type.Literal('failed'),
+        ]),
+        typecheck: Type.Union([
+          Type.Literal('unknown'),
+          Type.Literal('pending'),
+          Type.Literal('passed'),
+          Type.Literal('failed'),
+        ]),
+        overall: Type.Union([
+          Type.Literal('unknown'),
+          Type.Literal('pending'),
+          Type.Literal('passed'),
+          Type.Literal('failed'),
+        ]),
+      }),
+    ),
+  }),
+  turn_finished: Type.Object({
+    turnId: Type.String({ minLength: 1 }),
+    reason: turnFinishReasonSchema,
     exitCode: Type.Optional(Type.Number()),
     providerOutcome: Type.Optional(Type.String()),
   }),
@@ -202,6 +292,28 @@ export const SessionStateSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const turnStateSchema = Type.Object(
+  {
+    turnId: Type.String({ minLength: 1 }),
+    sessionId: Type.String({ minLength: 1 }),
+    sequence: Type.Integer({ minimum: 1 }),
+    status: turnStatusSchema,
+    submittedAt: Type.Number({ minimum: 0 }),
+    startedAt: Type.Optional(Type.Number({ minimum: 0 })),
+    endedAt: Type.Optional(Type.Number({ minimum: 0 })),
+    title: Type.Optional(Type.String()),
+    prompt: Type.Optional(Type.String()),
+    providerTurnId: Type.Optional(Type.String({ minLength: 1 })),
+    currentActivity: Type.Optional(activitySchema),
+    progress: progressSchema,
+    eta: Type.Optional(etaSchema),
+    verification: verificationSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TurnStateSchema = turnStateSchema;
+
 export interface ProtocolValidationErrorDetail {
   readonly path: string;
   readonly message: string;
@@ -243,6 +355,17 @@ export function assertSessionState(value: unknown): asserts value is SessionStat
   const details = validationDetails(SessionStateSchema, value);
   if (details.length > 0) {
     throw new ProtocolValidationError('Invalid SessionState.', details);
+  }
+}
+
+export function isTurnState(value: unknown): value is TurnState {
+  return Value.Check(TurnStateSchema, value);
+}
+
+export function assertTurnState(value: unknown): asserts value is TurnState {
+  const details = validationDetails(TurnStateSchema, value);
+  if (details.length > 0) {
+    throw new ProtocolValidationError('Invalid TurnState.', details);
   }
 }
 
