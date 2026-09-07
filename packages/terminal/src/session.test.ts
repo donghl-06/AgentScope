@@ -94,4 +94,17 @@ describe('TerminalSession', () => {
     expect(session.exit).toEqual({ exitCode: 143, signal: 15 });
     expect(() => session.write('after-exit')).toThrow(/state disposed/);
   });
+
+  it('provides bounded async output without splitting UTF-8 chunks', async () => {
+    const { process, session } = setup();
+    const output = session.output()[Symbol.asyncIterator]();
+    process.emitData('你好');
+    process.emitData(' world');
+    process.emitExit({ exitCode: 0 });
+
+    expect(await output.next()).toEqual({ done: false, value: '你好' });
+    expect(await output.next()).toEqual({ done: false, value: ' world' });
+    expect(await output.next()).toEqual({ done: true, value: undefined });
+    expect(session.outputStats).toMatchObject({ droppedBytes: 0, droppedChunks: 0 });
+  });
 });

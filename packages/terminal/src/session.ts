@@ -6,6 +6,7 @@ import type {
   TerminalState,
   TerminalSpawnSpec,
 } from './types.js';
+import { TerminalOutputBuffer, type TerminalOutputOptions } from './output-buffer.js';
 
 type DataListener = (data: string) => void;
 type ExitListener = (event: TerminalExit) => void;
@@ -18,19 +19,29 @@ export class TerminalSession {
   private readonly dataListeners = new Set<DataListener>();
   private readonly exitListeners = new Set<ExitListener>();
   private readonly subscriptions: Array<{ dispose(): void }> = [];
+  private readonly outputBuffer: TerminalOutputBuffer;
 
-  private constructor(private readonly process: TerminalProcess) {
+  private constructor(
+    private readonly process: TerminalProcess,
+    outputOptions?: TerminalOutputOptions,
+  ) {
     this.pid = process.pid;
+    this.outputBuffer = new TerminalOutputBuffer(outputOptions);
     this.subscriptions.push(
       process.onData(data => {
+        this.outputBuffer.push(data);
         for (const listener of this.dataListeners) listener(data);
       }),
       process.onExit(event => this.handleExit(event)),
     );
   }
 
-  static spawn(driver: TerminalDriver, spec: TerminalSpawnSpec): TerminalSession {
-    return new TerminalSession(driver.spawn(spec));
+  static spawn(
+    driver: TerminalDriver,
+    spec: TerminalSpawnSpec,
+    outputOptions?: TerminalOutputOptions,
+  ): TerminalSession {
+    return new TerminalSession(driver.spawn(spec), outputOptions);
   }
 
   get state(): TerminalState {
@@ -39,6 +50,14 @@ export class TerminalSession {
 
   get exit(): TerminalExit | undefined {
     return this.exitEvent;
+  }
+
+  output(): AsyncIterable<string> {
+    return this.outputBuffer;
+  }
+
+  get outputStats() {
+    return this.outputBuffer.stats;
   }
 
   onData(listener: DataListener): () => void {
@@ -94,6 +113,7 @@ export class TerminalSession {
     if (this.exitEvent !== undefined) return;
     this.exitEvent = event;
     this.currentState = this.currentState === 'disposing' ? 'disposed' : 'exited';
+    this.outputBuffer.close();
     for (const listener of this.exitListeners) listener(event);
     this.disposeSubscriptions();
   }

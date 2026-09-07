@@ -8,7 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --root ../.. packages/terminal/src/session.test.ts --passWithNoTests",
+    "test": "vitest run --root ../.. packages/terminal/src/session.test.ts packages/terminal/src/output-buffer.test.ts --passWithNoTests",
     "lint": "eslint ."
   },
   "dependencies": {

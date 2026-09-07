@@ -7,10 +7,11 @@ AgentScope 自己的聊天界面，供后续 Claude/Codex 交互式 wrapper 复�
 
 - `NodePtyDriver`：基于 `node-pty@1.1.0` 的 Windows ConPTY / Unix PTY 适配器；
 - `TerminalSession`：统一 spawn、输入、resize、Ctrl+C、退出和重复 cleanup 生命周期；
+- `TerminalOutputBuffer`：提供有界异步输出队列，慢读取方不会阻塞 PTY，超限时记录丢弃计数；
 - 结构化的 `TerminalExit`、`TerminalDimensions` 和 `TerminalState` 类型。
 
-原始终端 chunk 只在内存中通过 `onData` 转发，不由本包写入数据库。环境 allow-list、输出
-backpressure、Unicode 分片缓冲、进程树清理和 CLI wrapper 将在后续 Phase 2/3 完成。
+原始终端 chunk 只在内存中通过 `onData` 或 `output()` 转发，不由本包写入数据库。环境
+allow-list、进程树清理和 CLI wrapper 将在后续 Phase 2/3 完成。
 
 ## 原生依赖安装
 
