@@ -4,6 +4,7 @@ import type { AgentEvent } from '@agentscope/protocol';
 
 import {
   classifyTurnInput,
+  sanitizeTurnInput,
   TurnCoordinator,
   type TurnCoordinatorUpdate,
 } from './turn-coordinator.js';
@@ -60,6 +61,17 @@ describe('TurnCoordinator', () => {
       accepted: true,
       reason: 'task',
     });
+  });
+
+  it('redacts credential-shaped values and supports title-only persistence', () => {
+    const input = 'Review token=super-secret-value and sk-kimi-abcdefghijklmnopqrstuvwxyz';
+    expect(sanitizeTurnInput(input)).toBe('Review token=[REDACTED] and [REDACTED]');
+
+    const titleOnly = new TurnCoordinator({ sessionId: 'session-1', persistPrompt: false });
+    expect(titleOnly.submitTask(input, 100)).toMatchObject({
+      title: 'Review token=[REDACTED] and [REDACTED]',
+    });
+    expect(titleOnly.current?.prompt).toBeUndefined();
   });
 
   it('preserves waiting/blocked semantics and resumes without creating another turn', () => {

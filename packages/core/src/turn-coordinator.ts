@@ -16,6 +16,11 @@ export type TurnCoordinatorUpdate =
 
 export interface TurnCoordinatorOptions {
   readonly sessionId: string;
+  /**
+   * Keep the sanitized task text in the turn projection. Titles are still
+   * retained when this is disabled so the Dashboard remains navigable.
+   */
+  readonly persistPrompt?: boolean;
   readonly onUpdate?: (update: TurnCoordinatorUpdate) => void;
 }
 
@@ -43,6 +48,16 @@ export function classifyTurnInput(input: string): TurnInputClassification {
   return { accepted: true, reason: 'task' };
 }
 
+/** Remove common credential-shaped values before a task enters a projection. */
+export function sanitizeTurnInput(input: string): string {
+  return input
+    .replace(/\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gu, '[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [REDACTED]')
+    .replace(/\b(?:api[_ -]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/giu, (match) =>
+      match.replace(/([:=]\s*)[^\s,;]+$/u, '$1[REDACTED]'),
+    );
+}
+
 export class TurnCoordinator {
   private currentTurn: TurnState | undefined;
   private nextSequence = 1;
@@ -66,16 +81,18 @@ export class TurnCoordinator {
     const sequence = this.nextSequence;
     this.nextSequence += 1;
     const turnId = this.options.sessionId + ':turn:' + sequence;
+    const sanitizedInput = sanitizeTurnInput(input);
+    const prompt = this.options.persistPrompt === false ? undefined : sanitizedInput;
     const turn = reduceTurnState(
       createInitialTurnState(turnId, this.options.sessionId, sequence, timestamp, {
-        prompt: input,
-        title: compactTitle(input),
+        ...(prompt === undefined ? {} : { prompt }),
+        title: compactTitle(sanitizedInput),
       }),
       this.internalEvent('turn_started', timestamp, {
         turnId,
         sequence,
-        title: compactTitle(input),
-        prompt: input,
+        title: compactTitle(sanitizedInput),
+        ...(prompt === undefined ? {} : { prompt }),
       }),
     );
     this.currentTurn = turn;

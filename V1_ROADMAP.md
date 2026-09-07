@@ -284,6 +284,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 4.2 — 捕获有用的本地任务身份
 
+- 基础 prompt/title 策略已实现：标题从脱敏后的首行生成，常见 token/key/password 形状会在进入 turn projection 前替换为
+  [REDACTED]；可通过 persistPrompt: false 只保留标题。CLI/PTY 接线与 Dashboard 配置入口仍待后续步骤完成。
 - [ ] 在本地保存提交的任务文本，并生成 Dashboard 紧凑标题。
 - [ ] 脱敏明显的 secret 格式，环境变量内容不能进入标题。
 - [ ] 提供“只保存标题”或“关闭 prompt 持久化”的配置开关。
