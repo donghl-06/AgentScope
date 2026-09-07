@@ -239,8 +239,9 @@ backpressure 和 clean-install CI 仍待补齐。
 - [x] PTY 驱动或 Claude executable 不可用时返回可诊断错误。
 - [x] 保持 `agent-scope run claude -- -p ...` 不变。
 
-验证：fake PTY 集成测试和 Windows `claude --version` smoke 已通过；真实交互 provider、环境
-allow-list 和终端尺寸人工验收仍待完成。
+验证：fake PTY 集成测试、Windows `claude --version` smoke 和 Windows VS Code PowerShell
+中的 GLM 真实多轮交互已通过；环境透传和 Dashboard 同库联动已确认。终端 resize 与
+Ctrl+C 行为仍待人工验收。
 
 提交边界：CLI 入口和 fake-provider 集成。
 

@@ -69,3 +69,10 @@ prompt），通过已固定的 Claude Code `2.1.261` native binary 执行了两�
 过程中出现的 `unrecognized_model` 仅针对 Claude 的会话标题生成请求；主任务响应和退出状态
 均成功，不构成此次验收失败。此前卡在 API key 确认界面的旧测试会话已按恢复规则标记为
 `interrupted`，避免 Dashboard 保留错误的 `running` 状态。
+
+## Windows VS Code Terminal 人工 smoke
+
+2026-09-07 在 Windows VS Code PowerShell 中加载本地 GLM 配置，通过
+`node apps/cli/bin/agent-scope.mjs claude --bare` 进行交互式验收。普通多轮输入、
+Dashboard 同库联动、running 到 completed 的状态变化以及终端原生显示均通过；本次未执行
+Ctrl+C 中断实验，因此当前仍不宣称交互式中断体验已完成。
