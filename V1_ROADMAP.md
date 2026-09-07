@@ -196,12 +196,13 @@ AgentSession
 
 #### Step 2.1 — 创建 provider-neutral terminal package
 
-- [ ] 提供 spawn、write、resize、interrupt、terminate 和 async output API。
-- [ ] 归一化终端生命周期，但不改写 ANSI 输出。
+- [x] 提供 spawn、write、resize、interrupt、terminate 和 async output API。
+- [x] 归一化终端生命周期，但不改写 ANSI 输出。
 - [ ] 限制输出 buffer，在不阻塞子进程的情况下处理 backpressure。
-- [ ] 默认只在内存中保留原始终端 chunk。
+- [x] 默认只在内存中保留原始终端 chunk。
 
-验证：fake TUI 覆盖碎片化 UTF-8、ANSI 序列、大量输出和慢读取方。
+验证：基础生命周期和重复 cleanup 单元测试已通过；fake TUI 对碎片化 UTF-8、ANSI 序列、大量输出
+和慢读取方的验证仍待补齐。
 
 提交边界：独立 terminal package 和测试。
 

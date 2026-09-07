@@ -1,0 +1,17 @@
+{
+  "name": "@agentscope/terminal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/terminal/src/session.test.ts --passWithNoTests",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "node-pty": "1.1.0"
+  }
+}
