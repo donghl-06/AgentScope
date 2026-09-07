@@ -52,3 +52,20 @@ native binary 和三个 npm shim 已恢复。随后 `claude --version` 以及
 AgentScope interactive wrapper 支持可选的 `AGENTSCOPE_CLAUDE_EXECUTABLE` 环境变量，用于在
 回归测试或 provider 切换期间固定一个已经验证的 Claude native binary；未设置时仍按 PATH 和
 默认 npm 安装解析 `claude`。
+
+## GLM 真实 provider 验收
+
+2026-09-07 使用用户提供的 GLM Anthropic-compatible endpoint（不记录 endpoint、API key 或
+prompt），通过已固定的 Claude Code `2.1.261` native binary 执行了两类真实验收：
+
+1. 非交互 smoke：`--bare -p "Reply with OK only" --output-format stream-json --verbose`。
+   模型返回 `OK`，最终 `is_error:false`，退出码为 `0`；AgentScope 数据库记录为
+   `claude-code-tty / completed`。
+2. 交互式 TTY 多轮：在同一个终端连续发送 `Reply with EXACTLY FIRST` 和
+   `Reply with EXACTLY SECOND`，分别得到 `FIRST` 和 `SECOND`，随后使用 `/exit` 正常退出。
+   数据库记录为 `claude-code-tty / completed`，事件包含 `session_started` 和
+   `session_finished(reason=completed, exitCode=0)`。
+
+过程中出现的 `unrecognized_model` 仅针对 Claude 的会话标题生成请求；主任务响应和退出状态
+均成功，不构成此次验收失败。此前卡在 API key 确认界面的旧测试会话已按恢复规则标记为
+`interrupted`，避免 Dashboard 保留错误的 `running` 状态。
