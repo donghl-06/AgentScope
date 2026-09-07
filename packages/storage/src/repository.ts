@@ -653,6 +653,20 @@ export class StorageRepository {
     return rows.map(decodeObserverEvidence);
   }
 
+  listObserverEvidenceForTurn(turnId: string, limit = 100): readonly StoredObserverEvidence[] {
+    const turn = this.getTurn(turnId);
+    const rows = this.client
+      .prepare(
+        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+         FROM observer_evidence
+         WHERE turn_id = ?
+         ORDER BY timestamp, evidence_key
+         LIMIT ?`,
+      )
+      .all(turn.id, clampObserverEvidenceLimit(limit)) as ObserverEvidenceRow[];
+    return rows.map(decodeObserverEvidence);
+  }
+
   private getObserverEvidence(sessionId: string, key: string): StoredObserverEvidence {
     const row = this.client
       .prepare(

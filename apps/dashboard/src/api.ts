@@ -97,6 +97,14 @@ export class DashboardApi {
     );
   }
 
+  listTurnEvidence(turnId: string, limit = 100): Promise<readonly StoredObserverEvidence[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return this.get<readonly StoredObserverEvidence[]>(
+      `/api/turns/${encodeURIComponent(turnId)}/evidence`,
+      query,
+    );
+  }
+
   connectLive(onMessage: (message: DashboardLiveNotification) => void): WebSocket {
     const url = new URL('/ws', this.baseUrl || globalThis.location.origin);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
