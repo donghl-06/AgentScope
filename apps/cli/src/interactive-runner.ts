@@ -17,6 +17,7 @@ import {
 } from '@agentscope/protocol';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
+import { ObserverRuntime } from '@agentscope/observer-runtime';
 
 export interface InteractiveSignals {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
@@ -105,6 +106,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   });
 
   let terminal: TerminalSession | undefined;
+  let observerRuntime: ObserverRuntime | undefined;
   let interrupted = false;
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
@@ -124,6 +126,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       repository.saveObserverEvidence({
         id: randomUUID(),
         sessionId,
+        turnId: update.turn.turnId,
         key: `interactive-turn:${update.turn.turnId}:${update.kind}:${update.turn.status}`,
         timestamp,
         source: 'interactive-pty',
@@ -254,6 +257,33 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       state,
       createEvent('session_started', sessionId, now(), source, {}),
     );
+    const exitPromise = new Promise<{ exitCode: number; signal?: number }>((resolve) => {
+      terminal?.onExit((event) => resolve(event));
+    });
+    observerRuntime = new ObserverRuntime({
+      sessionId,
+      workspacePath: options.workspacePath,
+      process: { pid: terminal.pid, startedAt },
+      file: {},
+      onEvidence: (evidence) => {
+        const activeTurn = coordinator.current;
+        repository.saveObserverEvidence({
+          id: evidence.id,
+          sessionId,
+          ...(activeTurn === undefined ? {} : { turnId: activeTurn.turnId }),
+          key: evidence.key,
+          timestamp: evidence.timestamp,
+          source: evidence.source,
+          kind: evidence.kind,
+          confidence: evidence.confidence,
+          reason: evidence.reason,
+          payload: evidence.payload,
+        });
+      },
+      onError: (error) => {
+        (options.error ?? process.stderr).write(`[observer:${error.source}] ${error.message}\n`);
+      },
+    });
     let startupOutput = '';
     let apiKeyAccepted = false;
     terminal.onData((chunk) => {
@@ -277,10 +307,9 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     input.setRawMode?.(true);
     output.on('resize', onResize);
     signals.on('SIGINT', onSignal);
+    await observerRuntime.start();
 
-    const exit = await new Promise<{ exitCode: number; signal?: number }>((resolve) => {
-      terminal?.onExit((event) => resolve(event));
-    });
+    const exit = await exitPromise;
     const reason =
       interrupted || isInterruptExit(exit.exitCode)
         ? 'interrupted'
@@ -314,6 +343,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     input.setRawMode?.(false);
     output.removeListener('resize', onResize);
     signals.removeListener('SIGINT', onSignal);
+    observerRuntime?.stop();
     terminal?.dispose();
     storage.client.close();
   }
