@@ -48,3 +48,7 @@ node apps/cli/bin/agent-scope.mjs claude --version
 native binary 和三个 npm shim 已恢复。随后 `claude --version` 以及
 `agent-scope claude --version` 均返回 `2.1.261 (Claude Code)`、退出码 `0`。后续真实 provider
 测试暂不自动重跑，避免再次触发并发限制或自动更新。
+
+AgentScope interactive wrapper 支持可选的 `AGENTSCOPE_CLAUDE_EXECUTABLE` 环境变量，用于在
+回归测试或 provider 切换期间固定一个已经验证的 Claude native binary；未设置时仍按 PATH 和
+默认 npm 安装解析 `claude`。

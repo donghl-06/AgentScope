@@ -116,6 +116,9 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 args,
                 filename: config.database,
                 workspacePath: config.workspacePath,
+                ...(options.env?.AGENTSCOPE_CLAUDE_EXECUTABLE === undefined
+                  ? {}
+                  : { executable: options.env.AGENTSCOPE_CLAUDE_EXECUTABLE }),
               }),
           }
         : {}),
