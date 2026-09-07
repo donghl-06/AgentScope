@@ -36,6 +36,14 @@ describe('CLI argument parser', () => {
         args: ['--dangerously-skip-permissions', '-p', 'hello world'],
       },
     );
+    expect(
+      parseCliArgs(['claude', '--agent-scope-accept-api-key', '--permission-mode', 'manual']),
+    ).toEqual({
+      kind: 'interactive',
+      adapter: 'claude',
+      args: ['--permission-mode', 'manual'],
+      acceptApiKey: true,
+    });
     expect(parseCliArgs(['show', 'session-1'])).toEqual({
       kind: 'show',
       sessionId: 'session-1',
@@ -72,6 +80,6 @@ describe('CLI argument parser', () => {
 
   it('renders stable help text', () => {
     expect(formatCliHelp()).toContain('run <adapter> -- <args...>');
-    expect(formatCliHelp()).toContain('claude [args...]');
+    expect(formatCliHelp()).toContain('claude [--agent-scope-accept-api-key] [args...]');
   });
 });

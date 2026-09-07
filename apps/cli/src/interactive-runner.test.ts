@@ -37,6 +37,10 @@ class FakeTerminalProcess implements TerminalProcess {
     this.dataListener?.('PTY_OUTPUT');
     this.exitListener?.({ exitCode });
   }
+
+  emitData(data: string): void {
+    this.dataListener?.(data);
+  }
 }
 
 class FakeSignals extends EventEmitter {
@@ -73,5 +77,35 @@ describe('interactive provider runner', () => {
 
     expect(exitCode).toBe(0);
     expect(outputChunks).toEqual(['PTY_OUTPUT']);
+  });
+
+  it('confirms only the explicit API-key startup prompt when enabled', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    const driver: TerminalDriver = {
+      spawn: () => {
+        setTimeout(() => terminalProcess.emitData('Do you want to use this API key? [y/N]'), 0);
+        setTimeout(() => terminalProcess.finish(0), 10);
+        return terminalProcess;
+      },
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+
+    const exitCode = await runInteractiveProvider({
+      adapter: 'claude',
+      args: [],
+      filename: ':memory:',
+      workspacePath: process.cwd(),
+      executable: process.execPath,
+      env: { ANTHROPIC_API_KEY: 'test-key' },
+      autoAcceptApiKey: true,
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(terminalProcess.writes).toEqual(['yes\r']);
   });
 });

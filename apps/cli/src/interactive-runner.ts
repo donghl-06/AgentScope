@@ -23,6 +23,12 @@ export interface InteractiveProviderOptions {
   readonly filename: string;
   readonly workspacePath: string;
   readonly executable?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  /**
+   * Only auto-confirm the provider's explicit API-key confirmation prompt.
+   * This never answers tool approvals, slash commands, or other prompts.
+   */
+  readonly autoAcceptApiKey?: boolean;
   readonly sessionId?: string;
   readonly now?: () => number;
   readonly input?: InteractiveInput;
@@ -79,6 +85,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   let interrupted = false;
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
+  const environment = options.env ?? process.env;
   const signals = options.signals ?? process;
   const driver = options.terminalDriver ?? nodePtyDriver;
   const onInput = (chunk: Buffer | string) => {
@@ -113,7 +120,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         command: executable,
         args: [...options.args],
         cwd: options.workspacePath,
-        env: process.env,
+        env: environment,
         dimensions: {
           cols: Math.max(1, output.columns ?? 120),
           rows: Math.max(1, output.rows ?? 30),
@@ -145,7 +152,23 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       state,
       createEvent('session_started', sessionId, now(), source, {}),
     );
-    terminal.onData((chunk) => output.write(chunk));
+    let startupOutput = '';
+    let apiKeyAccepted = false;
+    terminal.onData((chunk) => {
+      output.write(chunk);
+      if (
+        options.autoAcceptApiKey !== true ||
+        apiKeyAccepted ||
+        typeof environment.ANTHROPIC_API_KEY !== 'string' ||
+        environment.ANTHROPIC_API_KEY.length === 0
+      ) {
+        return;
+      }
+      startupOutput = stripAnsi(startupOutput + chunk).slice(-8_192);
+      if (!API_KEY_CONFIRMATION_PATTERN.test(startupOutput)) return;
+      terminal?.write('yes\r');
+      apiKeyAccepted = true;
+    });
     input.on('data', onInput);
     input.resume();
     input.setRawMode?.(true);
@@ -203,6 +226,15 @@ function createEvent(
 
 function isInterruptExit(exitCode: number): boolean {
   return exitCode === 130 || exitCode === -1073741510;
+}
+
+const API_KEY_CONFIRMATION_PATTERN =
+  /(?:do you want to use|use)\s+(?:this|the current)?\s*api key/iu;
+
+function stripAnsi(value: string): string {
+  return value
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/gu, '')
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, '');
 }
 
 function ensureStorageDirectory(filename: string): void {

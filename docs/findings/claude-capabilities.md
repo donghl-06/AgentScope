@@ -83,3 +83,9 @@ Ctrl+C 中断实验，因此当前仍不宣称交互式中断体验已完成。
 随后完成终端 resize 人工验收：反复缩放 VS Code 终端时，Claude 界面正常重排，
 没有乱码、残留字符或光标错位；输入仍可用，Dashboard 保持实时连接，session 没有重复或
 404 数据。Windows 交互式终端的基础缩放行为通过。
+
+为保留完整 Claude 功能，AgentScope 增加了普通模式下的显式 API key 确认辅助：
+使用 agent-scope claude --agent-scope-accept-api-key 时，只有检测到明确的
+“Do you want to use this API key?” 类启动提示且当前进程存在 ANTHROPIC_API_KEY，
+才会向 PTY 写入一次 yes。该逻辑不会启用 --bare，也不会回答工具审批、slash 命令或
+其他交互提示；省略该开关时保持完全手动确认。

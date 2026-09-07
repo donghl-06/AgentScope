@@ -29,3 +29,12 @@ agent-scope run claude -- --bare -p "your prompt" --output-format stream-json --
 `--` 后的参数会原样传给 Claude CLI。stdout/stderr 会继续显示在当前终端，同时安全的
 生命周期和工具调用摘要会写入 AgentScope SQLite。Claude CLI 使用的 endpoint、model 和
 credential 由其自身环境决定。
+
+需要完整使用 Claude Code 的 hooks、LSP、插件、memory 和 CLAUDE.md 自动发现时，不要
+使用 --bare。如果 Claude 首次启动询问是否使用当前 ANTHROPIC_API_KEY，可以让 AgentScope
+只自动确认这一条明确的 API key 提示。启动命令为：
+
+agent-scope claude --agent-scope-accept-api-key
+
+该选项不会把参数传给 Claude，也不会自动回答工具审批、slash 命令或其他交互提示；没有检测到
+明确 API key 提示时不会写入任何内容。省略该选项则保持完全手动确认行为。

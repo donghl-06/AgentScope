@@ -116,6 +116,8 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 args,
                 filename: config.database,
                 workspacePath: config.workspacePath,
+                ...(command.acceptApiKey === true ? { autoAcceptApiKey: true } : {}),
+                env: options.env ?? process.env,
                 ...(options.env?.AGENTSCOPE_CLAUDE_EXECUTABLE === undefined
                   ? {}
                   : { executable: options.env.AGENTSCOPE_CLAUDE_EXECUTABLE }),
