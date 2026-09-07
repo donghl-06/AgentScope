@@ -35,6 +35,8 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
   const writeError = options.writeError ?? ((text: string) => process.stderr.write(text));
   const writeStdout = options.writeStdout ?? ((chunk: string) => process.stdout.write(chunk));
   const writeStderr = options.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
+  const runtimeEnv = options.env ?? process.env;
+  const configuredClaudeExecutable = runtimeEnv.AGENTSCOPE_CLAUDE_EXECUTABLE;
   try {
     const command = parseCliArgs(options.argv ?? process.argv.slice(2));
     if (command.kind === 'help') {
@@ -117,10 +119,10 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 filename: config.database,
                 workspacePath: config.workspacePath,
                 ...(command.acceptApiKey === true ? { autoAcceptApiKey: true } : {}),
-                env: options.env ?? process.env,
-                ...(options.env?.AGENTSCOPE_CLAUDE_EXECUTABLE === undefined
+                env: runtimeEnv,
+                ...(configuredClaudeExecutable === undefined
                   ? {}
-                  : { executable: options.env.AGENTSCOPE_CLAUDE_EXECUTABLE }),
+                  : { executable: configuredClaudeExecutable }),
               }),
           }
         : {}),

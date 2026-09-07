@@ -89,3 +89,14 @@ Ctrl+C 中断实验，因此当前仍不宣称交互式中断体验已完成。
 “Do you want to use this API key?” 类启动提示且当前进程存在 ANTHROPIC_API_KEY，
 才会向 PTY 写入一次 yes。该逻辑不会启用 --bare，也不会回答工具审批、slash 命令或
 其他交互提示；省略该开关时保持完全手动确认。
+
+## Custom endpoint 认证兼容验收
+
+普通模式在自定义 ANTHROPIC_BASE_URL 下仅提供 ANTHROPIC_API_KEY 时，Claude 2.1.263
+可能在第一轮请求显示 “Not logged in”。对照实验确认：直接为同一子进程补充同值的
+ANTHROPIC_AUTH_TOKEN 后，普通完整模式可以正常完成请求；--bare 原本就走 API key
+专用路径，因此不受此差异影响。
+
+AgentScope 现已在启动交互式 Claude 子进程时自动执行这一兼容补齐，且不覆盖显式
+AUTH_TOKEN。2026-09-07 真实验收使用原有本地 GLM 配置，在不加 --bare 的 AgentScope
+普通模式中返回 AGENTSCOPE_AUTH_OK，随后正常 /exit；未再出现 Not logged in。

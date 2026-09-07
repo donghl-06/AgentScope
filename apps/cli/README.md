@@ -38,3 +38,8 @@ agent-scope claude --agent-scope-accept-api-key
 
 该选项不会把参数传给 Claude，也不会自动回答工具审批、slash 命令或其他交互提示；没有检测到
 明确 API key 提示时不会写入任何内容。省略该选项则保持完全手动确认行为。
+
+对于自定义 ANTHROPIC_BASE_URL（例如 Kimi 或 GLM），AgentScope 会在子进程环境中自动将
+ANTHROPIC_API_KEY 补齐为同值的 ANTHROPIC_AUTH_TOKEN（仅当后者未设置时）。这是普通 Claude
+模式访问兼容 endpoint 所需的认证兼容处理，不会覆盖你显式设置的 AUTH_TOKEN，也不会把 key
+写入数据库或日志。

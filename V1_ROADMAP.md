@@ -244,6 +244,8 @@ backpressure 和 clean-install CI 仍待补齐。
 已确认；终端 resize 人工验收也已通过。
 普通模式下的显式 API key 确认辅助已实现：仅在检测到明确的 provider API key 提示时向 PTY
 写入一次 yes，不启用 --bare，也不改变其他交互输入。
+针对自定义 endpoint 的普通模式认证差异，交互式子进程会在 AUTH_TOKEN 未显式设置时从
+ANTHROPIC_API_KEY 补齐；GLM 真实普通模式已通过，不再出现 Not logged in。
 
 提交边界：CLI 入口和 fake-provider 集成。
 

@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
 
-import { runInteractiveProvider } from './interactive-runner.js';
+import { prepareInteractiveEnvironment, runInteractiveProvider } from './interactive-runner.js';
 import type { TerminalDriver, TerminalProcess } from '@agentscope/terminal';
 
 class FakeTerminalProcess implements TerminalProcess {
@@ -50,6 +50,28 @@ class FakeSignals extends EventEmitter {
 }
 
 describe('interactive provider runner', () => {
+  it('aliases a custom endpoint API key as auth token without overwriting an explicit token', () => {
+    expect(
+      prepareInteractiveEnvironment({
+        ANTHROPIC_BASE_URL: 'https://gateway.example.test',
+        ANTHROPIC_API_KEY: 'api-key',
+      }),
+    ).toMatchObject({
+      ANTHROPIC_API_KEY: 'api-key',
+      ANTHROPIC_AUTH_TOKEN: 'api-key',
+    });
+    expect(
+      prepareInteractiveEnvironment({
+        ANTHROPIC_BASE_URL: 'https://gateway.example.test',
+        ANTHROPIC_API_KEY: 'api-key',
+        ANTHROPIC_AUTH_TOKEN: 'explicit-token',
+      }).ANTHROPIC_AUTH_TOKEN,
+    ).toBe('explicit-token');
+    expect(
+      prepareInteractiveEnvironment({ ANTHROPIC_API_KEY: 'api-key' }).ANTHROPIC_AUTH_TOKEN,
+    ).toBeUndefined();
+  });
+
   it('records a PTY session while preserving terminal output', async () => {
     const terminalProcess = new FakeTerminalProcess();
     const driver: TerminalDriver = {

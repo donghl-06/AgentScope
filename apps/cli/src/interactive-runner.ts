@@ -47,6 +47,21 @@ export type InteractiveOutput = NodeJS.WriteStream & {
   rows?: number;
 };
 
+export function prepareInteractiveEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const environment = { ...env };
+  if (
+    typeof environment.ANTHROPIC_BASE_URL === 'string' &&
+    environment.ANTHROPIC_BASE_URL.length > 0 &&
+    typeof environment.ANTHROPIC_API_KEY === 'string' &&
+    environment.ANTHROPIC_API_KEY.length > 0 &&
+    (environment.ANTHROPIC_AUTH_TOKEN === undefined ||
+      environment.ANTHROPIC_AUTH_TOKEN.length === 0)
+  ) {
+    environment.ANTHROPIC_AUTH_TOKEN = environment.ANTHROPIC_API_KEY;
+  }
+  return environment;
+}
+
 export async function runInteractiveProvider(options: InteractiveProviderOptions): Promise<number> {
   ensureStorageDirectory(options.filename);
   const now = options.now ?? Date.now;
@@ -85,7 +100,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   let interrupted = false;
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
-  const environment = options.env ?? process.env;
+  const environment = prepareInteractiveEnvironment(options.env ?? process.env);
   const signals = options.signals ?? process;
   const driver = options.terminalDriver ?? nodePtyDriver;
   const onInput = (chunk: Buffer | string) => {
