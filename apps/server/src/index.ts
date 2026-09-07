@@ -11,6 +11,7 @@ import {
   StorageNotFoundError,
   type SessionListFilter,
   type StoredSession,
+  type StoredTurn,
   type TurnListFilter,
   type StorageRepository,
 } from '@agentscope/storage';
@@ -118,9 +119,16 @@ export function createServer(options: ServerOptions): FastifyInstance {
   }
   if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
   const observedSessions = new Map<string, ObservedSession>();
+  const observedTurns = new Map<string, ObservedTurn>();
   hydrateObservedSessions(options.repository, observedSessions);
+  hydrateObservedTurns(options.repository, observedTurns);
   const unsubscribeRepository = options.repository.subscribe((notification) => {
     if (notification.type === 'turn.created' || notification.type === 'turn.updated') {
+      observedTurns.set(notification.turn.id, {
+        sessionId: notification.turn.sessionId,
+        updatedAt: notification.turn.updatedAt,
+        status: notification.turn.status,
+      });
       liveHub.publish({
         type: notification.type,
         sessionId: notification.turn.sessionId,
@@ -132,7 +140,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
       });
       return;
     }
-    rememberNotification(observedSessions, notification);
+    rememberNotification(observedSessions, observedTurns, notification);
     if (notification.type === 'event.appended') {
       liveHub.publish({
         type: 'event.appended',
@@ -187,6 +195,22 @@ export function createServer(options: ServerOptions): FastifyInstance {
             seq: event.seq,
             cursor: String(event.seq),
             payload: { eventType: event.event.type },
+          });
+        }
+        for (const turn of options.repository.listTurns(session.id)) {
+          const observedTurn = observedTurns.get(turn.id);
+          if (observedTurn === undefined) {
+            publishTurnNotification(liveHub, 'turn.created', turn);
+          } else if (
+            observedTurn.updatedAt !== turn.updatedAt ||
+            observedTurn.status !== turn.status
+          ) {
+            publishTurnNotification(liveHub, 'turn.updated', turn);
+          }
+          observedTurns.set(turn.id, {
+            sessionId: turn.sessionId,
+            updatedAt: turn.updatedAt,
+            status: turn.status,
           });
         }
         observedSessions.set(session.id, {
@@ -479,6 +503,28 @@ interface ObservedSession {
   readonly lastEventSeq: number;
 }
 
+interface ObservedTurn {
+  readonly sessionId: string;
+  readonly updatedAt: number;
+  readonly status: StoredTurn['status'];
+}
+
+function publishTurnNotification(
+  liveHub: LiveHub,
+  type: 'turn.created' | 'turn.updated',
+  turn: StoredTurn,
+): void {
+  liveHub.publish({
+    type,
+    sessionId: turn.sessionId,
+    payload: {
+      turnId: turn.id,
+      sequence: turn.sequence,
+      status: turn.status,
+    },
+  });
+}
+
 function hydrateObservedSessions(
   repository: StorageRepository,
   observedSessions: Map<string, ObservedSession>,
@@ -500,6 +546,21 @@ function hydrateObservedSessions(
   }
 }
 
+function hydrateObservedTurns(
+  repository: StorageRepository,
+  observedTurns: Map<string, ObservedTurn>,
+): void {
+  for (const session of listAllSessions(repository)) {
+    for (const turn of repository.listTurns(session.id)) {
+      observedTurns.set(turn.id, {
+        sessionId: turn.sessionId,
+        updatedAt: turn.updatedAt,
+        status: turn.status,
+      });
+    }
+  }
+}
+
 function listAllSessions(repository: StorageRepository): readonly StoredSession[] {
   const sessions: StoredSession[] = [];
   let cursor: string | undefined;
@@ -516,9 +577,17 @@ function listAllSessions(repository: StorageRepository): readonly StoredSession[
 
 function rememberNotification(
   observedSessions: Map<string, ObservedSession>,
+  observedTurns: Map<string, ObservedTurn>,
   notification: RepositoryNotification,
 ): void {
-  if (notification.type === 'turn.created' || notification.type === 'turn.updated') return;
+  if (notification.type === 'turn.created' || notification.type === 'turn.updated') {
+    observedTurns.set(notification.turn.id, {
+      sessionId: notification.turn.sessionId,
+      updatedAt: notification.turn.updatedAt,
+      status: notification.turn.status,
+    });
+    return;
+  }
   const current = observedSessions.get(notification.session.id);
   observedSessions.set(notification.session.id, {
     updatedAt: notification.session.updatedAt,

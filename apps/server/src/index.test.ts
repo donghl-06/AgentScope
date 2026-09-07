@@ -227,13 +227,65 @@ describe('server HTTP API', () => {
       },
       { ...state, status: 'running' },
     );
+    const externalTurn = createInitialTurnState(
+      'external-turn',
+      'external-session',
+      1,
+      state.startedAt + 200,
+      { title: 'External turn' },
+    );
+    writer.createTurn({
+      state: { ...externalTurn, status: 'running', startedAt: state.startedAt + 201 },
+    });
 
     const deadline = Date.now() + 1_000;
     while (Date.now() < deadline) {
-      if (socket.messages.some((message) => JSON.parse(message).type === 'event.appended')) break;
+      const types = socket.messages.map((message) => JSON.parse(message).type);
+      if (types.includes('event.appended') && types.includes('turn.created')) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    expect(socket.messages.map((message) => JSON.parse(message).type)).toContain('event.appended');
+    expect(socket.messages.map((message) => JSON.parse(message).type)).toEqual(
+      expect.arrayContaining(['event.appended', 'turn.created']),
+    );
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'turn.created',
+          sessionId: 'external-session',
+          payload: { turnId: 'external-turn', sequence: 1, status: 'running' },
+        }),
+      ]),
+    );
+    writer.updateTurnState(
+      'external-turn',
+      {
+        ...externalTurn,
+        status: 'completed',
+        startedAt: state.startedAt + 201,
+        endedAt: state.startedAt + 300,
+      },
+      state.startedAt + 300,
+    );
+    const updateDeadline = Date.now() + 1_000;
+    while (Date.now() < updateDeadline) {
+      if (
+        socket.messages.some((message) => {
+          const parsed = JSON.parse(message);
+          return parsed.type === 'turn.updated' && parsed.payload?.status === 'completed';
+        })
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'turn.updated',
+          sessionId: 'external-session',
+          payload: { turnId: 'external-turn', sequence: 1, status: 'completed' },
+        }),
+      ]),
+    );
   });
 
   it('does not publish a ghost event when the repository transaction fails', async () => {
