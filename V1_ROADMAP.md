@@ -125,23 +125,23 @@ AgentSession
 
 #### Step 0.1 — 定义终端行为契约
 
-- [ ] 记录颜色、光标控制、多行输入、粘贴、审批界面、slash 命令、窗口缩放、Ctrl+C、Ctrl+Break、EOF 和正常退出的预期行为。
-- [ ] 区分“中断当前 Claude 动作”和“终止整个交互式 session”。
-- [ ] 定义支持的启动方式和参数透传边界。
-- [ ] 增加 ADR，说明为什么由 AgentScope 拥有子进程 PTY，而不是 attach 到任意已运行进程。
+- [x] 记录颜色、光标控制、多行输入、粘贴、审批界面、slash 命令、窗口缩放、Ctrl+C、Ctrl+Break、EOF 和正常退出的预期行为。
+- [x] 区分“中断当前 Claude 动作”和“终止整个交互式 session”。
+- [x] 定义支持的启动方式和参数透传边界。
+- [x] 增加 ADR，说明为什么由 AgentScope 拥有子进程 PTY，而不是 attach 到任意已运行进程。
 
-验证：使用 fake interactive CLI，在不调用真实 provider 的情况下覆盖契约；明确覆盖 Windows PowerShell、VS Code Terminal 和 WSL2。
+验证：使用 fake interactive CLI，在不调用真实 provider 的情况下覆盖契约；明确覆盖 Windows PowerShell、VS Code Terminal 和 WSL2。契约已记录在 `docs/decisions/0007-interactive-pty.md`。
 
 提交边界：只提交终端契约、ADR 和 fake fixture。
 
 #### Step 0.2 — 比较 PTY/ConPTY 驱动选项
 
-- [ ] 评估支持 Windows ConPTY 和 Unix PTY 的维护中 Node 驱动。
-- [ ] 比较原生构建要求、Node 22/24 兼容性、Windows ARM/x64、缩放/信号、Unicode、版本健康度和供应链风险。
-- [ ] 在 Windows 和 WSL2 用 fake TUI 做一次隔离 PoC。
-- [ ] 选择一个驱动，记录拒绝的方案和回退行为。
+- [x] 评估支持 Windows ConPTY 和 Unix PTY 的维护中 Node 驱动；`node-pty` 已作为首选候选。
+- [x] 比较原生构建要求、Node 22/24 兼容性、Windows ARM/x64、缩放/信号、Unicode、版本健康度和供应链风险。
+- [x] 在 Windows 用 fake TUI 做一次隔离 PoC。
+- [x] 选择 `node-pty` 作为 V1 驱动，记录拒绝的方案和 V0 结构化回退行为。
 
-验证：Windows 和 WSL2 的 spawn、输入、输出、缩放和终止都通过；依赖审计和 clean-install 通过后才能进入主 workspace。
+验证：Windows 与 WSL2/Linux 的 spawn、输入、输出、缩放和 Ctrl+C 隔离 smoke 已通过；重复 cleanup、Unicode、长输出/backpressure 和 runtime clean-install 门禁仍待完成。当前结果见 `docs/findings/pty-driver.md`，正式接入生产路径前必须完成剩余门禁。
 
 提交边界：驱动决策和隔离 spike，暂不接入生产路径。
 
