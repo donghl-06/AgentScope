@@ -43,3 +43,8 @@ node apps/cli/bin/agent-scope.mjs claude --version
 未完成的 native 安装（`bin/claude.exe` 变成 postinstall 占位文件，旧 binary 被保留为带时间戳的
 备份）。wrapper 现已在 spawn 前识别这种状态并给出可操作错误。继续真实 provider 验收前，必须先
 在用户实际运行 Claude 的 PowerShell 中恢复安装，并确认 `claude --version` 成功。
+
+本次已使用该时间戳备份完成可回滚恢复：占位文件被保留为 `claude.exe.failed-20260907-153933`，
+native binary 和三个 npm shim 已恢复。随后 `claude --version` 以及
+`agent-scope claude --version` 均返回 `2.1.261 (Claude Code)`、退出码 `0`。后续真实 provider
+测试暂不自动重跑，避免再次触发并发限制或自动更新。
