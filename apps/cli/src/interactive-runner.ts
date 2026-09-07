@@ -112,11 +112,39 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const coordinator = new TurnCoordinator({
     sessionId,
     onUpdate: (update) => {
+      const timestamp = now();
       if (update.kind === 'started') {
-        repository.createTurn({ state: update.turn, now: now() });
+        repository.createTurn({ state: update.turn, now: timestamp });
       } else {
-        repository.updateTurnState(update.turn.turnId, update.turn, now());
+        repository.updateTurnState(update.turn.turnId, update.turn, timestamp);
       }
+      repository.saveObserverEvidence({
+        id: randomUUID(),
+        sessionId,
+        key: `interactive-turn:${update.turn.turnId}:${update.kind}:${update.turn.status}`,
+        timestamp,
+        source: 'interactive-pty',
+        kind: 'turn-boundary',
+        confidence: 1,
+        reason: turnEvidenceReason(update.kind, update.turn.status),
+        payload: {
+          turnId: update.turn.turnId,
+          sequence: update.turn.sequence,
+          status: update.turn.status,
+          ...(update.turn.title === undefined ? {} : { title: update.turn.title }),
+        },
+      });
+      state = appendEvent(
+        repository,
+        state,
+        createEvent(
+          turnEventType(update.kind),
+          sessionId,
+          timestamp,
+          source,
+          turnEventPayload(update.kind, update.turn),
+        ),
+      );
     },
   });
   const arbiter = new TurnSignalArbiter(coordinator);
@@ -305,6 +333,44 @@ function isInterruptExit(exitCode: number): boolean {
   return exitCode === 130 || exitCode === -1073741510;
 }
 
+function turnEventType(
+  kind: 'started' | 'updated' | 'finished',
+): 'turn_started' | 'turn_updated' | 'turn_finished' {
+  return kind === 'started'
+    ? 'turn_started'
+    : kind === 'updated'
+      ? 'turn_updated'
+      : 'turn_finished';
+}
+
+function turnEventPayload(
+  kind: 'started' | 'updated' | 'finished',
+  turn: {
+    readonly turnId: string;
+    readonly sequence: number;
+    readonly status: string;
+    readonly title?: string;
+  },
+): unknown {
+  if (kind === 'started') {
+    return {
+      turnId: turn.turnId,
+      sequence: turn.sequence,
+      ...(turn.title === undefined ? {} : { title: turn.title }),
+    };
+  }
+  if (kind === 'updated') return { turnId: turn.turnId, status: turn.status };
+  return { turnId: turn.turnId, reason: turn.status };
+}
+
+function turnEvidenceReason(kind: 'started' | 'updated' | 'finished', status: string): string {
+  return kind === 'started'
+    ? 'Interactive task submitted.'
+    : kind === 'finished'
+      ? `Interactive task ${status}.`
+      : `Interactive task is ${status}.`;
+}
+
 /**
  * Decodes Windows Console input records emitted by modern terminal hosts while
  * preserving all other input unchanged. The original bytes still go to Claude;
@@ -317,7 +383,7 @@ export class ConsoleInputDecoder {
     this.pending += chunk;
     let decoded = '';
     while (this.pending.length > 0) {
-      const start = this.pending.indexOf(CONSOLE_RECORD_PREFIX);
+      const start = this.pending.indexOf(CONSOLE_ESCAPE);
       if (start === -1) {
         decoded += this.pending;
         this.pending = '';
@@ -325,11 +391,26 @@ export class ConsoleInputDecoder {
       }
       decoded += this.pending.slice(0, start);
       this.pending = this.pending.slice(start);
+      if (!this.pending.startsWith(CONSOLE_RECORD_PREFIX)) {
+        const control = this.pending.match(VT_CONTROL_PATTERN);
+        if (control !== null) {
+          this.pending = this.pending.slice(control[0].length);
+          continue;
+        }
+        if (VT_CONTROL_PARTIAL_PATTERN.test(this.pending)) break;
+        this.pending = this.pending.slice(1);
+        continue;
+      }
       const end = this.pending.indexOf('_');
       if (end === -1) {
         if (CONSOLE_RECORD_PARTIAL_PATTERN.test(this.pending)) break;
-        decoded += this.pending;
-        this.pending = '';
+        const control = this.pending.match(VT_CONTROL_PATTERN);
+        if (control !== null) {
+          this.pending = this.pending.slice(control[0].length);
+          continue;
+        }
+        if (VT_CONTROL_PARTIAL_PATTERN.test(this.pending)) break;
+        this.pending = this.pending.slice(1);
         break;
       }
       const record = this.pending.slice(0, end + 1);
@@ -349,13 +430,23 @@ export class ConsoleInputDecoder {
   }
 }
 
-const CONSOLE_RECORD_PREFIX = String.fromCharCode(0x1b) + '[';
-const CONSOLE_RECORD_PARTIAL_PATTERN = new RegExp(
-  '^' + String.fromCharCode(0x1b) + '\\[[0-9;]*$',
+const CONSOLE_ESCAPE = String.fromCharCode(0x1b);
+const CONSOLE_RECORD_PREFIX = CONSOLE_ESCAPE + '[';
+const CONSOLE_RECORD_PARTIAL_PATTERN = new RegExp('^' + CONSOLE_ESCAPE + '\\[[0-9;]*$', 'u');
+const CONSOLE_RECORD_PATTERN = new RegExp(
+  '^' + CONSOLE_ESCAPE + '\\[(\\d+);(\\d+);(\\d+);([01]);(\\d+);(\\d+)_$',
   'u',
 );
-const CONSOLE_RECORD_PATTERN = new RegExp(
-  '^' + String.fromCharCode(0x1b) + '\\[(\\d+);(\\d+);(\\d+);([01]);(\\d+);(\\d+)_$',
+const VT_CONTROL_PATTERN = new RegExp(
+  '^' +
+    CONSOLE_ESCAPE +
+    '(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\u0007]*(?:\\u0007|' +
+    CONSOLE_ESCAPE +
+    '\\\\))',
+  'u',
+);
+const VT_CONTROL_PARTIAL_PATTERN = new RegExp(
+  '^' + CONSOLE_ESCAPE + '(?:\\[[0-?]*[ -/]*|\\][^\\u0007]*)$',
   'u',
 );
 

@@ -84,6 +84,23 @@ describe('reduceSessionState', () => {
     expect(buildPassed.verification.build).toBe('passed');
   });
 
+  it('projects persisted turn lifecycle events as session activity', () => {
+    const started = reduceSessionState(
+      base,
+      event('turn_started', { turnId: 'turn-1', sequence: 1, title: 'Inspect workspace' }),
+    );
+    const waiting = reduceSessionState(
+      started,
+      event('turn_updated', { turnId: 'turn-1', status: 'waiting' }),
+    );
+
+    expect(started.currentActivity).toMatchObject({
+      kind: 'implementation',
+      label: 'Inspect workspace',
+    });
+    expect(waiting.currentActivity).toMatchObject({ kind: 'planning', label: 'waiting for input' });
+  });
+
   it('maps completed-with-failed-verification to failed and never reopens terminal state', () => {
     const failed = reduceSessionState(
       reduceSessionState(base, event('test_failed', { testKind: 'unit' })),

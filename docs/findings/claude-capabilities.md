@@ -114,3 +114,8 @@ Windows 真实 PTY 诊断发现，现代终端有时会将按键输入编码为 
 Unicode 字符。AgentScope 已加入该兼容层，并用真实 Windows PTY、无网络的 Node REPL
 验证：`1+1` 被记录为一个 completed turn。该层只服务本地投影，传给 Claude 的原始输入
 字节不变。
+
+同一诊断还发现鼠标点击会产生 SGR 鼠标控制序列；这些序列现会从任务边界解析中丢弃，
+不会进入 turn 标题或 prompt。交互式 CLI 同时会持久化 turn lifecycle timeline event 和
+不含完整 prompt 的 task-boundary evidence，因此 Dashboard 能显示当前任务和提交/完成信号；
+这不等同于进程、文件或 Git observer，后者仍需在 Phase 5 接入。

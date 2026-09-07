@@ -6,6 +6,8 @@ import type {
   Milestone,
   SessionFinishedPayload,
   SessionStatus,
+  TurnStartedPayload,
+  TurnUpdatedPayload,
   TestFailedPayload,
   TestPassedPayload,
   TestStartedPayload,
@@ -156,6 +158,32 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
   switch (event.type) {
     case 'session_started':
       return state.status === 'starting' ? { ...state, status: 'running' } : state;
+    case 'turn_started': {
+      const payload = event.payload as TurnStartedPayload;
+      return {
+        ...state,
+        status: state.status === 'blocked' ? state.status : 'running',
+        currentActivity: activity(
+          'implementation',
+          payload.title ?? `task ${payload.sequence}`,
+          event,
+        ),
+      };
+    }
+    case 'turn_updated': {
+      const payload = event.payload as TurnUpdatedPayload;
+      if (payload.status === 'waiting') {
+        return { ...state, currentActivity: activity('planning', 'waiting for input', event) };
+      }
+      if (payload.status === 'blocked') {
+        return {
+          ...state,
+          status: 'blocked',
+          currentActivity: activity('blocked', 'task blocked', event),
+        };
+      }
+      return state;
+    }
     case 'planning':
       return {
         ...state,
