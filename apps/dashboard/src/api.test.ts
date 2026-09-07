@@ -112,4 +112,21 @@ describe('DashboardApi', () => {
       'http://127.0.0.1:8787/api/sessions/session%2F1/evidence?limit=100',
     );
   });
+
+  it('loads evidence scoped to a turn', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 'evidence-1', turnId: 'turn/1' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listTurnEvidence('turn/1', 20)).resolves.toMatchObject([
+      { id: 'evidence-1', turnId: 'turn/1' },
+    ]);
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/turns/turn%2F1/evidence?limit=20',
+    );
+  });
 });

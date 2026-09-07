@@ -99,6 +99,21 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/sessions/session-1/evidence')).json()).toMatchObject([
       { id: 'evidence-1', key: 'file:app.ts', source: 'filesystem' },
     ]);
+    repository.saveObserverEvidence({
+      id: 'evidence-turn-1',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      key: 'turn:file:app.ts',
+      timestamp: 1_700_000_000_201,
+      source: 'filesystem',
+      kind: 'file',
+      confidence: 0.65,
+      reason: 'turn workspace change',
+      payload: { path: 'app.ts', kind: 'modify' },
+    });
+    expect((await app.inject('/api/turns/turn-1/evidence')).json()).toMatchObject([
+      { id: 'evidence-turn-1', turnId: 'turn-1' },
+    ]);
     repository.saveEtaSnapshot('session-1', {
       minSeconds: 30,
       maxSeconds: 120,
