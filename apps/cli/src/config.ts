@@ -5,6 +5,9 @@ export const DEFAULT_PORT = 8787;
 export const DEFAULT_DATABASE = '.agentscope/agentscope.db';
 export const DEFAULT_DASHBOARD_PORT = 5173;
 
+export type PromptRetention = 'full' | 'title';
+export const DEFAULT_PROMPT_RETENTION: PromptRetention = 'full';
+
 export interface CliConfigOverrides {
   readonly host?: string;
   readonly port?: number;
@@ -19,6 +22,7 @@ export interface CliConfig {
   readonly serverUrl: string;
   readonly workspacePath: string;
   readonly dashboardPort: number;
+  readonly promptRetention: PromptRetention;
 }
 
 export interface ResolveCliConfigOptions extends CliConfigOverrides {
@@ -35,6 +39,7 @@ export function resolveCliConfig(options: ResolveCliConfigOptions = {}): CliConf
   const dashboardPort =
     options.dashboardPort ?? parsePort(env.AGENTSCOPE_DASHBOARD_PORT, DEFAULT_DASHBOARD_PORT);
   const serverUrl = env.AGENTSCOPE_SERVER_URL ?? `http://${host}:${port}`;
+  const promptRetention = parsePromptRetention(env.AGENTSCOPE_PROMPT_RETENTION);
 
   validateHost(host);
   validatePort(port);
@@ -47,7 +52,15 @@ export function resolveCliConfig(options: ResolveCliConfigOptions = {}): CliConf
     serverUrl,
     workspacePath: cwd,
     dashboardPort,
+    promptRetention,
   };
+}
+
+function parsePromptRetention(value: string | undefined): PromptRetention {
+  if (value === undefined || value.trim().length === 0) return DEFAULT_PROMPT_RETENTION;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'full' || normalized === 'title') return normalized;
+  throw new CliConfigError('AGENTSCOPE_PROMPT_RETENTION must be either "full" or "title".');
 }
 
 export class CliConfigError extends Error {

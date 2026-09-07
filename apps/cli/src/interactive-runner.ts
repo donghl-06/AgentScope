@@ -35,6 +35,8 @@ export interface InteractiveProviderOptions {
    * This never answers tool approvals, slash commands, or other prompts.
    */
   readonly autoAcceptApiKey?: boolean;
+  /** Store the full, redacted task text; false retains only its compact title. */
+  readonly persistPrompt?: boolean;
   readonly sessionId?: string;
   readonly now?: () => number;
   readonly input?: InteractiveInput;
@@ -111,6 +113,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const driver = options.terminalDriver ?? nodePtyDriver;
   const coordinator = new TurnCoordinator({
     sessionId,
+    ...(options.persistPrompt === undefined ? {} : { persistPrompt: options.persistPrompt }),
     onUpdate: (update) => {
       const timestamp = now();
       if (update.kind === 'started') {

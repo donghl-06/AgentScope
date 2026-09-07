@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 
-import { DEFAULT_DATABASE, DEFAULT_HOST, DEFAULT_PORT, resolveCliConfig } from './config.js';
+import {
+  DEFAULT_DATABASE,
+  DEFAULT_HOST,
+  DEFAULT_PORT,
+  DEFAULT_PROMPT_RETENTION,
+  resolveCliConfig,
+} from './config.js';
 
 describe('CLI configuration', () => {
   it('uses loopback, a dedicated server port, and a project-local database by default', () => {
@@ -14,6 +20,7 @@ describe('CLI configuration', () => {
       workspacePath: 'C:/workspace',
     });
     expect(DEFAULT_DATABASE).toBe('.agentscope/agentscope.db');
+    expect(config.promptRetention).toBe(DEFAULT_PROMPT_RETENTION);
   });
 
   it('applies environment values and explicit values with the documented precedence', () => {
@@ -35,5 +42,15 @@ describe('CLI configuration', () => {
       database: path.resolve('C:/workspace', 'cli.db'),
       serverUrl: 'http://localhost:9000',
     });
+  });
+
+  it('supports full and title-only interactive prompt retention', () => {
+    expect(
+      resolveCliConfig({ cwd: 'C:/workspace', env: { AGENTSCOPE_PROMPT_RETENTION: 'title' } })
+        .promptRetention,
+    ).toBe('title');
+    expect(() =>
+      resolveCliConfig({ cwd: 'C:/workspace', env: { AGENTSCOPE_PROMPT_RETENTION: 'invalid' } }),
+    ).toThrow('AGENTSCOPE_PROMPT_RETENTION');
   });
 });

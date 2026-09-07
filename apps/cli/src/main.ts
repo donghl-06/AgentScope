@@ -118,6 +118,7 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 args,
                 filename: config.database,
                 workspacePath: config.workspacePath,
+                persistPrompt: config.promptRetention === 'full',
                 ...(command.acceptApiKey === true ? { autoAcceptApiKey: true } : {}),
                 env: runtimeEnv,
                 ...(configuredClaudeExecutable === undefined
