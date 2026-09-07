@@ -210,7 +210,7 @@ describe('interactive provider runner', () => {
       );
       // One content-free terminal-input observation plus lifecycle evidence
       // for the two submitted turns.
-      expect(evidence).toHaveLength(7);
+      expect(evidence).toHaveLength(8);
       expect(evidence.filter((item) => item.turnId !== undefined)).toHaveLength(4);
       expect(events.map(({ event }) => event.type)).toEqual([
         'session_started',
