@@ -421,6 +421,8 @@ function TurnList({
   turns: readonly StoredTurn[];
   evidence: readonly StoredObserverEvidence[];
 }) {
+  const [expandedTurnId, setExpandedTurnId] = useState<string>();
+
   return (
     <div className="evidence-card">
       <span className="eyebrow">TURNS</span>
@@ -432,15 +434,78 @@ function TurnList({
       ) : (
         <ol className="turn-list">
           {turns.map((turn) => (
-            <li key={turn.id}>
-              <span className="timeline-seq">{turn.sequence}</span>
-              <div>
-                <strong>{turn.title ?? 'Untitled task'}</strong>
-                <small>
-                  {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)} ·{' '}
-                  {evidence.filter((item) => evidenceBelongsToTurn(item, turn.id)).length} evidence
-                </small>
+            <TurnListItem
+              key={turn.id}
+              turn={turn}
+              evidence={evidence.filter((item) => evidenceBelongsToTurn(item, turn.id))}
+              expanded={expandedTurnId === turn.id}
+              onToggle={() =>
+                setExpandedTurnId((current) => (current === turn.id ? undefined : turn.id))
+              }
+            />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function TurnListItem({
+  turn,
+  evidence,
+  expanded,
+  onToggle,
+}: {
+  turn: StoredTurn;
+  evidence: readonly StoredObserverEvidence[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <button
+        className="turn-summary"
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span className="timeline-seq">{turn.sequence}</span>
+        <span className="turn-summary-copy">
+          <strong>{turn.title ?? 'Untitled task'}</strong>
+          <small>
+            {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)} ·{' '}
+            {evidence.length} evidence
+          </small>
+        </span>
+      </button>
+      {expanded && <TurnEvidenceDetails evidence={evidence} />}
+    </li>
+  );
+}
+
+function TurnEvidenceDetails({
+  evidence,
+}: {
+  evidence: readonly StoredObserverEvidence[];
+}) {
+  return (
+    <div className="turn-evidence" aria-label="Turn evidence details">
+      {evidence.length === 0 ? (
+        <small>No evidence is attached to this turn yet.</small>
+      ) : (
+        <ol className="turn-evidence-list">
+          {evidence.map((item) => (
+            <li key={item.id}>
+              <div className="turn-evidence-heading">
+                <strong>{item.reason}</strong>
+                <span>
+                  {item.source} · {item.kind}
+                </span>
               </div>
+              <small>
+                {formatTimestamp(item.timestamp)} · confidence{' '}
+                {Math.round(item.confidence * 100)}% · {item.key}
+              </small>
             </li>
           ))}
         </ol>

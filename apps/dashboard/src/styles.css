@@ -540,19 +540,68 @@ h3 {
   list-style: none;
 }
 .turn-list li {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 13px;
+  display: block;
   padding: 10px 0;
   border-bottom: 1px solid #1e2c41;
 }
-.turn-list li div {
+.turn-summary {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 13px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.turn-summary:hover strong,
+.turn-summary:focus-visible strong {
+  color: #7ec1ff;
+}
+.turn-summary-copy {
   display: grid;
   gap: 4px;
 }
-.turn-list li small {
+.turn-summary-copy small,
+.turn-evidence small {
   color: #8598b2;
   font-size: 11px;
+}
+.turn-evidence {
+  margin: 10px 0 0 43px;
+  padding: 10px 12px;
+  border-left: 2px solid #315276;
+  background: rgba(8, 19, 34, 0.3);
+}
+.turn-evidence-list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.turn-evidence-list li {
+  display: grid;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+}
+.turn-evidence-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.turn-evidence-heading strong {
+  color: #c8dbef;
+  font-size: 11px;
+}
+.turn-evidence-heading span {
+  color: #7f94af;
+  font-size: 10px;
+  white-space: nowrap;
 }
 @media (max-width: 850px) {
   .shell {
