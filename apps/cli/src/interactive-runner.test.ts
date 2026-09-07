@@ -208,6 +208,7 @@ describe('interactive provider runner', () => {
       expect(repository.getSession('session-tty').state.currentActivity?.label).toBe(
         'task completed',
       );
+      expect(repository.getSession('session-tty').state.progress.value).toBeGreaterThan(0);
       // One content-free terminal-input observation plus lifecycle evidence
       // for the two submitted turns.
       expect(evidence.length).toBeGreaterThanOrEqual(7);

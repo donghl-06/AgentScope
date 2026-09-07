@@ -18,6 +18,7 @@ import {
 import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
 import { ObserverRuntime } from '@agentscope/observer-runtime';
+import { computeProgress } from '@agentscope/progress';
 
 export interface InteractiveSignals {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
@@ -356,7 +357,15 @@ function appendEvent(
 ): SessionState {
   const next = reduceSessionState(state, event);
   repository.appendEvent(event, next, event.timestamp);
-  return next;
+  const progress = computeProgress({
+    state: next,
+    capabilities: { fileEvents: true },
+    now: event.timestamp,
+    lastSignalAt: event.timestamp,
+  });
+  const projected = { ...next, progress };
+  repository.updateSessionState(next.sessionId, projected, { now: event.timestamp });
+  return projected;
 }
 
 function createEvent(
