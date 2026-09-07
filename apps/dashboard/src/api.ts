@@ -5,6 +5,7 @@ import type {
   SessionListFilter,
   StoredObserverEvidence,
   StoredSession,
+  StoredTurn,
 } from '@agentscope/storage';
 
 export interface DashboardApiOptions {
@@ -72,6 +73,14 @@ export class DashboardApi {
   listEvents(sessionId: string, after = 0, limit = 100): Promise<EventPage> {
     const query = new URLSearchParams({ after: String(after), limit: String(limit) });
     return this.get<EventPage>(`/api/sessions/${encodeURIComponent(sessionId)}/events`, query);
+  }
+
+  listTurns(sessionId: string, status?: StoredTurn['status']): Promise<readonly StoredTurn[]> {
+    const query = status === undefined ? undefined : new URLSearchParams({ status });
+    return this.get<readonly StoredTurn[]>(
+      '/api/sessions/' + encodeURIComponent(sessionId) + '/turns',
+      query,
+    );
   }
 
   listEtaSnapshots(sessionId: string): Promise<readonly EtaResult[]> {

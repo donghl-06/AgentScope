@@ -53,6 +53,21 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('loads turns for the selected session', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 'turn-1', sequence: 1, status: 'running' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listTurns('session/1')).resolves.toMatchObject([
+      { id: 'turn-1', sequence: 1, status: 'running' },
+    ]);
+    expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/sessions/session%2F1/turns');
+  });
+
   it('loads ETA snapshot history through the typed client', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

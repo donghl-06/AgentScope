@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { StoredEvent, StoredObserverEvidence, StoredSession } from '@agentscope/storage';
+import type {
+  StoredEvent,
+  StoredObserverEvidence,
+  StoredSession,
+  StoredTurn,
+} from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
@@ -12,6 +17,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [selected, setSelected] = useState<StoredSession>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
+  const [turns, setTurns] = useState<readonly StoredTurn[]>([]);
   const [evidence, setEvidence] = useState<readonly StoredObserverEvidence[]>([]);
   const [eventsNextCursor, setEventsNextCursor] = useState<string>();
   const [statusFilter, setStatusFilter] = useState<'all' | StoredSession['status']>('all');
@@ -40,13 +46,15 @@ export function App() {
   const refreshDetail = useCallback(async (id: string, after?: number) => {
     setDetailLoading(true);
     try {
-      const [session, page, observerEvidence] = await Promise.all([
+      const [session, page, observerEvidence, sessionTurns] = await Promise.all([
         api.getSession(id),
         api.listEvents(id, after ?? 0),
         api.listObserverEvidence(id),
+        api.listTurns(id),
       ]);
       setSelected(session);
       setEvidence(observerEvidence);
+      setTurns(sessionTurns);
       if (after === undefined) {
         setEvents(page.items);
         lastSeqBySessionRef.current.set(id, lastTimelineSeq(page.items));
@@ -107,6 +115,14 @@ export function App() {
                 }
               }
             }
+          }
+          if (
+            (message.type === 'turn.created' || message.type === 'turn.updated') &&
+            message.sessionId === selectedIdRef.current
+          ) {
+            const sessionId = message.sessionId;
+            if (sessionId === undefined) return;
+            void refreshDetail(sessionId, lastSeqBySessionRef.current.get(sessionId) ?? 0);
           }
         });
         socket.addEventListener('open', () => {
@@ -251,6 +267,7 @@ export function App() {
             <SessionDetail
               session={selected}
               events={events}
+              turns={turns}
               evidence={evidence}
               eventsNextCursor={eventsNextCursor}
               loading={detailLoading}
@@ -306,6 +323,7 @@ function SessionRow({
 function SessionDetail({
   session,
   events,
+  turns,
   evidence,
   eventsNextCursor,
   loading,
@@ -313,6 +331,7 @@ function SessionDetail({
 }: {
   session: StoredSession;
   events: readonly StoredEvent[];
+  turns: readonly StoredTurn[];
   evidence: readonly StoredObserverEvidence[];
   eventsNextCursor: string | undefined;
   loading: boolean;
@@ -344,6 +363,7 @@ function SessionDetail({
         </span>
       </div>
       <AgentCard session={session} events={events} />
+      <TurnList turns={turns} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
         <strong>{session.state.currentActivity?.label ?? 'No activity signal'}</strong>
@@ -391,6 +411,34 @@ function SessionDetail({
         </ol>
       )}
     </>
+  );
+}
+
+function TurnList({ turns }: { turns: readonly StoredTurn[] }) {
+  return (
+    <div className="evidence-card">
+      <span className="eyebrow">TURNS</span>
+      <strong>
+        {turns.length} task{turns.length === 1 ? '' : 's'}
+      </strong>
+      {turns.length === 0 ? (
+        <small>No turn projection recorded yet.</small>
+      ) : (
+        <ol className="turn-list">
+          {turns.map((turn) => (
+            <li key={turn.id}>
+              <span className="timeline-seq">{turn.sequence}</span>
+              <div>
+                <strong>{turn.title ?? 'Untitled task'}</strong>
+                <small>
+                  {statusLabel(turn.status)} · {formatDuration(turn.submittedAt, turn.endedAt)}
+                </small>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

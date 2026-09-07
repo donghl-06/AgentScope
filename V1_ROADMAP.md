@@ -383,6 +383,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 8.1 — 增加 session 和 turn 导航
 
+- Dashboard session detail 已接入 turns API：显示有序 turn 列表、标题、状态和持续时间，并响应
+  turn.created/turn.updated 实时通知自动刷新；更完整的 turn detail 视图仍待后续完成。
 - [ ] 一个 interactive Claude session 下显示有序 turn 列表。
 - [ ] 高亮 active turn，展示标题、状态、持续时间和当前活动。
 - [ ] 保持 legacy V0 单任务 session 的展示兼容。
