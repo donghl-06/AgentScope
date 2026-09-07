@@ -9,6 +9,8 @@ import {
   type EtaResult,
   type Milestone,
   type SessionState,
+  assertTurnState,
+  type TurnState,
 } from '@agentscope/protocol';
 
 export interface SessionCapabilities {
@@ -40,6 +42,32 @@ export interface StoredSession {
   readonly workspace?: Record<string, unknown>;
   readonly createdAt: number;
   readonly updatedAt: number;
+}
+
+export interface CreateTurnInput {
+  readonly state: TurnState;
+  readonly now?: number;
+}
+
+export interface StoredTurn {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly sequence: number;
+  readonly status: TurnState['status'];
+  readonly submittedAt: number;
+  readonly startedAt?: number;
+  readonly endedAt?: number;
+  readonly title?: string;
+  readonly prompt?: string;
+  readonly providerTurnId?: string;
+  readonly state: TurnState;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+export interface TurnListFilter {
+  readonly status?: TurnState['status'];
+  readonly limit?: number;
 }
 
 export interface SessionListFilter {
@@ -157,6 +185,8 @@ export interface ProjectionVerification {
 export type RepositoryNotification =
   | { readonly type: 'session.created'; readonly session: StoredSession }
   | { readonly type: 'session.updated'; readonly session: StoredSession }
+  | { readonly type: 'turn.created'; readonly turn: StoredTurn }
+  | { readonly type: 'turn.updated'; readonly turn: StoredTurn }
   | {
       readonly type: 'event.appended';
       readonly event: StoredEvent;
@@ -238,6 +268,99 @@ export class StorageRepository {
       SessionRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Session not found: ${id}`);
     return decodeSession(row);
+  }
+
+  createTurn(input: CreateTurnInput): StoredTurn {
+    assertTurnState(input.state);
+    this.ensureSession(input.state.sessionId);
+    const now = input.now ?? Date.now();
+    try {
+      this.client
+        .prepare(
+          `INSERT INTO turns
+            (id, session_id, sequence, status, submitted_at, started_at, ended_at, title, prompt,
+             provider_turn_id, state_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.state.turnId,
+          input.state.sessionId,
+          input.state.sequence,
+          input.state.status,
+          input.state.submittedAt,
+          input.state.startedAt ?? null,
+          input.state.endedAt ?? null,
+          input.state.title ?? null,
+          input.state.prompt ?? null,
+          input.state.providerTurnId ?? null,
+          stringifyJson(input.state),
+          now,
+          now,
+        );
+    } catch (error) {
+      throw mapSqliteError(error, `Turn already exists: ${input.state.turnId}`);
+    }
+    const turn = this.getTurn(input.state.turnId);
+    this.notify({ type: 'turn.created', turn });
+    return turn;
+  }
+
+  getTurn(id: string): StoredTurn {
+    const row = this.client.prepare('SELECT * FROM turns WHERE id = ?').get(id) as
+      TurnRow | undefined;
+    if (row === undefined) throw new StorageNotFoundError(`Turn not found: ${id}`);
+    return decodeTurn(row);
+  }
+
+  listTurns(sessionId: string, filter: TurnListFilter = {}): readonly StoredTurn[] {
+    this.ensureSession(sessionId);
+    const clauses = ['session_id = ?'];
+    const parameters: Array<string | number> = [sessionId];
+    if (filter.status !== undefined) {
+      clauses.push('status = ?');
+      parameters.push(filter.status);
+    }
+    const limit = clampLimit(filter.limit);
+    const rows = this.client
+      .prepare(
+        `SELECT * FROM turns WHERE ${clauses.join(' AND ')}
+         ORDER BY sequence ASC LIMIT ?`,
+      )
+      .all(...parameters, limit) as TurnRow[];
+    return rows.map(decodeTurn);
+  }
+
+  updateTurnState(id: string, state: TurnState, now = Date.now()): StoredTurn {
+    assertTurnState(state);
+    if (state.turnId !== id) {
+      throw new StorageError('Turn state id does not match turn id.', 'invalid_turn');
+    }
+    const existing = this.getTurn(id);
+    if (state.sessionId !== existing.sessionId) {
+      throw new StorageError('Turn session id cannot change.', 'invalid_turn');
+    }
+    const result = this.client
+      .prepare(
+        `UPDATE turns SET sequence = ?, status = ?, submitted_at = ?, started_at = ?, ended_at = ?,
+         title = ?, prompt = ?, provider_turn_id = ?, state_json = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(
+        state.sequence,
+        state.status,
+        state.submittedAt,
+        state.startedAt ?? null,
+        state.endedAt ?? null,
+        state.title ?? null,
+        state.prompt ?? null,
+        state.providerTurnId ?? null,
+        stringifyJson(state),
+        now,
+        id,
+      );
+    if (result.changes !== 1) throw new StorageNotFoundError(`Turn not found: ${id}`);
+    const turn = this.getTurn(id);
+    this.notify({ type: 'turn.updated', turn });
+    return turn;
   }
 
   verifySessionProjection(id: string, reduce: SessionProjectionReducer): ProjectionVerification {
@@ -653,6 +776,22 @@ interface SessionRow {
   updated_at: number;
 }
 
+interface TurnRow {
+  id: string;
+  session_id: string;
+  sequence: number;
+  status: string;
+  submitted_at: number;
+  started_at: number | null;
+  ended_at: number | null;
+  title: string | null;
+  prompt: string | null;
+  provider_turn_id: string | null;
+  state_json: string;
+  created_at: number;
+  updated_at: number;
+}
+
 interface EventRow {
   seq: number;
   id: string;
@@ -711,6 +850,26 @@ function decodeSession(row: SessionRow): StoredSession {
     state,
     capabilities,
     ...(workspace === undefined ? {} : { workspace }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function decodeTurn(row: TurnRow): StoredTurn {
+  const state = parseJson<TurnState>(row.state_json, 'turn state');
+  assertTurnState(state);
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    sequence: row.sequence,
+    status: row.status as TurnState['status'],
+    submittedAt: row.submitted_at,
+    ...(row.started_at === null ? {} : { startedAt: row.started_at }),
+    ...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
+    ...(row.title === null ? {} : { title: row.title }),
+    ...(row.prompt === null ? {} : { prompt: row.prompt }),
+    ...(row.provider_turn_id === null ? {} : { providerTurnId: row.provider_turn_id }),
+    state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

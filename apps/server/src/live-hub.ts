@@ -6,7 +6,13 @@ export interface LiveSocket {
 }
 
 export interface LiveNotification {
-  readonly type: 'session.created' | 'session.updated' | 'event.appended' | 'project.updated';
+  readonly type:
+    | 'session.created'
+    | 'session.updated'
+    | 'turn.created'
+    | 'turn.updated'
+    | 'event.appended'
+    | 'project.updated';
   readonly sessionId?: string;
   readonly projectId?: string;
   readonly seq?: number;

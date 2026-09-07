@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createInitialSessionState,
+  createInitialTurnState,
   ProtocolValidationError,
   type AgentEvent,
   type SessionState,
@@ -64,6 +65,42 @@ function withRepository(
 }
 
 describe('StorageRepository', () => {
+  it('creates, updates, lists, and preserves turn projections', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-turns',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-turns'),
+      });
+
+      const queued = createInitialTurnState('turn-1', 'session-turns', 1, 1_700_000_000_010, {
+        title: 'First task',
+        prompt: 'Inspect the project',
+      });
+      repository.createTurn({ state: queued, now: 1_700_000_000_011 });
+      const running = { ...queued, status: 'running' as const, startedAt: 1_700_000_000_020 };
+      repository.updateTurnState('turn-1', running, 1_700_000_000_021);
+
+      const second = createInitialTurnState('turn-2', 'session-turns', 2, 1_700_000_000_030);
+      repository.createTurn({ state: second, now: 1_700_000_000_031 });
+
+      expect(repository.getTurn('turn-1')).toMatchObject({
+        sessionId: 'session-turns',
+        sequence: 1,
+        status: 'running',
+        title: 'First task',
+      });
+      expect(repository.listTurns('session-turns')).toHaveLength(2);
+      expect(repository.listTurns('session-turns', { status: 'running' })).toHaveLength(1);
+      expect(() => repository.updateTurnState('turn-1', { ...running, turnId: 'wrong' })).toThrow(
+        'Turn state id does not match turn id.',
+      );
+    });
+  });
+
   it('persists sessions, events, milestones, ETA snapshots, and cursor pages', () => {
     withRepository((repository) => {
       repository.createSession({

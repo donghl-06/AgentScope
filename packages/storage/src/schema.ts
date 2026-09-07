@@ -22,6 +22,32 @@ export const sessions = sqliteTable(
   ],
 );
 
+export const turns = sqliteTable(
+  'turns',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    status: text('status').notNull(),
+    submittedAt: integer('submitted_at', { mode: 'number' }).notNull(),
+    startedAt: integer('started_at', { mode: 'number' }),
+    endedAt: integer('ended_at', { mode: 'number' }),
+    title: text('title'),
+    prompt: text('prompt'),
+    providerTurnId: text('provider_turn_id'),
+    stateJson: text('state_json').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('turns_session_sequence_unique').on(table.sessionId, table.sequence),
+    index('turns_session_sequence_idx').on(table.sessionId, table.sequence),
+    index('turns_session_status_updated_idx').on(table.sessionId, table.status, table.updatedAt),
+  ],
+);
+
 export const events = sqliteTable(
   'events',
   {
@@ -102,4 +128,11 @@ export const observerEvidence = sqliteTable(
   ],
 );
 
-export const storageTables = { sessions, events, milestones, etaSnapshots, observerEvidence };
+export const storageTables = {
+  sessions,
+  turns,
+  events,
+  milestones,
+  etaSnapshots,
+  observerEvidence,
+};

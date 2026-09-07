@@ -115,6 +115,18 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const observedSessions = new Map<string, ObservedSession>();
   hydrateObservedSessions(options.repository, observedSessions);
   const unsubscribeRepository = options.repository.subscribe((notification) => {
+    if (notification.type === 'turn.created' || notification.type === 'turn.updated') {
+      liveHub.publish({
+        type: notification.type,
+        sessionId: notification.turn.sessionId,
+        payload: {
+          turnId: notification.turn.id,
+          sequence: notification.turn.sequence,
+          status: notification.turn.status,
+        },
+      });
+      return;
+    }
     rememberNotification(observedSessions, notification);
     if (notification.type === 'event.appended') {
       liveHub.publish({
@@ -452,6 +464,7 @@ function rememberNotification(
   observedSessions: Map<string, ObservedSession>,
   notification: RepositoryNotification,
 ): void {
+  if (notification.type === 'turn.created' || notification.type === 'turn.updated') return;
   const current = observedSessions.get(notification.session.id);
   observedSessions.set(notification.session.id, {
     updatedAt: notification.session.updatedAt,

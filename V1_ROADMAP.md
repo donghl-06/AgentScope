@@ -170,13 +170,13 @@ hooks 缺失或变化时进入明确的低能力模式。真实 provider hook/�
 
 提交边界：协议类型和测试。
 
-#### Step 1.2 — 增加向后兼容的存储迁移
+#### Step 1.2 — 增加向后兼容的存储迁移 ✅
 
-- [ ] 增加 turn 表和 session/顺序/时间查询所需索引。
-- [ ] 通过 ADR 决定 event 直接引用 turn，还是使用映射表。
-- [ ] 增加 turn 的创建、开始、更新、结束和列表 repository。
-- [ ] 增加迁移、回滚/备份说明和 V0 数据库兼容测试。
-- [ ] 保持 transaction-before-broadcast 顺序。
+- [x] 增加 turn 表和 session/顺序/时间查询所需索引。
+- [x] 通过 ADR 决定 event 直接引用 turn，还是使用映射表。
+- [x] 增加 turn 的创建、开始、更新、结束和列表 repository。
+- [x] 增加迁移、回滚/备份说明和 V0 数据库兼容测试。
+- [x] 保持 transaction-before-broadcast 顺序。
 
 验证：复制出的 V0 fixture 数据库可以迁移并正常读取；并发写入和 busy-error 归一化仍然正确。
 

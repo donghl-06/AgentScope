@@ -27,6 +27,10 @@ const MIGRATIONS = [
     id: '0002_observer_evidence',
     url: new URL('./migrations/0002_observer_evidence.sql', import.meta.url),
   },
+  {
+    id: '0003_turns',
+    url: new URL('./migrations/0003_turns.sql', import.meta.url),
+  },
 ] as const;
 
 export function migrateStorage(client: Database.Database): void {
