@@ -203,7 +203,8 @@ hooks 缺失或变化时进入明确的低能力模式。真实 provider hook/�
 - [x] 默认只在内存中保留原始终端 chunk。
 
 验证：基础生命周期、重复 cleanup、有界输出、碎片化多字节 chunk 和慢读取方的单元测试已通过；
-真实 PTY 的 ANSI 序列和长时间 backpressure 仍待补齐。
+Windows native PTY smoke 已覆盖 ANSI/Unicode 输出、resize、正常退出和重复 cleanup；多小时
+backpressure 和 clean-install CI 仍待补齐。
 
 提交边界：独立 terminal package 和测试。
 
