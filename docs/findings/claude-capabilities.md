@@ -76,3 +76,7 @@ prompt），通过已固定的 Claude Code `2.1.261` native binary 执行了两�
 `node apps/cli/bin/agent-scope.mjs claude --bare` 进行交互式验收。普通多轮输入、
 Dashboard 同库联动、running 到 completed 的状态变化以及终端原生显示均通过；本次未执行
 Ctrl+C 中断实验，因此当前仍不宣称交互式中断体验已完成。
+
+随后在同一 Windows VS Code PowerShell 终端中执行了长任务 Ctrl+C 验收：第一次 Ctrl+C
+中断当前动作但保留 Claude 交互会话，之后仍可继续提交任务；会话最终可正常退出。
+终端 resize 尚未进行专门的人工验证。

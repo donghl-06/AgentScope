@@ -240,8 +240,8 @@ backpressure 和 clean-install CI 仍待补齐。
 - [x] 保持 `agent-scope run claude -- -p ...` 不变。
 
 验证：fake PTY 集成测试、Windows `claude --version` smoke 和 Windows VS Code PowerShell
-中的 GLM 真实多轮交互已通过；环境透传和 Dashboard 同库联动已确认。终端 resize 与
-Ctrl+C 行为仍待人工验收。
+中的 GLM 真实多轮交互已通过；环境透传、Dashboard 同库联动和第一次 Ctrl+C 中断当前动作
+已确认。终端 resize 仍待人工验收。
 
 提交边界：CLI 入口和 fake-provider 集成。
 
