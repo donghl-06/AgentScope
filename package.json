@@ -20,6 +20,7 @@
     "test:manual-smoke": "vitest run --config vitest.manual-smoke.config.mjs --passWithNoTests",
     "benchmark:mock": "node scripts/benchmark-mock.mjs",
     "fixtures:check": "node scripts/check-fixtures.mjs",
+    "release:check": "pnpm format:check && pnpm fixtures:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build",
     "build": "pnpm typecheck && node scripts/check-workspace.mjs",
     "start": "node apps/cli/bin/agent-scope.mjs start",
     "dev": "pnpm --parallel --recursive --if-present dev"
