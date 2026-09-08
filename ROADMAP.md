@@ -923,11 +923,11 @@ MockAdapter
 ### 12.2 — Provider/Mock 纵向验证
 
 - [x] 把 coordinator 接入 Mock success、test-failure、blocked/interrupted fixture，验证 session status、Progress、ETA、timeline 和独立 evidence 同步落库。
-- [ ] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数。
+- [x] 把 coordinator 接入 Claude/Codex provider runner，验证真实 wrapper 的进程生命周期、已知 command event、workspace 文件变化和 Git baseline 不重复计数；runner wiring、Codex workspace smoke 和 2026-09-08 Claude/GLM interactive smoke 均已记录，provider-specific native event 仍按 capability 诚实降级。
 - [x] 已用 Codex adapter 的结构化协议 shim 覆盖 runner 级 command started/finished、workspace 文件变化、Git baseline 和 process lifecycle evidence；真实 Claude/Codex CLI 的同场景仍保留为手工 smoke。
 - [x] 真实本机 Codex smoke 已复验：修复 Windows npm Node+JavaScript shim 后，最小命令返回 `OK` 并落库为 `completed`；workspace 文件/command 变化已捕获并清理；真实 PowerShell Ctrl+C 已复核，子进程证据完整但外层 CLI 需 `agent-scope recover` 才能把遗留 `running` 会话归一为 `interrupted`。
 - [x] provider parser malformed record 隔离：坏记录被忽略时，后续合法 terminal event 仍能完成 session。
-- [ ] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态必须保持 completed/failed/interrupted/blocked 语义不混淆。
+- [x] 增加 provider parser error、observer error、non-zero exit、interrupt 和 cleanup race 的隔离回归；每类状态保持 completed/failed/interrupted/blocked 语义不混淆，Windows 外层 Ctrl+C 的原子收尾限制仍单独记录为 known issue。
 - [x] 已补齐 provider runner 的 observer sink error 隔离回归；malformed parser、non-zero exit、SIGINT 和重复 cleanup 已有独立测试；实际 CLI 跨进程 Ctrl+C 已手工复核并记录 Windows 外层进程终止与 `recover` 收尾限制。
 - [x] 将“server restart 后恢复 + observer 不产生幽灵事件”纳入 server 集成测试；历史 event/evidence 可通过 API 恢复，重启未新增幽灵记录。
 
@@ -944,7 +944,7 @@ MockAdapter
 
 ### 12.4 — 发布前加固
 
-- [ ] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
+- [x] 完成 Windows 路径/Unicode/process tree smoke，并把未覆盖平台明确标为 experimental；生产依赖审计已获用户授权执行，`pnpm audit --prod --json`（2026-09-06）报告 69 个生产依赖、3 个可选依赖，0 条漏洞 advisory。
 - [x] 补齐 CHANGELOG、当前 migration 清单、数据库备份/恢复和回滚说明；版本仍保持 `0.1.0` 开发基线，raw log 默认关闭且没有伪造的 opt-in 能力。
 - [x] 重新执行 `pnpm lint`、`pnpm typecheck`、`pnpm test`（42 files/171 tests）、`pnpm build`、`pnpm fixtures:check`，并完成 tracked 文件、数据库和日志中的 secret/prompt/env 扫描；2026-09-06 恢复验收后再次全量复跑均通过，新增启动阶段 SIGINT 和 Unicode/空格 workspace 回归也通过。
 - [x] 更新本路线图和验收矩阵，只把有命令、日志或测试结果支撑的项目标记为完成；已创建最终本地 release-prep commit。剩余 partial/experimental 项明确保留在 `docs/v0-acceptance.md` 与 `docs/known-issues.md`，未宣称 V0 全部门禁已签字。
