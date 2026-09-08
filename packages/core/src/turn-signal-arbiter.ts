@@ -1,6 +1,6 @@
 import type { TurnFinishReason, TurnState } from '@agentscope/protocol';
 
-import { TurnCoordinator } from './turn-coordinator.js';
+import type { TurnCoordinator } from './turn-coordinator.js';
 
 export type TurnSignalSource = 'hook' | 'pty' | 'observer' | 'manual';
 

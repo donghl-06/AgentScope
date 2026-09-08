@@ -50,7 +50,8 @@ function projectObserverEvent(state: TurnState, event: AgentEvent): TurnState {
   };
   if (isTerminalTurnStatus(status))
     return { ...base, endedAt: projected.endedAt ?? event.timestamp };
-  const { endedAt: _endedAt, ...withoutEnd } = base;
+  const withoutEnd = { ...base };
+  delete withoutEnd.endedAt;
   return withoutEnd;
 }
 
@@ -80,7 +81,8 @@ function updateTurn(state: TurnState, payload: TurnUpdatedPayload, timestamp: nu
     ...(status === 'queued' || state.startedAt !== undefined ? {} : { startedAt: timestamp }),
   };
   if (isTerminalTurnStatus(status)) return { ...base, endedAt: timestamp };
-  const { endedAt: _endedAt, ...withoutEnd } = base;
+  const withoutEnd = { ...base };
+  delete withoutEnd.endedAt;
   return withoutEnd;
 }
 

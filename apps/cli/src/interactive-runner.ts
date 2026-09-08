@@ -758,9 +758,14 @@ const API_KEY_CONFIRMATION_PATTERN =
   /(?:do you want to use|use)\s+(?:this|the current)?\s*api key/iu;
 
 function stripAnsi(value: string): string {
-  return value
-    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/gu, '')
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, '');
+  return (
+    value
+      // ANSI escape sequences intentionally contain control characters.
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/gu, '')
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, '')
+  );
 }
 
 function ensureStorageDirectory(filename: string): void {

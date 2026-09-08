@@ -42,6 +42,8 @@ export function classifyTurnInput(input: string): TurnInputClassification {
   if (normalized.length === 0) return { accepted: false, reason: 'empty' };
   if (normalized.startsWith('/')) return { accepted: false, reason: 'slash_command' };
   if (/^[yn]$/iu.test(normalized)) return { accepted: false, reason: 'approval_key' };
+  // ANSI control sequences are intentionally matched to reject terminal input.
+  // eslint-disable-next-line no-control-regex
   if (/^\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/u.test(normalized)) {
     return { accepted: false, reason: 'control_sequence' };
   }
@@ -55,6 +57,8 @@ export function sanitizeTurnInput(input: string): string {
       // Console editing keys (for example Ctrl+U) can be delivered alongside
       // the visible line. They must never become part of a persisted title or
       // prompt, while the original bytes continue to be forwarded to the PTY.
+      // Console editing keys are intentionally removed from persisted text.
+      // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
       .replace(/\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gu, '[REDACTED]')
       .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [REDACTED]')

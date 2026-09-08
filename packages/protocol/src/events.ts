@@ -1,3 +1,6 @@
+import type { Activity, EtaResult, ProgressResult, VerificationState } from './session.js';
+import type { TurnFinishReason, TurnStatus } from './turn.js';
+
 export const AGENT_EVENT_TYPES = [
   'session_started',
   'session_finished',
@@ -53,17 +56,17 @@ export interface TurnStartedPayload {
 
 export interface TurnUpdatedPayload {
   readonly turnId: string;
-  readonly status?: import('./turn.js').TurnStatus;
+  readonly status?: TurnStatus;
   readonly title?: string;
-  readonly currentActivity?: import('./session.js').Activity;
-  readonly progress?: import('./session.js').ProgressResult;
-  readonly eta?: import('./session.js').EtaResult;
-  readonly verification?: import('./session.js').VerificationState;
+  readonly currentActivity?: Activity;
+  readonly progress?: ProgressResult;
+  readonly eta?: EtaResult;
+  readonly verification?: VerificationState;
 }
 
 export interface TurnFinishedPayload {
   readonly turnId: string;
-  readonly reason: import('./turn.js').TurnFinishReason;
+  readonly reason: TurnFinishReason;
   readonly exitCode?: number;
   readonly providerOutcome?: string;
 }
