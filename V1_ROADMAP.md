@@ -496,7 +496,7 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 - [x] 将 provider session id 与 AgentScope execution id 分开保存。
 - [x] 记录显式 `--resume <id>`/`--continue` 请求；只对显式 resume id 或 provider 明确返回的 session id 建立关联。
-- [ ] 创建新的 execution record，同时保留一个 conversation group。
+- [x] 每次 continuation 创建独立 execution record，并在 Dashboard 中按安全 conversation id 展示关联 execution group。
 - [x] provider id 缺失、变化或不明确时采取保守策略，不按 workspace、prompt 或进程自动合并。
 
 验证：元数据/schema/reducer 单元测试通过；真实 provider 的 resume 成功、无效 id

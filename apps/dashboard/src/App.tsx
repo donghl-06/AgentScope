@@ -356,11 +356,13 @@ export function App() {
           ) : (
             <SessionDetail
               session={selected}
+              sessions={sessions}
               events={events}
               turns={turns}
               evidence={evidence}
               eventsNextCursor={eventsNextCursor}
               loading={detailLoading}
+              onSelectSession={setSelectedId}
               onLoadMore={() =>
                 void refreshDetail(selected.id, lastSeqBySessionRef.current.get(selected.id) ?? 0)
               }
@@ -455,19 +457,23 @@ function SessionRow({
 
 function SessionDetail({
   session,
+  sessions,
   events,
   turns,
   evidence,
   eventsNextCursor,
   loading,
+  onSelectSession,
   onLoadMore,
 }: {
   session: StoredSession;
+  sessions: readonly StoredSession[];
   events: readonly StoredEvent[];
   turns: readonly StoredTurn[];
   evidence: readonly StoredObserverEvidence[];
   eventsNextCursor: string | undefined;
   loading: boolean;
+  onSelectSession: (id: string) => void;
   onLoadMore: () => void;
 }) {
   const [timelineQuery, setTimelineQuery] = useState('');
@@ -521,6 +527,11 @@ function SessionDetail({
         </span>
       </div>
       <AgentCard session={session} events={events} />
+      <ConversationGroupDetails
+        session={session}
+        sessions={sessions}
+        onSelectSession={onSelectSession}
+      />
       <TurnList turns={turns} evidence={evidence} events={events} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
@@ -969,6 +980,65 @@ function AgentCard({
   );
 }
 
+function ConversationGroupDetails({
+  session,
+  sessions,
+  onSelectSession,
+}: {
+  session: StoredSession;
+  sessions: readonly StoredSession[];
+  onSelectSession: (id: string) => void;
+}) {
+  const conversation = session.state.conversation;
+  const continuation = session.state.continuation;
+  if (conversation === undefined && continuation === undefined) return null;
+
+  const linkedSessions =
+    conversation === undefined
+      ? []
+      : sessions.filter((candidate) => candidate.state.conversation?.id === conversation.id);
+  return (
+    <div className="evidence-card" aria-label="Conversation execution group">
+      <span className="eyebrow">CONVERSATION LINK</span>
+      <strong>
+        {conversation === undefined
+          ? 'Continuation requested, but no safe conversation id was reported.'
+          : `${linkedSessions.length} linked execution${linkedSessions.length === 1 ? '' : 's'}`}
+      </strong>
+      <small>
+        {conversation === undefined
+          ? 'AgentScope keeps this execution independent until the provider exposes an id or you supply an explicit --resume reference.'
+          : `${conversation.source === 'provider-session' ? 'Provider session' : 'Explicit resume'} · ${shortConversationId(conversation.id)}`}
+      </small>
+      {linkedSessions.length > 1 && (
+        <div className="session-list">
+          {linkedSessions.map((linked) => (
+            <button
+              className={`session-row ${linked.id === session.id ? 'session-row-selected' : ''}`}
+              type="button"
+              key={linked.id}
+              onClick={() => onSelectSession(linked.id)}
+            >
+              <span className={`status-dot status-${linked.status}`} />
+              <span className="session-row-copy">
+                <strong>
+                  {linked.provider} · {linked.adapter}
+                </strong>
+                <small>
+                  {formatTimestamp(linked.startedAt)} · {linked.id}
+                </small>
+              </span>
+              <span className={`status-pill status-pill-${linked.status}`}>
+                {statusLabel(linked.status)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProviderTelemetryDetails({ telemetry }: { telemetry: ProviderTelemetry }) {
   const usage = telemetry.usage;
   const eventSummary = Object.entries(telemetry.nativeEventCounts ?? {})
@@ -1104,11 +1174,11 @@ function formatCount(value: number | undefined): string {
 function conversationLabel(session: StoredSession): string {
   const conversation = session.state.conversation;
   if (conversation === undefined) return 'Not linked';
-  const identifier =
-    conversation.id.length > 28
-      ? `${conversation.id.slice(0, 12)}…${conversation.id.slice(-8)}`
-      : conversation.id;
-  return `${conversation.source === 'provider-session' ? 'Provider' : 'Explicit resume'} · ${identifier}`;
+  return `${conversation.source === 'provider-session' ? 'Provider' : 'Explicit resume'} · ${shortConversationId(conversation.id)}`;
+}
+
+function shortConversationId(identifier: string): string {
+  return identifier.length > 28 ? `${identifier.slice(0, 12)}…${identifier.slice(-8)}` : identifier;
 }
 
 function continuationLabel(session: StoredSession): string {

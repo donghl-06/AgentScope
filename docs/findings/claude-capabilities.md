@@ -37,7 +37,8 @@ AgentScope 现在会在每次新的 execution record 中记录显式 continuatio
   `provider-session` 链接，并保留 AgentScope 自己的 execution id。
 
 这意味着普通 TTY 的每次启动仍是独立记录，不会因为命令相似而错误合并；完整的
-conversation group UI 以及真实 provider 的 resume 语义验证仍是后续工作。
+conversation group UI 已可按安全 id 展示关联 executions；真实 provider 的 resume 语义验证
+仍需后续在用户环境中完成。
 
 ## AgentScope interactive wrapper smoke
 
