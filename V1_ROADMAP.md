@@ -248,6 +248,8 @@ backpressure 和 clean-install CI 仍待补齐。
 ANTHROPIC_API_KEY 补齐；GLM 真实普通模式已通过，不再出现 Not logged in。
 Windows 现代终端使用 Console VT 键盘记录时，AgentScope 会仅为本地 turn 边界识别还原
 按键文本；转发给 Claude 的原始键盘字节保持不变，避免改变原生交互行为。
+对于终端 host 未被增量解码器识别的 bracketed paste，额外按边界标记恢复待分类文本；恢复内容
+只用于本地 turn 识别，不改变转发给 Claude 的原始字节，也不自动持久化完整输入。
 
 提交边界：CLI 入口和 fake-provider 集成。
 

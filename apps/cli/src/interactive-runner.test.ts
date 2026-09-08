@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ConsoleInputDecoder,
   prepareInteractiveEnvironment,
+  recoverPastedInput,
   runInteractiveProvider,
 } from './interactive-runner.js';
 import type { TerminalDriver, TerminalProcess } from '@agentscope/terminal';
@@ -75,6 +76,13 @@ describe('interactive provider runner', () => {
         '\u001bP>|xterm.js(6.1.0-beta.292)\u001b\\\u001b[200~请只回复：TTY_DIAG_OK\u001b[201~\r',
       ),
     ).toBe('请只回复：TTY_DIAG_OK\r');
+  });
+
+  it('recovers a long bracketed paste when the terminal decoder yields no text', () => {
+    const prompt = '请只做当前工作区的只读检查，完成后只回复 PASTE_OK。';
+    const raw = `\u001b[200~${prompt}\u001b[201~\r`;
+    expect(recoverPastedInput(raw, '')).toBe(`${prompt}\r`);
+    expect(recoverPastedInput(raw, prompt)).toBe(prompt);
   });
 
   it('aliases a custom endpoint API key as auth token without overwriting an explicit token', () => {

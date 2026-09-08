@@ -199,7 +199,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const onInput = (chunk: Buffer | string) => {
     if (terminal?.state !== 'running') return;
     const text = typeof chunk === 'string' ? chunk : chunk.toString();
-    const normalized = inputDecoder.decode(text);
+    const normalized = recoverPastedInput(text, inputDecoder.decode(text));
     const snapshotNeeded = inputObservation.observe(text, normalized);
     if (snapshotNeeded) saveInputObservation(repository, sessionId, inputObservation, now());
     inputBuffer += normalized;
@@ -666,6 +666,33 @@ export class ConsoleInputDecoder {
     }
     return decoded;
   }
+}
+
+/** Recover a bracketed paste when a terminal host delivers its control wrapper
+ * in a form the incremental decoder cannot recognize. The original raw input
+ * is still forwarded unchanged to the provider; this is only for turn-boundary
+ * detection and never becomes persisted prompt content by itself. */
+export function recoverPastedInput(raw: string, decoded: string): string {
+  const startMarker = CONSOLE_ESCAPE + '[200~';
+  const endMarker = CONSOLE_ESCAPE + '[201~';
+  let offset = 0;
+  let recovered = '';
+  let found = false;
+  let submitted = false;
+  while (offset < raw.length) {
+    const start = raw.indexOf(startMarker, offset);
+    if (start < 0) break;
+    const contentStart = start + startMarker.length;
+    const end = raw.indexOf(endMarker, contentStart);
+    if (end < 0) return decoded;
+    recovered += raw.slice(contentStart, end);
+    const after = end + endMarker.length;
+    submitted ||= /[\r\n]/u.test(raw.slice(after));
+    offset = after;
+    found = true;
+  }
+  if (!found || recovered.length <= decoded.length) return decoded;
+  return submitted ? `${recovered}\r` : recovered;
 }
 
 const CONSOLE_ESCAPE = String.fromCharCode(0x1b);
