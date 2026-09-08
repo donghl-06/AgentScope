@@ -59,6 +59,16 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - 本地 turn 摘要和可搜索历史。
 - 任务耗时、验证成功率等趋势视图。
 
+### 2026-09-08 — Claude 原生细粒度 telemetry 进度
+
+- [x] 在 structured JSONL 路径归一化 provider session/model/CLI/权限/输出格式和能力目录计数。
+- [x] 归一化 input/output/cache/thinking/reasoning/server-tool-use token、cost、service tier、API duration、TTFT、stream TTFT、首帧、队列、iterations 和 speed。
+- [x] 记录 native event family/phase/subtype 计数，并在 Dashboard timeline 显示安全的 provider event 摘要。
+- [x] 关联 tool-use/tool-result 的 call id、工具名、成功/失败和耗时；按 call id 去重 assistant 与 stream 双重通知。
+- [x] 显示显式 native milestone；没有 provider milestone 时继续使用 activity/verification fallback。
+- [x] 普通 PTY 继续保持原生 Claude 体验；PTY 不虚构 Claude 内部 JSONL usage，provider-native telemetry 通过 structured `run claude` 获取。
+- [x] 未来 ETA 不伪装成 provider 精确值：Dashboard 展示 AgentScope 的区间估算，并单独展示 Claude 已观测的真实 timing。
+
 ### 第一版 V1 明确不做
 
 - 替换原生 Claude Code 终端或审批界面。
