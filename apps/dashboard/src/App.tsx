@@ -14,6 +14,8 @@ import { loadAllPages } from './pagination.js';
 import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline.js';
 
 const api = new DashboardApi();
+type NotificationState = NotificationPermission | 'unsupported' | 'requesting';
+const NOTIFIABLE_SESSION_STATUSES = new Set(['blocked', 'completed', 'failed', 'interrupted']);
 
 export function App() {
   const [sessions, setSessions] = useState<readonly StoredSession[]>([]);
@@ -30,19 +32,78 @@ export function App() {
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'offline'>(
     'connecting',
   );
+  const [notificationState, setNotificationState] = useState<NotificationState>(() =>
+    typeof globalThis.Notification === 'undefined'
+      ? 'unsupported'
+      : globalThis.Notification.permission,
+  );
   const selectedIdRef = useRef<string | undefined>(undefined);
   const lastSeqBySessionRef = useRef(new Map<string, number>());
+  const notificationStateRef = useRef(notificationState);
+  const notificationKeysRef = useRef(new Set<string>());
+  const notificationBaselineReadyRef = useRef(false);
+
+  useEffect(() => {
+    notificationStateRef.current = notificationState;
+  }, [notificationState]);
 
   const refreshSessions = useCallback(async () => {
     try {
       const page = await api.listSessions({ limit: 100 });
       setSessions(page.items);
+      if (!notificationBaselineReadyRef.current) {
+        for (const session of page.items) {
+          notificationKeysRef.current.add(`session.updated:${session.id}:${session.status}`);
+        }
+        notificationBaselineReadyRef.current = true;
+      }
       setError(undefined);
       setSelectedId((current) => current ?? page.items[0]?.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load sessions.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const enableNotifications = useCallback(() => {
+    if (typeof globalThis.Notification === 'undefined') {
+      setNotificationState('unsupported');
+      return;
+    }
+    if (globalThis.Notification.permission === 'granted') {
+      setNotificationState('granted');
+      return;
+    }
+    setNotificationState('requesting');
+    void globalThis.Notification.requestPermission().then((permission) => {
+      setNotificationState(permission);
+    });
+  }, []);
+
+  const notifyLiveStatus = useCallback((message: DashboardLiveNotification) => {
+    const rawStatus = message.payload?.status;
+    if (typeof rawStatus !== 'string') return;
+    const isTurnWaiting = message.type === 'turn.updated' && rawStatus === 'waiting';
+    if (!isTurnWaiting && !NOTIFIABLE_SESSION_STATUSES.has(rawStatus)) return;
+    if (
+      notificationStateRef.current !== 'granted' ||
+      typeof globalThis.Notification === 'undefined'
+    ) {
+      return;
+    }
+    const id = message.sessionId ?? 'unknown-session';
+    const key = `${message.type}:${id}:${rawStatus}`;
+    if (notificationKeysRef.current.has(key)) return;
+    notificationKeysRef.current.add(key);
+    const label = isTurnWaiting ? 'Turn waiting for input' : `Session ${statusLabel(rawStatus)}`;
+    try {
+      new globalThis.Notification(`AgentScope · ${label}`, {
+        body: `Session ${id.slice(0, 8)} received a new status signal.`,
+        tag: key,
+      });
+    } catch {
+      // Browser notification failures must never affect live monitoring.
     }
   }, []);
 
@@ -111,6 +172,7 @@ export function App() {
       setConnectionState('connecting');
       try {
         socket = api.connectLive((message: DashboardLiveNotification) => {
+          notifyLiveStatus(message);
           if (message.type === 'session.created' || message.type === 'session.updated') {
             void refreshSessions();
           }
@@ -170,7 +232,7 @@ export function App() {
       if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [refreshDetail, refreshSessions]);
+  }, [notifyLiveStatus, refreshDetail, refreshSessions]);
 
   useEffect(() => {
     if (selectedId !== undefined) void refreshDetail(selectedId);
@@ -211,6 +273,7 @@ export function App() {
               ? 'Connecting to server'
               : 'Offline · retrying'}
         </div>
+        <NotificationControl state={notificationState} onEnable={enableNotifications} />
       </header>
 
       {error !== undefined && <div className="banner banner-error">{error}</div>}
@@ -294,6 +357,32 @@ export function App() {
         </div>
       </section>
     </main>
+  );
+}
+
+function NotificationControl({
+  state,
+  onEnable,
+}: {
+  state: NotificationState;
+  onEnable: () => void;
+}) {
+  if (state === 'unsupported') return null;
+  if (state === 'granted') {
+    return <span className="notification-status">Notifications enabled</span>;
+  }
+  if (state === 'denied') {
+    return <span className="notification-status">Notifications blocked by browser</span>;
+  }
+  return (
+    <button
+      className="quiet-button quiet-button-small"
+      type="button"
+      onClick={onEnable}
+      disabled={state === 'requesting'}
+    >
+      {state === 'requesting' ? 'Requesting…' : 'Enable notifications'}
+    </button>
   );
 }
 

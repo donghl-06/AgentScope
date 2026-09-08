@@ -84,7 +84,8 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - [x] Timeline 支持在已加载事件中按关键词筛选，并区分 turn 边界、provider 原生事件和 observer activity。
 - [x] Turns 支持按标题、prompt、当前 activity、evidence 摘要和事件详情搜索，并按 active/waiting/blocked/failed/completed/interrupted 筛选。
 - [x] 每个 turn 使用稳定 DOM 锚点，展开详情仍保留原有证据、projection 和 timeline 结构。
-- [ ] 桌面通知仍需浏览器权限与人工体验确认，保持为可选增强。
+- [x] 增加用户主动启用的浏览器通知入口；完成/失败/阻塞/中断以及等待输入只在授予权限后通知，并按 session/status 去重。
+- [ ] 桌面通知仍需在目标浏览器中授予权限并人工确认显示效果。
 
 ### 第一版 V1 明确不做
 

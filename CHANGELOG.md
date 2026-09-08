@@ -22,6 +22,8 @@ All notable changes to AgentScope are recorded here.
 - Added live TTY observer activity projection, an opt-in process-tree view for
   AgentScope-owned wrappers (PID/parent PID/name only), and Dashboard filters
   for loaded timeline events and turn evidence.
+- Added opt-in browser notifications for terminal session attention states and
+  turn waiting states, with duplicate suppression across live reconnects.
 
 ## 0.1.0
 

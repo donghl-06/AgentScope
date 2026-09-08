@@ -38,6 +38,14 @@ button {
   justify-content: space-between;
   gap: 20px;
 }
+.topbar {
+  align-items: flex-start;
+}
+.notification-status {
+  color: #7f94af;
+  font-size: 11px;
+  text-align: right;
+}
 .panel-actions,
 .timeline-actions {
   display: flex;
@@ -598,6 +606,9 @@ h3 {
   font-size: 12px;
 }
 @media (max-width: 760px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
   .timeline-heading {
     align-items: flex-start;
     flex-direction: column;
