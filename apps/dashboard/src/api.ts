@@ -22,6 +22,7 @@ export interface DashboardLiveNotification {
     | 'session.updated'
     | 'turn.created'
     | 'turn.updated'
+    | 'turn.finished'
     | 'event.appended'
     | 'project.updated'
     | 'ping'

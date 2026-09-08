@@ -123,7 +123,11 @@ export function createServer(options: ServerOptions): FastifyInstance {
   hydrateObservedSessions(options.repository, observedSessions);
   hydrateObservedTurns(options.repository, observedTurns);
   const unsubscribeRepository = options.repository.subscribe((notification) => {
-    if (notification.type === 'turn.created' || notification.type === 'turn.updated') {
+    if (
+      notification.type === 'turn.created' ||
+      notification.type === 'turn.updated' ||
+      notification.type === 'turn.finished'
+    ) {
       observedTurns.set(notification.turn.id, {
         sessionId: notification.turn.sessionId,
         updatedAt: notification.turn.updatedAt,
@@ -206,6 +210,9 @@ export function createServer(options: ServerOptions): FastifyInstance {
             observedTurn.status !== turn.status
           ) {
             publishTurnNotification(liveHub, 'turn.updated', turn);
+            if (isTerminalTurnStatus(turn.status)) {
+              publishTurnNotification(liveHub, 'turn.finished', turn);
+            }
           }
           observedTurns.set(turn.id, {
             sessionId: turn.sessionId,
@@ -537,7 +544,7 @@ interface ObservedTurn {
 
 function publishTurnNotification(
   liveHub: LiveHub,
-  type: 'turn.created' | 'turn.updated',
+  type: 'turn.created' | 'turn.updated' | 'turn.finished',
   turn: StoredTurn,
 ): void {
   liveHub.publish({
@@ -606,7 +613,11 @@ function rememberNotification(
   observedTurns: Map<string, ObservedTurn>,
   notification: RepositoryNotification,
 ): void {
-  if (notification.type === 'turn.created' || notification.type === 'turn.updated') {
+  if (
+    notification.type === 'turn.created' ||
+    notification.type === 'turn.updated' ||
+    notification.type === 'turn.finished'
+  ) {
     observedTurns.set(notification.turn.id, {
       sessionId: notification.turn.sessionId,
       updatedAt: notification.turn.updatedAt,
@@ -623,4 +634,8 @@ function rememberNotification(
         ? Math.max(current?.lastEventSeq ?? 0, notification.event.seq)
         : (current?.lastEventSeq ?? 0),
   });
+}
+
+function isTerminalTurnStatus(status: StoredTurn['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'interrupted';
 }

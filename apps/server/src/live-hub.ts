@@ -11,6 +11,7 @@ export interface LiveNotification {
     | 'session.updated'
     | 'turn.created'
     | 'turn.updated'
+    | 'turn.finished'
     | 'event.appended'
     | 'project.updated';
   readonly sessionId?: string;

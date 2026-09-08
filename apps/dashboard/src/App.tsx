@@ -118,7 +118,9 @@ export function App() {
             }
           }
           if (
-            (message.type === 'turn.created' || message.type === 'turn.updated') &&
+            (message.type === 'turn.created' ||
+              message.type === 'turn.updated' ||
+              message.type === 'turn.finished') &&
             message.sessionId === selectedIdRef.current
           ) {
             const sessionId = message.sessionId;

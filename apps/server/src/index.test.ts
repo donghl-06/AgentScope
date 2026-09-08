@@ -301,6 +301,26 @@ describe('server HTTP API', () => {
         }),
       ]),
     );
+    const finishedDeadline = Date.now() + 1_000;
+    while (Date.now() < finishedDeadline) {
+      if (
+        socket.messages.some((message) => {
+          const parsed = JSON.parse(message);
+          return parsed.type === 'turn.finished' && parsed.payload?.status === 'completed';
+        })
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'turn.finished',
+          sessionId: 'external-session',
+          payload: { turnId: 'external-turn', sequence: 1, status: 'completed' },
+        }),
+      ]),
+    );
   });
 
   it('does not publish a ghost event when the repository transaction fails', async () => {

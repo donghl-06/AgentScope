@@ -188,6 +188,7 @@ export type RepositoryNotification =
   | { readonly type: 'session.updated'; readonly session: StoredSession }
   | { readonly type: 'turn.created'; readonly turn: StoredTurn }
   | { readonly type: 'turn.updated'; readonly turn: StoredTurn }
+  | { readonly type: 'turn.finished'; readonly turn: StoredTurn }
   | {
       readonly type: 'event.appended';
       readonly event: StoredEvent;
@@ -361,6 +362,9 @@ export class StorageRepository {
     if (result.changes !== 1) throw new StorageNotFoundError(`Turn not found: ${id}`);
     const turn = this.getTurn(id);
     this.notify({ type: 'turn.updated', turn });
+    if (turn.status === 'completed' || turn.status === 'failed' || turn.status === 'interrupted') {
+      this.notify({ type: 'turn.finished', turn });
+    }
     return turn;
   }
 

@@ -304,8 +304,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 - 基础 prompt/title 策略已实现：标题从脱敏后的首行生成，常见 token/key/password 形状会在进入 turn projection 前替换为
   [REDACTED]；可通过 persistPrompt: false 只保留标题。普通 CLI/PTY 路径已接入该策略。
 - [x] 在本地保存提交的任务文本，并生成 Dashboard 紧凑标题。
-- [ ] 脱敏明显的 secret 格式，环境变量内容不能进入标题。
-- [ ] 提供“只保存标题”或“关闭 prompt 持久化”的配置开关。
+- [x] 脱敏明显的 secret 格式，环境变量内容不能进入标题；任务进入 projection 前会清理常见 key/token/password 形状，AgentScope 也不会把自身环境变量自动写入标题。
+- [x] 提供“只保存标题”或“关闭 prompt 持久化”的配置开关：`AGENTSCOPE_PROMPT_RETENTION=full|title`。
 - [x] 默认不持久化隐藏推理或完整终端 transcript。
 
 验证：凭据样例被脱敏；Unicode 和多行 prompt 能正确往返。
@@ -376,14 +376,14 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 7.1 — 增加 turn API 和 WebSocket notification
 
-- session turns 列表和单 turn 查询 API 已提供；repository 的 turn.created/turn.updated
-  notification 已通过 WebSocket live hub 广播，并增加了对外部 SQLite writer 的 turn created/updated
+- session turns 列表和单 turn 查询 API 已提供；repository 的 turn.created/turn.updated/turn.finished
+  notification 已通过 WebSocket live hub 广播，并增加了对外部 SQLite writer 的 turn created/updated/finished
  轮询和去重测试。按 turn 的 evidence endpoint（limit 查询）和 Dashboard evidence 数量/展开详情已提供；
  游标分页和更完整的 turn event 查询仍待后续完善。
 - [ ] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
-- [ ] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification。
-- [ ] Dashboard 断线/重连后保留 HTTP cursor catch-up。
-- [ ] 轮询外部 interactive CLI writer，避免重复广播。
+- [x] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification；finished 是终态的附加通知，保留旧 updated 以兼容现有客户端。
+- [x] Dashboard 断线/重连后保留 HTTP cursor catch-up。
+- [x] 轮询外部 interactive CLI writer，避免重复广播。
 
 验证：跨进程 server/CLI 测试覆盖两个 turn，并在两轮之间断线重连。
 
