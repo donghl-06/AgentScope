@@ -1,7 +1,7 @@
 # Troubleshooting
 
-This page covers the Windows native PowerShell workflow used by the current V0
-smoke tests. Commands assume the repository is at
+This page covers the Windows native PowerShell workflow used by the current V1
+TTY and structured smoke tests. Commands assume the repository is at
 `D:\大学\项目\AgentScope`; replace the path if the checkout differs.
 
 ## The CLI reports `MODULE_NOT_FOUND`
@@ -87,6 +87,14 @@ Codex structured JSONL is read from stdout. Runtime warnings about PowerShell
 shell snapshots, plugin icons, model refresh, or analytics may appear on stderr;
 they are diagnostics and must not be parsed as protocol events. Check the
 normalized session status and timeline instead.
+
+## Resume/continue does not show one merged session
+
+This is intentional. Every AgentScope launch has its own execution id. The
+Dashboard only groups executions when a provider session id is reported or an
+explicit `--resume <id>` reference was supplied. A plain `--continue` is recorded
+as a continuation request but remains unlinked until the provider exposes a stable
+id; AgentScope never guesses from workspace or prompt text.
 
 ## Interrupted or orphaned sessions
 

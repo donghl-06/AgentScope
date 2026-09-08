@@ -2,10 +2,11 @@
 
 AgentScope 是一个本地优先的 AI Coding Agent 可观测平台。V0 聚焦 Claude Code CLI 与 Codex CLI，通过统一事件协议、状态引擎、SQLite、HTTP/WebSocket 和 React Dashboard 展示可信的任务状态、进度与区间 ETA。
 
-当前仓库已经完成 Claude Code CLI、Codex CLI 的 structured adapter、SQLite
-存储、HTTP/WebSocket 服务和 Dashboard 的第一条可运行纵向切片。真实 CLI smoke
-已在 Windows native PowerShell 上完成；剩余工作集中在 observer fallback、TTY/WS
-恢复、性能边界和 V0 发布验收。需求、实施顺序和验收标准见：
+当前仓库已经完成 Claude Code CLI、Codex CLI 的 structured adapter、Claude
+交互式 TTY wrapper、SQLite 存储、HTTP/WebSocket 服务和 Dashboard 的可运行纵向切片。
+Windows native PowerShell、WSL2 同库联动、通知和 release gate 均已有验收证据；
+仍在收口的内容主要是 provider-specific resume 语义和更长时间/更大规模边界。
+需求、实施顺序和验收标准见：
 
 - `AgentScope_Codex实施规格.md`
 - `AgentScope_项目规划_用户版.md`
@@ -45,6 +46,22 @@ node .\apps\cli\bin\agent-scope.mjs run mock --fixture basic-success
 如果你在 VS Code PowerShell 中使用 Claude Code 配置 Kimi API，并希望实时
 观察 Dashboard，请按
 [`docs/claude-kimi-workflow.md`](docs/claude-kimi-workflow.md) 的双终端流程操作。
+
+希望保留 Claude Code 的完整交互功能时，使用普通 TTY 模式（不要加 `--bare`）：
+
+```powershell
+. .\.env.claude-test.ps1
+$env:AGENTSCOPE_DATABASE = Join-Path (Get-Location) '.agentscope\agentscope.db'
+node .\apps\cli\bin\agent-scope.mjs claude --agent-scope-accept-api-key
+```
+
+如果要显式续接 provider 会话，可在 Claude 参数中使用
+`--resume <provider-session-id>`；AgentScope 会创建新的 execution record，并在
+Dashboard 中按安全 id 展示关联执行。`--continue` 只记录“请求续接”，不会按工作目录、
+prompt 或进程自动猜测会话，避免误合并不同任务。
+
+提交前的本地发布门禁为 `pnpm release:check`，它会执行格式、fixture 脱敏、lint、
+全 workspace typecheck、unit/integration tests 和 build。
 
 常见路径、端口、数据库、CLI 无输出、并发限制和 Windows 进程问题见
 [`docs/troubleshooting.md`](docs/troubleshooting.md)。

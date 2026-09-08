@@ -61,6 +61,21 @@ events in the database while Claude Code uses the environment-loaded Kimi
 endpoint. The terminal prints the wrapper's final JSON result; the Dashboard
 updates the same session through WebSocket notifications.
 
+For the normal multi-turn experience with Claude Code's full features, use the
+interactive TTY entry point instead of `run`/`--bare`:
+
+```powershell
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' claude --agent-scope-accept-api-key
+```
+
+Type prompts in that same terminal exactly as you would in an ordinary Claude
+Code session. AgentScope observes terminal boundaries, process/Git/filesystem
+evidence and live projections without replacing the provider's prompt or tool
+approval flow. Use `--resume <provider-session-id>` only when you have an explicit
+provider id; use `--continue` when you want Claude to choose its native continuation,
+understanding that AgentScope will keep the new execution unlinked until a stable
+provider id is reported.
+
 ### Running against another project
 
 The observed workspace is the current directory of the wrapper process. It is
