@@ -57,6 +57,13 @@ export interface ProviderInfo {
   readonly permissionMode?: string;
   readonly outputFormat?: string;
   readonly capabilityLabels?: readonly string[];
+  /** Counts from the provider's advertised capability catalog, not transcripts. */
+  readonly toolCount?: number;
+  readonly mcpServerCount?: number;
+  readonly slashCommandCount?: number;
+  readonly agentCount?: number;
+  readonly skillCount?: number;
+  readonly pluginCount?: number;
 }
 
 /** Normalized provider usage and timing telemetry. Values are cumulative snapshots. */
@@ -65,7 +72,12 @@ export interface UsageSnapshot {
   readonly outputTokens?: number;
   readonly cacheCreationInputTokens?: number;
   readonly cacheReadInputTokens?: number;
+  readonly cacheCreation5mInputTokens?: number;
+  readonly cacheCreation1hInputTokens?: number;
   readonly thinkingTokens?: number;
+  readonly thinkingTokensDelta?: number;
+  readonly reasoningTokens?: number;
+  readonly serverToolUseRequests?: number;
   readonly totalTokens?: number;
   readonly totalCostUsd?: number;
   readonly durationMs?: number;
@@ -75,6 +87,9 @@ export interface UsageSnapshot {
   readonly timeToRequestMs?: number;
   readonly firstContentFrameMs?: number;
   readonly queuedTurnCount?: number;
+  readonly iterations?: number;
+  readonly inferenceGeo?: string;
+  readonly speed?: string;
   readonly model?: string;
   readonly serviceTier?: string;
 }
@@ -84,6 +99,8 @@ export interface ProviderTelemetry {
   readonly usage?: UsageSnapshot;
   readonly nativeEventCounts?: Readonly<Record<string, number>>;
   readonly toolCallCount?: number;
+  readonly toolCallFinishedCount?: number;
+  readonly toolCallErrorCount?: number;
 }
 
 export interface ProgressReason {

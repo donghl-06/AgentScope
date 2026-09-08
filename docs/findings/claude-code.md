@@ -13,6 +13,15 @@
 - The observation target is the local Claude Code CLI process, not Anthropic's API account. The CLI may use a compatible alternate endpoint and model; capability claims are therefore scoped to the tested CLI version, mode, endpoint configuration, and model combination.
 - Public reference: [Claude Code CLI usage](https://docs.anthropic.com/en/docs/claude-code/cli-usage).
 
+Autonomous structured telemetry smoke on 2026-09-08 used the local compatible
+GLM endpoint with an isolated SQLite database. The stream completed with exit
+code 0 and persisted provider info, token/cost/timing snapshots, native stream
+phase counts, and the terminal event. A second isolated run intentionally
+requested one Bash tool call; the database contained one deduplicated
+`tool_call_started` and one successful `tool_call_finished` with duration. Raw
+JSONL, command text, tool input/output, and credentials were discarded after
+the assertion.
+
 ## Observed event stream
 
 The stream is JSONL. The observed event families were:
@@ -24,6 +33,15 @@ The stream is JSONL. The observed event families were:
 | `assistant` | Contains `thinking`, `text`, and `tool_use` content blocks. | structured event; provider-specific parser input |
 | `user` | Tool-result messages can follow a tool call. | structured event; provider-specific parser input |
 | `result` | Includes `subtype`, `is_error`, `num_turns`, `duration_ms`, and sometimes cost metadata. | terminal envelope; inspect nested tool outcomes too |
+
+The structured parser now normalizes the stable, non-transcript portion of these
+records. `system/init` contributes provider/session metadata and capability
+catalog counts; `system/thinking_tokens` contributes cumulative and delta
+thinking-token snapshots; assistant/user records contribute tool boundaries;
+`stream_event` records contribute native phases and incremental usage; and
+`result` contributes cumulative usage, cost, queue, TTFT, and API timing fields.
+Unknown records are counted and reduced to a scalar metadata allow-list so future
+Claude additions remain visible without storing raw provider output.
 
 The successful minimal run produced a `result` with `subtype=success`, one turn, and no tool call. A second run created a file and ran a deliberately failing test command. Its process completed and its top-level `result` was still `success`, while the command result represented the test failure. Therefore an adapter must not infer task success from the top-level `result` alone.
 
@@ -38,7 +56,9 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 | Session info | observed | `system/init` exposes a provider session id | AgentScope generates its own session id |
 | Resume/session id | CLI surface present | `--continue`, `--resume`, and background attach are documented by `--help`; resume semantics still need a dedicated spike | treat provider id as optional metadata |
 | Hooks | CLI surface present | hooks are documented by the CLI, but no hook contract was made a V0 dependency | process/workspace observers |
-| Token/cost | observed-but-out-of-scope | telemetry may appear in terminal result; privacy and stability are insufficient for V0 | ignore by default |
+| Token/cost/timing | normalized when emitted | input/output/cache/thinking/reasoning tokens, cost, API/TTFT/queue timing, service tier and model are projected; any absent field remains absent | Dashboard shows `Not reported` rather than fabricating values |
+| Native event phases | normalized | top-level event families and stream phases are counted in `provider_event` and session telemetry | unknown families remain diagnostic metadata |
+| Milestones | conditional | explicit native milestone records are mapped when Claude emits an id/title; no stable milestone contract was observed in the tested stream | progress falls back to activity and verification evidence |
 | User interruption | pending | interactive trust-screen cancellation was observed, but no reliable structured Ctrl+C fixture was captured | process signal handling in Phase 5 |
 
 ## I/O and lifecycle observations
@@ -48,6 +68,7 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 - The CLI accepted non-interactive print mode with `--bare`; the interactive mode has a workspace trust gate.
 - The observed tool/test failure demonstrates that AgentScope needs its own lifecycle mapping based on command outcomes, exit code, and interruption signals.
 - The current experiment did not establish a stable public contract for every `system` field. Unknown fields must be ignored and retained only inside the adapter boundary when needed for diagnostics.
+- Claude does not emit a provider-guaranteed future ETA in the tested stream. AgentScope therefore captures observed latency (duration, TTFT, first frame, queue depth) and keeps its own ETA as an explainable estimate.
 - The follow-up smoke emitted a non-fatal `unrecognized_model` diagnostic during session-title generation, then returned a normal assistant response and terminal success. AgentScope persisted the session as `completed` with progress `0.35`, confidence `0.55`, and a completion-unverified reason because no test/build/typecheck verification occurred; this is the expected V0 safety cap, not a parser failure. The persisted normalized timeline contained exactly `session_started → agent_message → session_finished` (3 events).
 
 ## Provider availability during interruption retry

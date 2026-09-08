@@ -102,9 +102,14 @@ function parseMessage(
       return parseResult(message, sessionId, timestamp, source);
     case 'stream_event':
       return parseStreamEvent(message, sessionId, timestamp, source, toolCalls);
-    default:
+    default: {
+      const milestone = parseMilestone(message, sessionId, timestamp, source);
+      if (milestone !== undefined) {
+        return [milestone, providerEvent(message, sessionId, timestamp, source)];
+      }
       // Preserve future Claude records as safe metadata rather than retaining content.
       return [providerEvent(message, sessionId, timestamp, source)];
+    }
   }
 }
 
@@ -131,19 +136,57 @@ function parseSystem(
 
   if (message.subtype === 'thinking_tokens') {
     const estimatedTokens = numberValue(message.estimated_tokens);
+    const estimatedTokensDelta = numberValue(message.estimated_tokens_delta);
     const events: AgentEvent[] = [];
-    if (estimatedTokens !== undefined) {
+    if (estimatedTokens !== undefined || estimatedTokensDelta !== undefined) {
       events.push(
         event('usage_updated', sessionId, timestamp, source, {
-          usage: { thinkingTokens: estimatedTokens },
+          usage: {
+            ...(estimatedTokens === undefined ? {} : { thinkingTokens: estimatedTokens }),
+            ...(estimatedTokensDelta === undefined
+              ? {}
+              : { thinkingTokensDelta: estimatedTokensDelta }),
+          },
         }),
       );
     }
+    const milestone = parseMilestone(message, sessionId, timestamp, source);
+    if (milestone !== undefined) events.push(milestone);
     events.push(providerEvent(message, sessionId, timestamp, source));
     return events;
   }
 
-  return [providerEvent(message, sessionId, timestamp, source)];
+  const milestone = parseMilestone(message, sessionId, timestamp, source);
+  return milestone === undefined
+    ? [providerEvent(message, sessionId, timestamp, source)]
+    : [milestone, providerEvent(message, sessionId, timestamp, source)];
+}
+
+function parseMilestone(
+  message: Record<string, unknown>,
+  sessionId: string,
+  timestamp: number,
+  source: EventSource,
+): AgentEvent | undefined {
+  const candidate =
+    stringValue(message.milestone_event) ??
+    stringValue(message.subtype) ??
+    stringValue(message.type);
+  const eventType =
+    candidate === 'milestone_started' || candidate === 'milestone_completed'
+      ? candidate
+      : undefined;
+  if (eventType === undefined) return undefined;
+  const milestoneId =
+    stringValue(message.milestone_id) ??
+    stringValue(message.milestoneId) ??
+    stringValue(message.id);
+  if (milestoneId === undefined) return undefined;
+  const title = stringValue(message.title) ?? stringValue(message.milestone_title);
+  return event(eventType, sessionId, timestamp, source, {
+    milestoneId,
+    ...(title === undefined ? {} : { title }),
+  });
 }
 
 function parseAssistant(
@@ -165,13 +208,14 @@ function parseAssistant(
     if (block.type === 'tool_use') {
       const toolName = stringValue(block.name) ?? 'unknown';
       const toolCallId = stringValue(block.id);
-      if (toolCallId !== undefined) toolCalls.set(toolCallId, { toolName, startedAt: timestamp });
-      events.push(
-        event('tool_call_started', sessionId, timestamp, source, {
-          toolName,
-          ...(toolCallId === undefined ? {} : { toolCallId }),
-        }),
-      );
+      if (trackToolCall(toolCalls, toolCallId, toolName, timestamp)) {
+        events.push(
+          event('tool_call_started', sessionId, timestamp, source, {
+            toolName,
+            ...(toolCallId === undefined ? {} : { toolCallId }),
+          }),
+        );
+      }
     } else if (block.type === 'thinking') {
       events.push(
         event('planning', sessionId, timestamp, source, { summary: 'provider thinking' }),
@@ -223,6 +267,18 @@ function parseToolResults(
     );
   }
   return events;
+}
+
+function trackToolCall(
+  toolCalls: Map<string, ToolCallState>,
+  toolCallId: string | undefined,
+  toolName: string,
+  timestamp: number,
+): boolean {
+  if (toolCallId === undefined) return true;
+  if (toolCalls.has(toolCallId)) return false;
+  toolCalls.set(toolCallId, { toolName, startedAt: timestamp });
+  return true;
 }
 
 function parseResult(
@@ -277,13 +333,14 @@ function parseStreamEvent(
     if (block.type === 'tool_use') {
       const toolName = stringValue(block.name) ?? 'unknown';
       const toolCallId = stringValue(block.id);
-      if (toolCallId !== undefined) toolCalls.set(toolCallId, { toolName, startedAt: timestamp });
-      events.push(
-        event('tool_call_started', sessionId, timestamp, source, {
-          toolName,
-          ...(toolCallId === undefined ? {} : { toolCallId }),
-        }),
-      );
+      if (trackToolCall(toolCalls, toolCallId, toolName, timestamp)) {
+        events.push(
+          event('tool_call_started', sessionId, timestamp, source, {
+            toolName,
+            ...(toolCallId === undefined ? {} : { toolCallId }),
+          }),
+        );
+      }
     }
   }
   return events;
@@ -297,15 +354,27 @@ function providerInfo(message: Record<string, unknown>): ProviderInfoPayload {
   const model = stringValue(message.model);
   const cliVersion = stringValue(message.claude_code_version);
   const permissionMode = stringValue(message.permissionMode);
+  const outputFormat = stringValue(message.output_format);
   return {
     ...(providerSessionId === undefined ? {} : { providerSessionId }),
     ...(model === undefined ? {} : { model }),
     ...(cliVersion === undefined ? {} : { cliVersion }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
+    ...(outputFormat === undefined ? {} : { outputFormat }),
     ...(capabilities === undefined || capabilities.length === 0
       ? {}
       : { capabilityLabels: capabilities }),
+    ...countIfPresent(message.tools, 'toolCount'),
+    ...countIfPresent(message.mcp_servers, 'mcpServerCount'),
+    ...countIfPresent(message.slash_commands, 'slashCommandCount'),
+    ...countIfPresent(message.agents, 'agentCount'),
+    ...countIfPresent(message.skills, 'skillCount'),
+    ...countIfPresent(message.plugins, 'pluginCount'),
   };
+}
+
+function countIfPresent(value: unknown, key: string): Record<string, number> {
+  return Array.isArray(value) ? { [key]: value.length } : {};
 }
 
 function providerEvent(
@@ -341,6 +410,9 @@ function normalizeResultUsage(message: Record<string, unknown>): UsageSnapshot |
   const firstContentFrameMs = numberValue(message.first_content_frame_ms);
   const queuedTurnCount = numberValue(message.queued_turn_count);
   const totalCostUsd = numberValue(message.total_cost_usd);
+  const iterations = numberValue(message.iterations);
+  const inferenceGeo = stringValue(message.inference_geo);
+  const speed = stringValue(message.speed);
   const model = stringValue(message.model);
   const timing: UsageSnapshot = {
     ...(durationMs === undefined ? {} : { durationMs }),
@@ -350,6 +422,9 @@ function normalizeResultUsage(message: Record<string, unknown>): UsageSnapshot |
     ...(timeToRequestMs === undefined ? {} : { timeToRequestMs }),
     ...(firstContentFrameMs === undefined ? {} : { firstContentFrameMs }),
     ...(queuedTurnCount === undefined ? {} : { queuedTurnCount }),
+    ...(iterations === undefined ? {} : { iterations }),
+    ...(inferenceGeo === undefined ? {} : { inferenceGeo }),
+    ...(speed === undefined ? {} : { speed }),
     ...(totalCostUsd === undefined ? {} : { totalCostUsd }),
     ...(model === undefined ? {} : { model }),
   };
@@ -372,16 +447,35 @@ function normalizeModelUsage(value: unknown): UsageSnapshot | undefined {
   };
   const inputTokens = sum('inputTokens');
   const outputTokens = sum('outputTokens');
+  const cacheCreationInputTokens = sum('cacheCreationInputTokens');
+  const cacheReadInputTokens = sum('cacheReadInputTokens');
+  const cacheCreation5mInputTokens = sum('cacheCreation5mInputTokens');
+  const cacheCreation1hInputTokens = sum('cacheCreation1hInputTokens');
+  const thinkingTokens = sum('thinkingTokens');
+  const reasoningTokens = sum('reasoningTokens');
+  const serverToolUseRequests = sum('serverToolUseRequests');
   const totalTokens = sum('totalTokens');
   return {
     ...(inputTokens === undefined ? {} : { inputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(cacheCreationInputTokens === undefined ? {} : { cacheCreationInputTokens }),
+    ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
+    ...(cacheCreation5mInputTokens === undefined ? {} : { cacheCreation5mInputTokens }),
+    ...(cacheCreation1hInputTokens === undefined ? {} : { cacheCreation1hInputTokens }),
+    ...(thinkingTokens === undefined ? {} : { thinkingTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(serverToolUseRequests === undefined ? {} : { serverToolUseRequests }),
     ...(totalTokens === undefined ? {} : { totalTokens }),
   };
 }
 
 function normalizeUsage(value: unknown): UsageSnapshot | undefined {
   if (!isRecord(value)) return undefined;
+  const cacheCreation = isRecord(value.cache_creation) ? value.cache_creation : undefined;
+  const outputDetails = isRecord(value.output_tokens_details)
+    ? value.output_tokens_details
+    : undefined;
+  const serverToolUse = isRecord(value.server_tool_use) ? value.server_tool_use : undefined;
   const inputTokens = numberValue(value.input_tokens);
   const outputTokens = numberValue(value.output_tokens);
   const totalTokens =
@@ -391,19 +485,45 @@ function normalizeUsage(value: unknown): UsageSnapshot | undefined {
       : inputTokens + outputTokens);
   const cacheCreationInputTokens = numberValue(value.cache_creation_input_tokens);
   const cacheReadInputTokens = numberValue(value.cache_read_input_tokens);
+  const cacheCreation5mInputTokens = numberValue(cacheCreation?.ephemeral_5m_input_tokens);
+  const cacheCreation1hInputTokens = numberValue(cacheCreation?.ephemeral_1h_input_tokens);
+  const thinkingTokens = numberValue(value.thinking_tokens);
+  const reasoningTokens = numberValue(outputDetails?.reasoning_tokens);
+  const serverToolUseRequests = sumRecordNumbers(serverToolUse);
+  const iterations = numberValue(value.iterations);
+  const inferenceGeo = stringValue(value.inference_geo);
+  const speed = stringValue(value.speed);
   const serviceTier = stringValue(value.service_tier);
   const usage: UsageSnapshot = {
     ...(inputTokens === undefined ? {} : { inputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
     ...(cacheCreationInputTokens === undefined ? {} : { cacheCreationInputTokens }),
     ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
+    ...(cacheCreation5mInputTokens === undefined ? {} : { cacheCreation5mInputTokens }),
+    ...(cacheCreation1hInputTokens === undefined ? {} : { cacheCreation1hInputTokens }),
+    ...(thinkingTokens === undefined ? {} : { thinkingTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(serverToolUseRequests === undefined ? {} : { serverToolUseRequests }),
     ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(iterations === undefined ? {} : { iterations }),
+    ...(inferenceGeo === undefined ? {} : { inferenceGeo }),
+    ...(speed === undefined ? {} : { speed }),
     ...(serviceTier === undefined ? {} : { serviceTier }),
   };
   return Object.keys(usage).length === 0 ? undefined : usage;
 }
 
-function metadataFromRecord(record: Record<string, unknown>): Record<string, string | number | boolean> {
+function sumRecordNumbers(value: Record<string, unknown> | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const numbers = Object.values(value).filter(
+    (item): item is number => typeof item === 'number' && Number.isFinite(item) && item >= 0,
+  );
+  return numbers.length === 0 ? undefined : numbers.reduce((total, item) => total + item, 0);
+}
+
+function metadataFromRecord(
+  record: Record<string, unknown>,
+): Record<string, string | number | boolean> {
   const allowed = [
     'index',
     'status',
@@ -411,10 +531,25 @@ function metadataFromRecord(record: Record<string, unknown>): Record<string, str
     'is_error',
     'num_turns',
     'duration_ms',
+    'duration_api_ms',
+    'ttft_ms',
+    'ttft_stream_ms',
+    'time_to_request_ms',
+    'first_content_frame_ms',
+    'total_cost_usd',
+    'input_tokens',
+    'output_tokens',
+    'cache_creation_input_tokens',
+    'cache_read_input_tokens',
+    'thinking_tokens',
     'estimated_tokens',
     'estimated_tokens_delta',
     'exit_code',
     'queued_turn_count',
+    'iterations',
+    'inference_geo',
+    'speed',
+    'service_tier',
   ];
   const metadata: Record<string, string | number | boolean> = {};
   for (const key of allowed) {

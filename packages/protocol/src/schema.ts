@@ -127,6 +127,7 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
   tool_call_finished: Type.Object({
     toolName: Type.String({ minLength: 1 }),
     success: Type.Boolean(),
+    toolCallId: Type.Optional(Type.String({ minLength: 1 })),
     durationMs: Type.Optional(Type.Number({ minimum: 0 })),
     errorCode: Type.Optional(Type.String({ minLength: 1 })),
   }),
@@ -169,6 +170,12 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
     permissionMode: Type.Optional(Type.String({ minLength: 1 })),
     outputFormat: Type.Optional(Type.String({ minLength: 1 })),
     capabilityLabels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+    toolCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    mcpServerCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    slashCommandCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    agentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    skillCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    pluginCount: Type.Optional(Type.Integer({ minimum: 0 })),
   }),
   provider_event: Type.Object({
     providerEventType: Type.String({ minLength: 1 }),
@@ -188,7 +195,12 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
       outputTokens: Type.Optional(Type.Number({ minimum: 0 })),
       cacheCreationInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
       cacheReadInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      cacheCreation5mInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      cacheCreation1hInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
       thinkingTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      thinkingTokensDelta: Type.Optional(Type.Number({ minimum: 0 })),
+      reasoningTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      serverToolUseRequests: Type.Optional(Type.Number({ minimum: 0 })),
       totalTokens: Type.Optional(Type.Number({ minimum: 0 })),
       totalCostUsd: Type.Optional(Type.Number({ minimum: 0 })),
       durationMs: Type.Optional(Type.Number({ minimum: 0 })),
@@ -198,6 +210,9 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
       timeToRequestMs: Type.Optional(Type.Number({ minimum: 0 })),
       firstContentFrameMs: Type.Optional(Type.Number({ minimum: 0 })),
       queuedTurnCount: Type.Optional(Type.Number({ minimum: 0 })),
+      iterations: Type.Optional(Type.Number({ minimum: 0 })),
+      inferenceGeo: Type.Optional(Type.String({ minLength: 1 })),
+      speed: Type.Optional(Type.String({ minLength: 1 })),
       model: Type.Optional(Type.String({ minLength: 1 })),
       serviceTier: Type.Optional(Type.String({ minLength: 1 })),
     }),
@@ -314,6 +329,12 @@ const providerInfoSchema = Type.Object({
   permissionMode: Type.Optional(Type.String({ minLength: 1 })),
   outputFormat: Type.Optional(Type.String({ minLength: 1 })),
   capabilityLabels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  toolCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  mcpServerCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  slashCommandCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  agentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  skillCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  pluginCount: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
 const usageSnapshotSchema = Type.Object({
@@ -321,7 +342,12 @@ const usageSnapshotSchema = Type.Object({
   outputTokens: Type.Optional(Type.Number({ minimum: 0 })),
   cacheCreationInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
   cacheReadInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  cacheCreation5mInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  cacheCreation1hInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
   thinkingTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  thinkingTokensDelta: Type.Optional(Type.Number({ minimum: 0 })),
+  reasoningTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  serverToolUseRequests: Type.Optional(Type.Number({ minimum: 0 })),
   totalTokens: Type.Optional(Type.Number({ minimum: 0 })),
   totalCostUsd: Type.Optional(Type.Number({ minimum: 0 })),
   durationMs: Type.Optional(Type.Number({ minimum: 0 })),
@@ -331,6 +357,9 @@ const usageSnapshotSchema = Type.Object({
   timeToRequestMs: Type.Optional(Type.Number({ minimum: 0 })),
   firstContentFrameMs: Type.Optional(Type.Number({ minimum: 0 })),
   queuedTurnCount: Type.Optional(Type.Number({ minimum: 0 })),
+  iterations: Type.Optional(Type.Number({ minimum: 0 })),
+  inferenceGeo: Type.Optional(Type.String({ minLength: 1 })),
+  speed: Type.Optional(Type.String({ minLength: 1 })),
   model: Type.Optional(Type.String({ minLength: 1 })),
   serviceTier: Type.Optional(Type.String({ minLength: 1 })),
 });
@@ -342,6 +371,8 @@ const providerTelemetrySchema = Type.Object({
     Type.Record(Type.String({ minLength: 1 }), Type.Integer({ minimum: 0 })),
   ),
   toolCallCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  toolCallFinishedCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  toolCallErrorCount: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
 const sessionStatusSchema = Type.Union([

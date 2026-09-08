@@ -84,6 +84,54 @@ describe('reduceSessionState', () => {
     expect(buildPassed.verification.build).toBe('passed');
   });
 
+  it('projects provider metadata, usage snapshots, native event counts, and tool totals', () => {
+    const withInfo = reduceSessionState(
+      base,
+      event('provider_info', {
+        providerSessionId: 'provider-1',
+        model: 'configured-model',
+        cliVersion: '2.1.261',
+      }),
+    );
+    const withUsage = reduceSessionState(
+      withInfo,
+      event('usage_updated', {
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalCostUsd: 0.0012,
+          durationApiMs: 450,
+        },
+      }),
+    );
+    const withTool = reduceSessionState(
+      withUsage,
+      event('tool_call_started', { toolName: 'Bash', toolCallId: 'tool-1' }),
+    );
+    const withFinishedTool = reduceSessionState(
+      withTool,
+      event('tool_call_finished', {
+        toolName: 'Bash',
+        toolCallId: 'tool-1',
+        success: false,
+        errorCode: 'provider_tool_error',
+      }),
+    );
+    const projected = reduceSessionState(
+      withFinishedTool,
+      event('provider_event', { providerEventType: 'stream_event', phase: 'message_delta' }),
+    );
+
+    expect(projected.telemetry).toMatchObject({
+      providerInfo: { providerSessionId: 'provider-1', model: 'configured-model' },
+      usage: { inputTokens: 12, outputTokens: 8, totalCostUsd: 0.0012 },
+      toolCallCount: 1,
+      toolCallFinishedCount: 1,
+      toolCallErrorCount: 1,
+      nativeEventCounts: { stream_event: 1, 'stream_event/message_delta': 1 },
+    });
+  });
+
   it('projects persisted turn lifecycle events as session activity', () => {
     const started = reduceSessionState(
       base,

@@ -16,8 +16,8 @@ The adapter is responsible for:
 - mapping stable provider signals to normalized lifecycle, command, message, file,
   milestone, and verification events;
 - stopping and detaching child processes idempotently;
-- redacting prompts, command text, full output, tokens, costs, paths, and credentials
-  unless a deliberately enabled diagnostic mode says otherwise.
+- redacting prompts, command text, full output, raw tokens/costs, paths, and credentials;
+  normalized aggregate usage is allowed only on a structured telemetry path.
 
 The adapter must not write SQLite, mutate `SessionState`, import Dashboard/server
 modules, or make provider-specific event names part of the shared protocol.

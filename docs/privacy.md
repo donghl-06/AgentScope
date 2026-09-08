@@ -20,6 +20,10 @@ AgentScope collects the minimum information needed to explain observable task st
 - Recognized command category, start/end, duration, and exit status.
 - Test/build/lint/typecheck pass/fail summaries.
 - Milestone names explicitly exposed through a supported structured provider interface.
+- Normalized cumulative provider usage and timing counters (input/output/cache/thinking
+  tokens, cost, API/TTFT/queue timing) when the user explicitly runs a structured
+  telemetry-capable provider path. Raw usage records and transcript content remain
+  excluded.
 - Derived SessionState, Progress, ETA, reasons, and confidence.
 - AgentScope operational diagnostics with secrets redacted.
 
@@ -30,7 +34,8 @@ AgentScope collects the minimum information needed to explain observable task st
 - Full command output.
 - File contents or diffs.
 - Full agent messages and prompts.
-- Token usage or cost details.
+- Raw token/cost records, pricing metadata beyond the normalized aggregate, and
+  provider billing/account identifiers.
 - Commit messages and remote repository URLs.
 
 These may only be introduced behind explicit configuration, a documented purpose, bounded retention, and redaction. Enabling one category does not enable the others.

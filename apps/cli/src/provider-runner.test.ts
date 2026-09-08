@@ -51,7 +51,9 @@ describe('provider runner', () => {
     });
 
     expect(result).toMatchObject({ sessionId: 'session-1', status: 'completed', exitCode: 0 });
-    expect(result.eventCount).toBe(2);
+    // Claude structured output is normalized into lifecycle, provider metadata,
+    // native-event, and terminal events rather than only start/finish.
+    expect(result.eventCount).toBe(5);
     expect(stdout.join('')).toContain('provider-1');
   });
 

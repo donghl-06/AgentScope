@@ -19,6 +19,7 @@ import {
 import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
 import { ObserverRuntime } from '@agentscope/observer-runtime';
+import { estimateEta } from '@agentscope/eta';
 import { computeProgress } from '@agentscope/progress';
 
 export interface InteractiveSignals {
@@ -433,7 +434,15 @@ function appendEvent(
     now: event.timestamp,
     lastSignalAt: event.timestamp,
   });
-  const projected = { ...next, progress };
+  const projected = {
+    ...next,
+    progress,
+    eta: estimateEta({
+      state: next,
+      progress,
+      elapsedSeconds: Math.max(0, (event.timestamp - next.startedAt) / 1_000),
+    }),
+  };
   repository.updateSessionState(next.sessionId, projected, { now: event.timestamp });
   return projected;
 }
@@ -454,12 +463,18 @@ function syncTurnProjection(
     progress: turn.progress,
     ...(turn.eta === undefined ? {} : { eta: turn.eta }),
     verification: turn.verification,
+    ...(turn.telemetry === undefined ? {} : { telemetry: turn.telemetry }),
   };
   const progress = computeProgress({
     state: turnSession,
     capabilities: { fileEvents: true },
     now: timestamp,
     lastSignalAt: timestamp,
+  });
+  const eta = estimateEta({
+    state: turnSession,
+    progress,
+    elapsedSeconds: Math.max(0, (timestamp - turnSession.startedAt) / 1_000),
   });
   repository.updateTurnState(
     turn.turnId,
@@ -469,6 +484,7 @@ function syncTurnProjection(
         ? {}
         : { currentActivity: session.currentActivity }),
       progress,
+      eta,
     },
     timestamp,
   );

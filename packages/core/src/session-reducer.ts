@@ -170,14 +170,19 @@ function reduceProviderInfo(state: SessionState, event: ReducerEvent): SessionSt
 function reduceProviderEvent(state: SessionState, event: ReducerEvent): SessionState {
   const payload = event.payload as ProviderEventPayload;
   const counts = state.telemetry?.nativeEventCounts ?? {};
+  const keys = [
+    payload.providerEventType,
+    payload.phase === undefined ? undefined : `${payload.providerEventType}/${payload.phase}`,
+  ].filter((key): key is string => key !== undefined && key.length > 0);
+  const nativeEventCounts = { ...counts };
+  for (const key of keys) {
+    nativeEventCounts[key] = (nativeEventCounts[key] ?? 0) + 1;
+  }
   return {
     ...state,
     telemetry: {
       ...state.telemetry,
-      nativeEventCounts: {
-        ...counts,
-        [payload.providerEventType]: (counts[payload.providerEventType] ?? 0) + 1,
-      },
+      nativeEventCounts,
     },
   };
 }
@@ -202,6 +207,19 @@ function incrementToolCallCount(state: SessionState): SessionState {
     telemetry: {
       ...state.telemetry,
       toolCallCount: (state.telemetry?.toolCallCount ?? 0) + 1,
+    },
+  };
+}
+
+function finishToolCall(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as { success: boolean };
+  return {
+    ...state,
+    currentActivity: activity('implementation', 'tool call finished', event),
+    telemetry: {
+      ...state.telemetry,
+      toolCallFinishedCount: (state.telemetry?.toolCallFinishedCount ?? 0) + 1,
+      toolCallErrorCount: (state.telemetry?.toolCallErrorCount ?? 0) + (payload.success ? 0 : 1),
     },
   };
 }
@@ -278,7 +296,7 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
         currentActivity: activity('implementation', 'tool call', event),
       });
     case 'tool_call_finished':
-      return { ...state, currentActivity: activity('implementation', 'tool call finished', event) };
+      return finishToolCall(state, event);
     case 'file_read':
       return { ...state, currentActivity: activity('file', 'read file', event) };
     case 'file_write':

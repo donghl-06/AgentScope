@@ -5,6 +5,7 @@ import type {
   StoredSession,
   StoredTurn,
 } from '@agentscope/storage';
+import type { ProviderTelemetry } from '@agentscope/protocol';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
 import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
@@ -419,6 +420,7 @@ function SessionDetail({
                   {formatTimestamp(event.timestamp)} · confidence{' '}
                   {Math.round(event.confidence * 100)}%
                 </small>
+                {eventDetail(event) !== undefined && <small>{eventDetail(event)}</small>}
               </div>
             </li>
           ))}
@@ -544,6 +546,7 @@ function TurnProjectionDetails({ turn }: { turn: StoredTurn }) {
         <Verification label="Build" value={state.verification.build} />
         <Verification label="Typecheck" value={state.verification.typecheck} />
       </div>
+      {state.telemetry !== undefined && <ProviderTelemetryDetails telemetry={state.telemetry} />}
     </div>
   );
 }
@@ -565,6 +568,7 @@ function TurnTimelineDetails({ events }: { events: readonly StoredEvent[] }) {
                   {formatTimestamp(event.timestamp)} · confidence{' '}
                   {Math.round(event.confidence * 100)}%
                 </small>
+                {eventDetail(event) !== undefined && <small>{eventDetail(event)}</small>}
               </div>
             </li>
           ))}
@@ -676,6 +680,12 @@ function AgentCard({
           detail={eta?.reasons[0]?.message ?? 'No ETA signal has been observed.'}
         />
       </div>
+      {session.state.telemetry !== undefined && (
+        <ProviderTelemetryDetails telemetry={session.state.telemetry} />
+      )}
+      {session.state.milestones.length > 0 && (
+        <MilestoneDetails milestones={session.state.milestones} />
+      )}
       <div className="agent-card-footer">
         <span className="evidence-label">Evidence capabilities</span>
         <div className="capability-list">
@@ -699,6 +709,77 @@ function AgentCard({
         <Verification label="Typecheck" value={session.state.verification.typecheck} />
       </div>
     </section>
+  );
+}
+
+function ProviderTelemetryDetails({ telemetry }: { telemetry: ProviderTelemetry }) {
+  const usage = telemetry.usage;
+  const eventSummary = Object.entries(telemetry.nativeEventCounts ?? {})
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 8)
+    .map(([name, count]) => `${name} ×${count}`)
+    .join(' · ');
+  return (
+    <div className="telemetry-panel" aria-label="Provider telemetry">
+      <span className="eyebrow">PROVIDER TELEMETRY</span>
+      <div className="telemetry-facts">
+        <TelemetryFact label="Model" value={telemetry.providerInfo?.model ?? 'Not reported'} />
+        <TelemetryFact label="CLI" value={telemetry.providerInfo?.cliVersion ?? 'Not reported'} />
+        <TelemetryFact
+          label="Provider tools"
+          value={formatCount(telemetry.providerInfo?.toolCount)}
+        />
+        <TelemetryFact label="Input tokens" value={formatCount(usage?.inputTokens)} />
+        <TelemetryFact label="Output tokens" value={formatCount(usage?.outputTokens)} />
+        <TelemetryFact label="Total tokens" value={formatCount(usage?.totalTokens)} />
+        <TelemetryFact label="Cache read" value={formatCount(usage?.cacheReadInputTokens)} />
+        <TelemetryFact label="Cache create" value={formatCount(usage?.cacheCreationInputTokens)} />
+        <TelemetryFact label="Thinking tokens" value={formatCount(usage?.thinkingTokens)} />
+        <TelemetryFact label="Reasoning tokens" value={formatCount(usage?.reasoningTokens)} />
+        <TelemetryFact label="Total cost" value={formatCost(usage?.totalCostUsd)} />
+        <TelemetryFact label="API duration" value={formatMilliseconds(usage?.durationApiMs)} />
+        <TelemetryFact label="TTFT" value={formatMilliseconds(usage?.ttftMs)} />
+        <TelemetryFact label="Stream TTFT" value={formatMilliseconds(usage?.ttftStreamMs)} />
+        <TelemetryFact
+          label="First content"
+          value={formatMilliseconds(usage?.firstContentFrameMs)}
+        />
+        <TelemetryFact label="Tool calls" value={formatCount(telemetry.toolCallCount)} />
+        <TelemetryFact
+          label="Tools finished"
+          value={formatCount(telemetry.toolCallFinishedCount)}
+        />
+        <TelemetryFact label="Tool errors" value={formatCount(telemetry.toolCallErrorCount)} />
+      </div>
+      <small className="telemetry-event-summary">
+        Native events: {eventSummary === '' ? 'Not reported' : eventSummary}
+      </small>
+    </div>
+  );
+}
+
+function MilestoneDetails({ milestones }: { milestones: StoredSession['state']['milestones'] }) {
+  return (
+    <div className="milestone-panel" aria-label="Milestone details">
+      <span className="eyebrow">MILESTONES</span>
+      <ul className="milestone-list">
+        {milestones.map((milestone) => (
+          <li key={milestone.id}>
+            <span>{milestone.title}</span>
+            <span className="milestone-status">{milestone.status}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TelemetryFact({ label, value }: { label: string; value: string }) {
+  return (
+    <span>
+      <b>{label}</b>
+      {value}
+    </span>
   );
 }
 
@@ -752,6 +833,78 @@ function Verification({ label, value }: { label: string; value: string }) {
 
 function formatEta(minSeconds: number, maxSeconds: number): string {
   return `${formatDuration(0, minSeconds * 1000)}–${formatDuration(0, maxSeconds * 1000)}`;
+}
+
+function formatCount(value: number | undefined): string {
+  return value === undefined ? 'Not reported' : value.toLocaleString();
+}
+
+function formatCost(value: number | undefined): string {
+  return value === undefined ? 'Not reported' : `$${value.toFixed(4)}`;
+}
+
+function formatMilliseconds(value: number | undefined): string {
+  return value === undefined ? 'Not reported' : `${Math.round(value)}ms`;
+}
+
+function eventDetail(event: StoredEvent['event']): string | undefined {
+  if (event.type === 'provider_event') {
+    const payload = event.payload as {
+      providerEventType?: unknown;
+      phase?: unknown;
+      subtype?: unknown;
+    };
+    const nativeType =
+      typeof payload.providerEventType === 'string' ? payload.providerEventType : '';
+    const phase = typeof payload.phase === 'string' ? `/${payload.phase}` : '';
+    const subtype = typeof payload.subtype === 'string' ? ` · ${payload.subtype}` : '';
+    return `Native ${nativeType}${phase}${subtype}`;
+  }
+  if (event.type === 'provider_info') {
+    const payload = event.payload as { model?: unknown; cliVersion?: unknown };
+    const model = typeof payload.model === 'string' ? payload.model : 'model unavailable';
+    const version =
+      typeof payload.cliVersion === 'string' ? payload.cliVersion : 'version unavailable';
+    return `Provider ${model} · CLI ${version}`;
+  }
+  if (event.type === 'usage_updated') {
+    const usage = (event.payload as { usage?: Record<string, unknown> }).usage ?? {};
+    const fields: string[] = [];
+    if (typeof usage.inputTokens === 'number') fields.push(`in ${formatCount(usage.inputTokens)}`);
+    if (typeof usage.outputTokens === 'number')
+      fields.push(`out ${formatCount(usage.outputTokens)}`);
+    if (typeof usage.thinkingTokens === 'number') {
+      fields.push(`thinking ${formatCount(usage.thinkingTokens)}`);
+    }
+    if (typeof usage.thinkingTokensDelta === 'number') {
+      fields.push(`Δthinking ${formatCount(usage.thinkingTokensDelta)}`);
+    }
+    if (typeof usage.totalTokens === 'number') {
+      fields.push(`total ${formatCount(usage.totalTokens)}`);
+    }
+    if (typeof usage.totalCostUsd === 'number') fields.push(formatCost(usage.totalCostUsd));
+    if (typeof usage.durationApiMs === 'number')
+      fields.push(`API ${formatMilliseconds(usage.durationApiMs)}`);
+    if (typeof usage.ttftMs === 'number') fields.push(`TTFT ${formatMilliseconds(usage.ttftMs)}`);
+    return fields.length === 0 ? 'Provider usage snapshot updated' : fields.join(' · ');
+  }
+  if (event.type === 'tool_call_started') {
+    const toolName = (event.payload as { toolName?: unknown }).toolName;
+    return typeof toolName === 'string' ? `Tool ${toolName} started` : 'Tool call started';
+  }
+  if (event.type === 'tool_call_finished') {
+    const payload = event.payload as {
+      toolName?: unknown;
+      success?: unknown;
+      durationMs?: unknown;
+    };
+    const tool = typeof payload.toolName === 'string' ? payload.toolName : 'unknown';
+    const result = payload.success === true ? 'succeeded' : 'failed';
+    const duration =
+      typeof payload.durationMs === 'number' ? ` · ${formatMilliseconds(payload.durationMs)}` : '';
+    return `Tool ${tool} ${result}${duration}`;
+  }
+  return undefined;
 }
 
 function friendlyCapability(name: string): string {

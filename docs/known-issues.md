@@ -26,6 +26,28 @@ paths. Interactive TTY/PTY semantics, terminal resize, and provider-specific
 interactive approval screens remain experimental and are not part of the
 automatic CI contract.
 
+Claude's full native token, timing, stream-phase, hook, and tool-result details
+are available only when Claude is launched with its structured JSONL output
+flags. A normal interactive TTY remains fully usable and is observed through
+PTY/process/filesystem/Git signals, but the PTY does not expose Claude's private
+structured usage frames. Use the structured path when provider-native telemetry
+is required:
+
+```powershell
+node .\apps\cli\bin\agent-scope.mjs run claude -- `
+  --print `
+  --output-format stream-json `
+  --verbose `
+  --include-hook-events `
+  --include-partial-messages `
+  -p "your task"
+```
+
+Claude does not currently provide a stable future-ETA field. Dashboard ETA is
+therefore an evidence-based estimate; provider-reported latency is shown
+separately when available. Explicit native milestones are mapped when present,
+but no milestone stream was observed in every real Claude run.
+
 ## Manual provider smoke
 
 Real provider sessions depend on the locally installed CLI, endpoint, model,

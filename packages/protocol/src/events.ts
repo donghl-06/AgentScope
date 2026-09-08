@@ -97,6 +97,7 @@ export interface ToolCallStartedPayload {
 export interface ToolCallFinishedPayload {
   readonly toolName: string;
   readonly success: boolean;
+  readonly toolCallId?: string;
   readonly durationMs?: number;
   readonly errorCode?: string;
 }

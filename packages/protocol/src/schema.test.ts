@@ -57,7 +57,7 @@ describe('Protocol runtime schemas', () => {
       planning: {},
       agent_message: {},
       tool_call_started: { toolName: 'tool' },
-      tool_call_finished: { toolName: 'tool', success: true },
+      tool_call_finished: { toolName: 'tool', toolCallId: 'call-1', success: true },
       file_read: { path: 'file.ts' },
       file_write: { path: 'file.ts' },
       command_started: {},
@@ -67,9 +67,16 @@ describe('Protocol runtime schemas', () => {
       test_failed: {},
       milestone_started: { milestoneId: 'm1' },
       milestone_completed: { milestoneId: 'm1' },
-      provider_info: { model: 'model-1' },
+      provider_info: { model: 'model-1', toolCount: 3 },
       provider_event: { providerEventType: 'stream_event' },
-      usage_updated: { usage: { inputTokens: 1, outputTokens: 2 } },
+      usage_updated: {
+        usage: {
+          inputTokens: 1,
+          outputTokens: 2,
+          thinkingTokensDelta: 1,
+          firstContentFrameMs: 10,
+        },
+      },
       blocked: { reason: 'needs input' },
       unblocked: {},
       error: { code: 'E_TEST', message: 'failure' },
@@ -108,5 +115,29 @@ describe('Protocol runtime schemas', () => {
     expect(isSessionState(state)).toBe(true);
     expect(() => assertSessionState(state)).not.toThrow();
     expect(isSessionState({ ...state, progress: { ...state.progress, value: 2 } })).toBe(false);
+  });
+
+  it('validates normalized provider telemetry on session state', () => {
+    const state = createInitialSessionState('session-telemetry', 1_700_000_000_000);
+    const telemetryState = {
+      ...state,
+      telemetry: {
+        providerInfo: { model: 'model-1', toolCount: 2 },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheCreation5mInputTokens: 3,
+          thinkingTokensDelta: 2,
+          serverToolUseRequests: 1,
+          ttftStreamMs: 12,
+        },
+        nativeEventCounts: { assistant: 1, 'stream_event/message_delta': 2 },
+        toolCallCount: 1,
+        toolCallFinishedCount: 1,
+        toolCallErrorCount: 0,
+      },
+    };
+    expect(isSessionState(telemetryState)).toBe(true);
+    expect(() => assertSessionState(telemetryState)).not.toThrow();
   });
 });
