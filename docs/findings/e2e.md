@@ -172,10 +172,13 @@ above while continuing to delete its temporary database.
   structured `run codex -- ...` path.
 - Fake PTY regression covered a Codex `›` ready prompt, ordinary input, output,
   turn completion, observer evidence, and session cleanup. The full unit suite
-  passed 255 tests and the integration suite passed 5 tests after this change.
+  passed 256 tests and the integration suite passed 5 tests after this change.
 - A Windows native wrapper smoke launched the installed Node `.cmd` shim with
   `codex --no-alt-screen --version` and returned `codex-cli 0.152.1`; the
   temporary SQLite database was removed afterward.
+- The explicit `AGENTSCOPE_CODEX_EXECUTABLE` `.cmd` override path was exercised
+  with a fake Windows Node shim and now resolves to an argument-safe `node`
+  plus script invocation instead of passing a `.cmd` directly to the PTY.
 - This does not claim authenticated Codex multi-turn provider behavior or
   provider-native token/tool/milestone telemetry. Those remain the final user
   acceptance and structured-vs-TTY capability boundary documented in
