@@ -413,6 +413,11 @@ function normalizeResultUsage(message: Record<string, unknown>): UsageSnapshot |
   const iterations = numberValue(message.iterations);
   const inferenceGeo = stringValue(message.inference_geo);
   const speed = stringValue(message.speed);
+  const permissionDenialCount = arrayLength(message.permission_denials);
+  const turnCount = numberValue(message.num_turns);
+  const terminalReason = stringValue(message.terminal_reason);
+  const fastModeState = stringValue(message.fast_mode_state);
+  const apiErrorStatus = numberValue(message.api_error_status);
   const model = stringValue(message.model);
   const timing: UsageSnapshot = {
     ...(durationMs === undefined ? {} : { durationMs }),
@@ -425,6 +430,11 @@ function normalizeResultUsage(message: Record<string, unknown>): UsageSnapshot |
     ...(iterations === undefined ? {} : { iterations }),
     ...(inferenceGeo === undefined ? {} : { inferenceGeo }),
     ...(speed === undefined ? {} : { speed }),
+    ...(permissionDenialCount === undefined ? {} : { permissionDenialCount }),
+    ...(turnCount === undefined ? {} : { turnCount }),
+    ...(terminalReason === undefined ? {} : { terminalReason }),
+    ...(fastModeState === undefined ? {} : { fastModeState }),
+    ...(apiErrorStatus === undefined ? {} : { apiErrorStatus }),
     ...(totalCostUsd === undefined ? {} : { totalCostUsd }),
     ...(model === undefined ? {} : { model }),
   };
@@ -521,6 +531,10 @@ function sumRecordNumbers(value: Record<string, unknown> | undefined): number | 
   return numbers.length === 0 ? undefined : numbers.reduce((total, item) => total + item, 0);
 }
 
+function arrayLength(value: unknown): number | undefined {
+  return Array.isArray(value) ? value.length : undefined;
+}
+
 function metadataFromRecord(
   record: Record<string, unknown>,
 ): Record<string, string | number | boolean> {
@@ -550,6 +564,9 @@ function metadataFromRecord(
     'inference_geo',
     'speed',
     'service_tier',
+    'terminal_reason',
+    'fast_mode_state',
+    'api_error_status',
   ];
   const metadata: Record<string, string | number | boolean> = {};
   for (const key of allowed) {

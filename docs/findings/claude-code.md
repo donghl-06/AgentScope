@@ -56,7 +56,7 @@ The successful minimal run produced a `result` with `subtype=success`, one turn,
 | Session info | observed | `system/init` exposes a provider session id | AgentScope generates its own session id |
 | Resume/session id | CLI surface present | `--continue`, `--resume`, and background attach are documented by `--help`; resume semantics still need a dedicated spike | treat provider id as optional metadata |
 | Hooks | CLI surface present | hooks are documented by the CLI, but no hook contract was made a V0 dependency | process/workspace observers |
-| Token/cost/timing | normalized when emitted | input/output/cache/thinking/reasoning tokens, cost, API/TTFT/queue timing, service tier and model are projected; any absent field remains absent | Dashboard shows `Not reported` rather than fabricating values |
+| Token/cost/timing | normalized when emitted | input/output/cache/thinking/reasoning tokens, cost, API/TTFT/queue timing, service tier, model, provider turn/permission-denial counts and terminal mode are projected; any absent field remains absent | Dashboard shows `Not reported` rather than fabricating values |
 | Native event phases | normalized | top-level event families and stream phases are counted in `provider_event` and session telemetry | unknown families remain diagnostic metadata |
 | Milestones | conditional | explicit native milestone records are mapped when Claude emits an id/title; no stable milestone contract was observed in the tested stream | progress falls back to activity and verification evidence |
 | User interruption | pending | interactive trust-screen cancellation was observed, but no reliable structured Ctrl+C fixture was captured | process signal handling in Phase 5 |

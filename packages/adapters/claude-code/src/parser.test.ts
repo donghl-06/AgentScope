@@ -226,6 +226,11 @@ describe('Claude Code stream parser', () => {
         ttft_stream_ms: 20,
         first_content_frame_ms: 30,
         iterations: 2,
+        permission_denials: [{ tool_name: 'Bash' }],
+        num_turns: 2,
+        terminal_reason: 'completed',
+        fast_mode_state: 'off',
+        api_error_status: 0,
         speed: 'standard',
       }),
       context,
@@ -254,6 +259,11 @@ describe('Claude Code stream parser', () => {
         firstContentFrameMs: 30,
         iterations: 2,
         speed: 'standard',
+        permissionDenialCount: 1,
+        turnCount: 2,
+        terminalReason: 'completed',
+        fastModeState: 'off',
+        apiErrorStatus: 0,
       },
     });
   });

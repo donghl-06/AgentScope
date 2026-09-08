@@ -7,7 +7,8 @@ tool result、stream phase 和 `result` 生命周期映射；增量 decoder 可�
 未知记录会被安全计数，malformed JSON 不会使 parser 抛出异常。
 
 结构化路径会归一化 provider session/model/CLI 能力目录、input/output/cache/thinking/reasoning
-token、cost、API/TTFT/首帧/队列 timing、native event phase、工具调用成功/失败/耗时，以及
+token、cost、API/TTFT/首帧/队列 timing、provider turn/permission-denial 计数、terminal mode、
+native event phase、工具调用成功/失败/耗时，以及
 显式 milestone。Parser 只保留低敏摘要、计数和工具名称，不保存 prompt、命令内容、完整工具输出、
 secret 或完整 provider 输出。普通 PTY 多轮仍由 interactive runner 负责；PTY 本身不能提供 Claude
 的完整 JSONL usage frame，使用者需要 provider-native telemetry 时应走 structured `run claude`。

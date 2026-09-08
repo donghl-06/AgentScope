@@ -78,6 +78,8 @@ export interface UsageSnapshot {
   readonly thinkingTokensDelta?: number;
   readonly reasoningTokens?: number;
   readonly serverToolUseRequests?: number;
+  readonly permissionDenialCount?: number;
+  readonly turnCount?: number;
   readonly totalTokens?: number;
   readonly totalCostUsd?: number;
   readonly durationMs?: number;
@@ -90,6 +92,9 @@ export interface UsageSnapshot {
   readonly iterations?: number;
   readonly inferenceGeo?: string;
   readonly speed?: string;
+  readonly terminalReason?: string;
+  readonly fastModeState?: string;
+  readonly apiErrorStatus?: number;
   readonly model?: string;
   readonly serviceTier?: string;
 }

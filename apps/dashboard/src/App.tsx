@@ -736,6 +736,11 @@ function ProviderTelemetryDetails({ telemetry }: { telemetry: ProviderTelemetry 
         <TelemetryFact label="Cache create" value={formatCount(usage?.cacheCreationInputTokens)} />
         <TelemetryFact label="Thinking tokens" value={formatCount(usage?.thinkingTokens)} />
         <TelemetryFact label="Reasoning tokens" value={formatCount(usage?.reasoningTokens)} />
+        <TelemetryFact label="Provider turns" value={formatCount(usage?.turnCount)} />
+        <TelemetryFact
+          label="Permission denials"
+          value={formatCount(usage?.permissionDenialCount)}
+        />
         <TelemetryFact label="Total cost" value={formatCost(usage?.totalCostUsd)} />
         <TelemetryFact label="API duration" value={formatMilliseconds(usage?.durationApiMs)} />
         <TelemetryFact label="TTFT" value={formatMilliseconds(usage?.ttftMs)} />
@@ -881,6 +886,12 @@ function eventDetail(event: StoredEvent['event']): string | undefined {
     }
     if (typeof usage.totalTokens === 'number') {
       fields.push(`total ${formatCount(usage.totalTokens)}`);
+    }
+    if (typeof usage.turnCount === 'number') {
+      fields.push(`turns ${formatCount(usage.turnCount)}`);
+    }
+    if (typeof usage.permissionDenialCount === 'number') {
+      fields.push(`denials ${formatCount(usage.permissionDenialCount)}`);
     }
     if (typeof usage.totalCostUsd === 'number') fields.push(formatCost(usage.totalCostUsd));
     if (typeof usage.durationApiMs === 'number')

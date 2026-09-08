@@ -40,8 +40,9 @@ The provider-observability events are intentionally normalized and additive:
 - `usage_updated` carries cumulative token, cache, thinking/reasoning, cost,
   service-tier, and latency snapshots when the provider emits them. Known Claude
   timing fields include API duration, time-to-first-token, stream TTFT, first
-  content frame, queue depth, iterations, and speed. Missing fields remain
-  missing; the adapter never estimates a provider-reported counter.
+  content frame, queue depth, iterations, speed, provider turn count, permission
+  denial count, and terminal mode/error context. Missing fields remain missing;
+  the adapter never estimates a provider-reported counter.
 - `provider_event` preserves the provider event family and a phase/subtype plus
   a small scalar metadata allow-list. This keeps native event coverage useful for
   diagnostics without persisting raw JSONL, tool input, command text, output,
