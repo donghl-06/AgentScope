@@ -569,8 +569,8 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 11.3 — 发布文档
 
-- [ ] 更新 README、配置、troubleshooting、adapter guide 和 known issues。
-- [ ] 发布 V1 acceptance matrix，为每个支持声明提供证据。
+- [x] 更新 README、配置、troubleshooting、adapter guide 和 known issues。
+- [x] 发布 V1 acceptance matrix，为每个支持声明提供证据（`docs/v1-acceptance.md`，2026-09-09）。
 - [ ] 将未覆盖的终端主机/provider 版本记录为 experimental。
 - [ ] 创建最终本地 release-prep commit；只有得到用户明确确认后才 push/tag。
 
