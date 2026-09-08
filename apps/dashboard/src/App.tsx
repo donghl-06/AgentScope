@@ -7,6 +7,7 @@ import type {
 } from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
+import { evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
 import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline.js';
 
@@ -576,20 +577,26 @@ function TurnEvidenceDetails({
         <small>No evidence is attached to this turn yet.</small>
       ) : (
         <ol className="turn-evidence-list">
-          {evidence.map((item) => (
-            <li key={item.id}>
-              <div className="turn-evidence-heading">
-                <strong>{item.reason}</strong>
-                <span>
-                  {item.source} · {item.kind}
-                </span>
-              </div>
-              <small>
-                {formatTimestamp(item.timestamp)} · confidence{' '}
-                {Math.round(item.confidence * 100)}% · {item.key}
-              </small>
-            </li>
-          ))}
+          {evidence.map((item) => {
+            const payloadSummary = evidencePayloadSummary(item.payload);
+            return (
+              <li key={item.id}>
+                <div className="turn-evidence-heading">
+                  <strong>{item.reason}</strong>
+                  <span>
+                    {item.source} · {item.kind}
+                  </span>
+                </div>
+                <small>
+                  {formatTimestamp(item.timestamp)} · confidence{' '}
+                  {Math.round(item.confidence * 100)}% · {item.key}
+                </small>
+                {payloadSummary !== undefined && (
+                  <code className="turn-evidence-payload">{payloadSummary}</code>
+                )}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

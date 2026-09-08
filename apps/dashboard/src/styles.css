@@ -651,6 +651,18 @@ h3 {
   font-size: 10px;
   white-space: nowrap;
 }
+.turn-evidence-payload {
+  display: block;
+  overflow: hidden;
+  color: #8fb1d0;
+  font:
+    10px ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .turn-timeline {
   display: grid;
   gap: 7px;
