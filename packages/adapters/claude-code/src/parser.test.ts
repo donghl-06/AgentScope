@@ -14,12 +14,32 @@ describe('Claude Code stream parser', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'session_started',
+      'provider_info',
+      'provider_event',
       'agent_message',
+      'provider_event',
+      'usage_updated',
+      'provider_event',
       'session_finished',
     ]);
-    expect(events[0]?.payload).toEqual({ providerSessionId: '<provider-session-id>' });
-    expect(events[1]?.payload).toEqual({ summary: 'assistant message' });
-    expect(events[2]?.payload).toEqual({ reason: 'completed', providerOutcome: 'success' });
+    expect(events.find((event) => event.type === 'session_started')?.payload).toEqual({
+      providerSessionId: '<provider-session-id>',
+    });
+    expect(events.find((event) => event.type === 'provider_info')?.payload).toMatchObject({
+      providerSessionId: '<provider-session-id>',
+      model: '<configured-model>',
+      cliVersion: '2.1.259',
+    });
+    expect(events.find((event) => event.type === 'agent_message')?.payload).toEqual({
+      summary: 'assistant message',
+    });
+    expect(events.find((event) => event.type === 'usage_updated')?.payload).toMatchObject({
+      usage: { durationMs: 3192 },
+    });
+    expect(events.find((event) => event.type === 'session_finished')?.payload).toEqual({
+      reason: 'completed',
+      providerOutcome: 'success',
+    });
   });
 
   it('maps tool calls and failures while excluding command contents', async () => {
@@ -32,13 +52,27 @@ describe('Claude Code stream parser', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'session_started',
+      'provider_info',
+      'provider_event',
       'tool_call_started',
+      'provider_event',
       'tool_call_finished',
+      'provider_event',
+      'usage_updated',
+      'provider_event',
       'session_finished',
     ]);
-    expect(events[1]?.payload).toMatchObject({ toolName: 'Bash' });
-    expect(events[1]?.payload).not.toHaveProperty('command');
-    expect(events[2]?.payload).toEqual({ toolName: 'unknown', success: false });
+    expect(events.find((event) => event.type === 'tool_call_started')?.payload).toMatchObject({
+      toolName: 'Bash',
+    });
+    expect(events.find((event) => event.type === 'tool_call_started')?.payload).not.toHaveProperty(
+      'command',
+    );
+    expect(events.find((event) => event.type === 'tool_call_finished')?.payload).toMatchObject({
+      toolName: 'unknown',
+      success: false,
+      errorCode: 'provider_tool_error',
+    });
   });
 
   it('marks malformed or unsupported lines without throwing', () => {
@@ -47,9 +81,9 @@ describe('Claude Code stream parser', () => {
       ignored: false,
       malformed: true,
     });
-    expect(parseClaudeStreamLine('{"type":"unknown"}', context)).toEqual({
-      events: [],
-      ignored: true,
+    expect(parseClaudeStreamLine('{"type":"unknown"}', context)).toMatchObject({
+      ignored: false,
+      events: [{ type: 'provider_event', payload: { providerEventType: 'unknown' } }],
     });
   });
 
@@ -62,6 +96,6 @@ describe('Claude Code stream parser', () => {
     expect(second[0]?.events[0]?.type).toBe('session_started');
     expect(second[0]?.events[0]?.payload).toEqual({ providerSessionId: 'provider-1' });
     expect(decoder.push('{"type":"result"}')).toEqual([]);
-    expect(decoder.flush()[0]?.events[0]?.type).toBe('session_finished');
+    expect(decoder.flush()[0]?.events.at(-1)?.type).toBe('session_finished');
   });
 });

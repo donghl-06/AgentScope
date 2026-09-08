@@ -162,6 +162,46 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
     milestoneId: Type.String({ minLength: 1 }),
     title: Type.Optional(Type.String({ minLength: 1 })),
   }),
+  provider_info: Type.Object({
+    providerSessionId: Type.Optional(Type.String({ minLength: 1 })),
+    model: Type.Optional(Type.String({ minLength: 1 })),
+    cliVersion: Type.Optional(Type.String({ minLength: 1 })),
+    permissionMode: Type.Optional(Type.String({ minLength: 1 })),
+    outputFormat: Type.Optional(Type.String({ minLength: 1 })),
+    capabilityLabels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  }),
+  provider_event: Type.Object({
+    providerEventType: Type.String({ minLength: 1 }),
+    subtype: Type.Optional(Type.String({ minLength: 1 })),
+    phase: Type.Optional(Type.String({ minLength: 1 })),
+    name: Type.Optional(Type.String({ minLength: 1 })),
+    metadata: Type.Optional(
+      Type.Record(
+        Type.String({ minLength: 1 }),
+        Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
+      ),
+    ),
+  }),
+  usage_updated: Type.Object({
+    usage: Type.Object({
+      inputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      outputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      cacheCreationInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      cacheReadInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      thinkingTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      totalTokens: Type.Optional(Type.Number({ minimum: 0 })),
+      totalCostUsd: Type.Optional(Type.Number({ minimum: 0 })),
+      durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+      durationApiMs: Type.Optional(Type.Number({ minimum: 0 })),
+      ttftMs: Type.Optional(Type.Number({ minimum: 0 })),
+      ttftStreamMs: Type.Optional(Type.Number({ minimum: 0 })),
+      timeToRequestMs: Type.Optional(Type.Number({ minimum: 0 })),
+      firstContentFrameMs: Type.Optional(Type.Number({ minimum: 0 })),
+      queuedTurnCount: Type.Optional(Type.Number({ minimum: 0 })),
+      model: Type.Optional(Type.String({ minLength: 1 })),
+      serviceTier: Type.Optional(Type.String({ minLength: 1 })),
+    }),
+  }),
   blocked: Type.Object({ reason: Type.String({ minLength: 1 }) }),
   unblocked: Type.Object({ reason: Type.Optional(Type.String()) }),
   error: Type.Object({
@@ -267,6 +307,43 @@ const verificationSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const providerInfoSchema = Type.Object({
+  providerSessionId: Type.Optional(Type.String({ minLength: 1 })),
+  model: Type.Optional(Type.String({ minLength: 1 })),
+  cliVersion: Type.Optional(Type.String({ minLength: 1 })),
+  permissionMode: Type.Optional(Type.String({ minLength: 1 })),
+  outputFormat: Type.Optional(Type.String({ minLength: 1 })),
+  capabilityLabels: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+});
+
+const usageSnapshotSchema = Type.Object({
+  inputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  outputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  cacheCreationInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  cacheReadInputTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  thinkingTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  totalTokens: Type.Optional(Type.Number({ minimum: 0 })),
+  totalCostUsd: Type.Optional(Type.Number({ minimum: 0 })),
+  durationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  durationApiMs: Type.Optional(Type.Number({ minimum: 0 })),
+  ttftMs: Type.Optional(Type.Number({ minimum: 0 })),
+  ttftStreamMs: Type.Optional(Type.Number({ minimum: 0 })),
+  timeToRequestMs: Type.Optional(Type.Number({ minimum: 0 })),
+  firstContentFrameMs: Type.Optional(Type.Number({ minimum: 0 })),
+  queuedTurnCount: Type.Optional(Type.Number({ minimum: 0 })),
+  model: Type.Optional(Type.String({ minLength: 1 })),
+  serviceTier: Type.Optional(Type.String({ minLength: 1 })),
+});
+
+const providerTelemetrySchema = Type.Object({
+  providerInfo: Type.Optional(providerInfoSchema),
+  usage: Type.Optional(usageSnapshotSchema),
+  nativeEventCounts: Type.Optional(
+    Type.Record(Type.String({ minLength: 1 }), Type.Integer({ minimum: 0 })),
+  ),
+  toolCallCount: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+
 const sessionStatusSchema = Type.Union([
   Type.Literal('starting'),
   Type.Literal('running'),
@@ -288,6 +365,7 @@ export const SessionStateSchema = Type.Object(
     eta: Type.Optional(etaSchema),
     workspace: Type.Optional(workspaceSchema),
     verification: verificationSchema,
+    telemetry: Type.Optional(providerTelemetrySchema),
   },
   { additionalProperties: false },
 );
@@ -308,6 +386,7 @@ const turnStateSchema = Type.Object(
     progress: progressSchema,
     eta: Type.Optional(etaSchema),
     verification: verificationSchema,
+    telemetry: Type.Optional(providerTelemetrySchema),
   },
   { additionalProperties: false },
 );

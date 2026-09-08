@@ -1,4 +1,10 @@
-import type { Activity, EtaResult, ProgressResult, VerificationState } from './session.js';
+import type {
+  Activity,
+  EtaResult,
+  ProgressResult,
+  ProviderTelemetry,
+  VerificationState,
+} from './session.js';
 
 export const TURN_STATUSES = [
   'queued',
@@ -32,6 +38,7 @@ export interface TurnState {
   readonly progress: ProgressResult;
   readonly eta?: EtaResult;
   readonly verification: VerificationState;
+  readonly telemetry?: ProviderTelemetry;
 }
 
 export function isTerminalTurnStatus(status: TurnStatus): status is TerminalTurnStatus {

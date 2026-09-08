@@ -28,9 +28,9 @@ const CAPABILITIES: AgentCapabilities = {
   toolCalls: true,
   fileEvents: false,
   commandEvents: true,
-  tokenUsage: false,
+  tokenUsage: true,
   sessionInfo: true,
-  milestones: false,
+  milestones: true,
 };
 
 const SOURCE: EventSource = {

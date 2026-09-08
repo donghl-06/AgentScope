@@ -1,4 +1,11 @@
-import type { Activity, EtaResult, ProgressResult, VerificationState } from './session.js';
+import type {
+  Activity,
+  EtaResult,
+  ProgressResult,
+  ProviderInfo,
+  UsageSnapshot,
+  VerificationState,
+} from './session.js';
 import type { TurnFinishReason, TurnStatus } from './turn.js';
 
 export const AGENT_EVENT_TYPES = [
@@ -20,6 +27,9 @@ export const AGENT_EVENT_TYPES = [
   'test_failed',
   'milestone_started',
   'milestone_completed',
+  'provider_info',
+  'provider_event',
+  'usage_updated',
   'blocked',
   'unblocked',
   'error',
@@ -127,6 +137,20 @@ export interface MilestonePayload {
   readonly title?: string;
 }
 
+export type ProviderInfoPayload = ProviderInfo;
+
+export interface ProviderEventPayload {
+  readonly providerEventType: string;
+  readonly subtype?: string;
+  readonly phase?: string;
+  readonly name?: string;
+  readonly metadata?: Readonly<Record<string, string | number | boolean>>;
+}
+
+export interface UsageUpdatedPayload {
+  readonly usage: UsageSnapshot;
+}
+
 export interface BlockedPayload {
   readonly reason: string;
 }
@@ -159,6 +183,9 @@ export interface AgentEventPayloadMap {
   readonly test_failed: TestFailedPayload;
   readonly milestone_started: MilestonePayload;
   readonly milestone_completed: MilestonePayload;
+  readonly provider_info: ProviderInfoPayload;
+  readonly provider_event: ProviderEventPayload;
+  readonly usage_updated: UsageUpdatedPayload;
   readonly blocked: BlockedPayload;
   readonly unblocked: UnblockedPayload;
   readonly error: ErrorPayload;

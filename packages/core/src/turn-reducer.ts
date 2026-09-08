@@ -35,6 +35,7 @@ function projectObserverEvent(state: TurnState, event: AgentEvent): TurnState {
     progress: state.progress,
     ...(state.eta === undefined ? {} : { eta: state.eta }),
     verification: state.verification,
+    ...(state.telemetry === undefined ? {} : { telemetry: state.telemetry }),
   };
   const projected = reduceSessionState(sessionState, event);
   const status = turnStatusForSession(projected.status);
@@ -47,6 +48,7 @@ function projectObserverEvent(state: TurnState, event: AgentEvent): TurnState {
     progress: projected.progress,
     ...(projected.eta === undefined ? {} : { eta: projected.eta }),
     verification: projected.verification,
+    ...(projected.telemetry === undefined ? {} : { telemetry: projected.telemetry }),
   };
   if (isTerminalTurnStatus(status))
     return { ...base, endedAt: projected.endedAt ?? event.timestamp };

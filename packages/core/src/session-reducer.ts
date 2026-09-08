@@ -4,11 +4,14 @@ import type {
   CommandStartedPayload,
   MilestonePayload,
   Milestone,
+  ProviderEventPayload,
+  ProviderInfoPayload,
   SessionFinishedPayload,
   SessionStatus,
   TurnStartedPayload,
   TurnFinishedPayload,
   TurnUpdatedPayload,
+  UsageUpdatedPayload,
   TestFailedPayload,
   TestPassedPayload,
   TestStartedPayload,
@@ -150,6 +153,59 @@ function reduceCommandFinished(state: SessionState, event: ReducerEvent): Sessio
   return state;
 }
 
+function reduceProviderInfo(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as ProviderInfoPayload;
+  return {
+    ...state,
+    telemetry: {
+      ...state.telemetry,
+      providerInfo: {
+        ...state.telemetry?.providerInfo,
+        ...payload,
+      },
+    },
+  };
+}
+
+function reduceProviderEvent(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as ProviderEventPayload;
+  const counts = state.telemetry?.nativeEventCounts ?? {};
+  return {
+    ...state,
+    telemetry: {
+      ...state.telemetry,
+      nativeEventCounts: {
+        ...counts,
+        [payload.providerEventType]: (counts[payload.providerEventType] ?? 0) + 1,
+      },
+    },
+  };
+}
+
+function reduceUsage(state: SessionState, event: ReducerEvent): SessionState {
+  const payload = event.payload as UsageUpdatedPayload;
+  return {
+    ...state,
+    telemetry: {
+      ...state.telemetry,
+      usage: {
+        ...state.telemetry?.usage,
+        ...payload.usage,
+      },
+    },
+  };
+}
+
+function incrementToolCallCount(state: SessionState): SessionState {
+  return {
+    ...state,
+    telemetry: {
+      ...state.telemetry,
+      toolCallCount: (state.telemetry?.toolCallCount ?? 0) + 1,
+    },
+  };
+}
+
 /** Pure, deterministic projection from one normalized event into SessionState. */
 export function reduceSessionState(state: SessionState, event: AgentEvent): SessionState {
   if (isTerminalSessionStatus(state.status) && event.type !== 'session_finished') {
@@ -217,7 +273,10 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
         currentActivity: activity('implementation', 'agent message', event),
       };
     case 'tool_call_started':
-      return { ...state, currentActivity: activity('implementation', 'tool call', event) };
+      return incrementToolCallCount({
+        ...state,
+        currentActivity: activity('implementation', 'tool call', event),
+      });
     case 'tool_call_finished':
       return { ...state, currentActivity: activity('implementation', 'tool call finished', event) };
     case 'file_read':
@@ -253,6 +312,12 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
       return updateMilestone(state, event, 'active');
     case 'milestone_completed':
       return updateMilestone(state, event, 'completed');
+    case 'provider_info':
+      return reduceProviderInfo(state, event);
+    case 'provider_event':
+      return reduceProviderEvent(state, event);
+    case 'usage_updated':
+      return reduceUsage(state, event);
     case 'blocked': {
       const reason = (event.payload as { reason: string }).reason;
       return { ...state, status: 'blocked', currentActivity: activity('blocked', reason, event) };

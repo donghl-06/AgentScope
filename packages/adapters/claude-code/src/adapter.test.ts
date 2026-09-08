@@ -40,13 +40,23 @@ describe('Claude Code adapter lifecycle', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'session_started',
+      'provider_info',
+      'provider_event',
       'tool_call_started',
+      'provider_event',
+      'provider_event',
       'session_finished',
     ]);
-    expect(events[0]?.payload).toEqual({ providerSessionId: 'provider-1' });
-    expect(events[1]?.payload).toMatchObject({ toolName: 'Bash' });
-    expect(events[1]?.payload).not.toHaveProperty('command');
-    expect(events[2]?.payload).toMatchObject({ reason: 'completed' });
+    expect(events.find((event) => event.type === 'session_started')?.payload).toEqual({
+      providerSessionId: 'provider-1',
+    });
+    expect(events.find((event) => event.type === 'tool_call_started')?.payload).toMatchObject({
+      toolName: 'Bash',
+    });
+    expect(events.find((event) => event.type === 'tool_call_started')?.payload).not.toHaveProperty(
+      'command',
+    );
+    expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
   });
 
   it('maps non-zero process exits to failed and stop to interrupted', async () => {

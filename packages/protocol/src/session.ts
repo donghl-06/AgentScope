@@ -49,6 +49,43 @@ export interface VerificationState {
   readonly overall: VerificationStatus;
 }
 
+/** Provider metadata that is safe to expose without retaining the transcript. */
+export interface ProviderInfo {
+  readonly providerSessionId?: string;
+  readonly model?: string;
+  readonly cliVersion?: string;
+  readonly permissionMode?: string;
+  readonly outputFormat?: string;
+  readonly capabilityLabels?: readonly string[];
+}
+
+/** Normalized provider usage and timing telemetry. Values are cumulative snapshots. */
+export interface UsageSnapshot {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cacheCreationInputTokens?: number;
+  readonly cacheReadInputTokens?: number;
+  readonly thinkingTokens?: number;
+  readonly totalTokens?: number;
+  readonly totalCostUsd?: number;
+  readonly durationMs?: number;
+  readonly durationApiMs?: number;
+  readonly ttftMs?: number;
+  readonly ttftStreamMs?: number;
+  readonly timeToRequestMs?: number;
+  readonly firstContentFrameMs?: number;
+  readonly queuedTurnCount?: number;
+  readonly model?: string;
+  readonly serviceTier?: string;
+}
+
+export interface ProviderTelemetry {
+  readonly providerInfo?: ProviderInfo;
+  readonly usage?: UsageSnapshot;
+  readonly nativeEventCounts?: Readonly<Record<string, number>>;
+  readonly toolCallCount?: number;
+}
+
 export interface ProgressReason {
   readonly code: string;
   readonly message: string;
@@ -78,6 +115,7 @@ export interface SessionState {
   readonly eta?: EtaResult;
   readonly workspace?: WorkspaceState;
   readonly verification: VerificationState;
+  readonly telemetry?: ProviderTelemetry;
 }
 
 export function isTerminalSessionStatus(status: SessionStatus): status is TerminalSessionStatus {
