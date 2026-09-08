@@ -79,6 +79,13 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - [x] 对当前 Claude CLI 做旁路能力探测：`--include-hook-events` 及 structured stream 选项只适用于 print/JSONL 路径，未发现可依赖的普通 TTY 原生事件旁路。
 - [ ] 若未来 Claude CLI 提供稳定 hook/side-channel，再增加“TTY + 原生旁路”适配；在此之前保持 observer fallback，不解析完整 ANSI TUI 画面。
 
+### 2026-09-08 — Dashboard 发现与筛选体验
+
+- [x] Timeline 支持在已加载事件中按关键词筛选，并区分 turn 边界、provider 原生事件和 observer activity。
+- [x] Turns 支持按标题、prompt、当前 activity、evidence 摘要和事件详情搜索，并按 active/waiting/blocked/failed/completed/interrupted 筛选。
+- [x] 每个 turn 使用稳定 DOM 锚点，展开详情仍保留原有证据、projection 和 timeline 结构。
+- [ ] 桌面通知仍需浏览器权限与人工体验确认，保持为可选增强。
+
 ### 第一版 V1 明确不做
 
 - 替换原生 Claude Code 终端或审批界面。

@@ -19,6 +19,9 @@ All notable changes to AgentScope are recorded here.
   database backup/restore procedure.
 - Added the V0 acceptance matrix and the Known Issues record in
   `docs/v0-acceptance.md` and `docs/known-issues.md`.
+- Added live TTY observer activity projection, an opt-in process-tree view for
+  AgentScope-owned wrappers (PID/parent PID/name only), and Dashboard filters
+  for loaded timeline events and turn evidence.
 
 ## 0.1.0
 

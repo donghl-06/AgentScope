@@ -499,18 +499,96 @@ function TurnList({
   events: readonly StoredEvent[];
 }) {
   const [expandedTurnId, setExpandedTurnId] = useState<string>();
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'active' | 'waiting' | 'blocked' | 'failed' | 'completed' | 'interrupted'
+  >('all');
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleTurns = turns.filter((turn) => {
+    if (statusFilter === 'active' && !['queued', 'running'].includes(turn.status)) return false;
+    if (statusFilter !== 'all' && statusFilter !== 'active' && turn.status !== statusFilter) {
+      return false;
+    }
+    if (normalizedQuery === '') return true;
+    const turnEvidence = evidence.filter((item) => evidenceBelongsToTurn(item, turn));
+    const evidenceText = turnEvidence
+      .map((item) => `${item.reason} ${evidencePayloadSummary(item.payload) ?? ''}`)
+      .join(' ');
+    const eventText = events
+      .filter((item) => eventBelongsToTurn(item, turn.id))
+      .map(({ event }) => `${event.type} ${eventDetail(event) ?? ''}`)
+      .join(' ');
+    const searchable = [
+      turn.title,
+      turn.prompt,
+      turn.status,
+      turn.state.currentActivity?.label,
+      evidenceText,
+      eventText,
+    ]
+      .filter((value): value is string => value !== undefined)
+      .join(' ')
+      .toLocaleLowerCase();
+    return searchable.includes(normalizedQuery);
+  });
+  const hasTurnFilter = statusFilter !== 'all' || normalizedQuery !== '';
 
   return (
     <div className="evidence-card">
       <span className="eyebrow">TURNS</span>
-      <strong>
-        {turns.length} task{turns.length === 1 ? '' : 's'}
-      </strong>
-      {turns.length === 0 ? (
-        <small>No turn projection recorded yet.</small>
+      <div className="turn-heading">
+        <strong>
+          {hasTurnFilter ? `${visibleTurns.length} / ${turns.length}` : turns.length} task
+          {turns.length === 1 ? '' : 's'}
+        </strong>
+        <div className="turn-toolbar">
+          <label>
+            <span className="sr-only">Search turns and evidence</span>
+            <input
+              className="timeline-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search turns"
+              type="search"
+            />
+          </label>
+          <label className="filter-label">
+            <span className="sr-only">Filter turns by status</span>
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as
+                    | 'all'
+                    | 'active'
+                    | 'waiting'
+                    | 'blocked'
+                    | 'failed'
+                    | 'completed'
+                    | 'interrupted',
+                )
+              }
+            >
+              <option value="all">All turns</option>
+              <option value="active">Active</option>
+              <option value="waiting">Waiting</option>
+              <option value="blocked">Blocked</option>
+              <option value="failed">Failed</option>
+              <option value="completed">Completed</option>
+              <option value="interrupted">Interrupted</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      {visibleTurns.length === 0 ? (
+        <small>
+          {turns.length === 0
+            ? 'No turn projection recorded yet.'
+            : 'No turns match this search or status filter.'}
+        </small>
       ) : (
         <ol className="turn-list">
-          {turns.map((turn) => (
+          {visibleTurns.map((turn) => (
             <TurnListItem
               key={turn.id}
               turn={turn}
@@ -542,7 +620,7 @@ function TurnListItem({
   onToggle: () => void;
 }) {
   return (
-    <li>
+    <li id={`turn-${turn.id}`}>
       <button className="turn-summary" type="button" aria-expanded={expanded} onClick={onToggle}>
         <span className="timeline-seq">{turn.sequence}</span>
         <span className="turn-summary-copy">
