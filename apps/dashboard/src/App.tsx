@@ -352,6 +352,31 @@ function SessionDetail({
   loading: boolean;
   onLoadMore: () => void;
 }) {
+  const [timelineQuery, setTimelineQuery] = useState('');
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'turn' | 'native' | 'observer'>(
+    'all',
+  );
+  const normalizedQuery = timelineQuery.trim().toLocaleLowerCase();
+  const visibleEvents = events.filter(({ event }) => {
+    if (timelineFilter === 'turn' && !event.type.startsWith('turn_')) return false;
+    if (
+      timelineFilter === 'native' &&
+      !(
+        event.type === 'provider_event' ||
+        event.type === 'provider_info' ||
+        event.type === 'usage_updated' ||
+        event.type.startsWith('tool_call_') ||
+        event.type.startsWith('milestone_')
+      )
+    ) {
+      return false;
+    }
+    if (timelineFilter === 'observer' && event.type !== 'observer_activity') return false;
+    if (normalizedQuery === '') return true;
+    const detail = eventDetail(event) ?? '';
+    return `${event.type} ${detail}`.toLocaleLowerCase().includes(normalizedQuery);
+  });
+  const hasTimelineFilter = timelineFilter !== 'all' || normalizedQuery !== '';
   return (
     <>
       <div className="panel-heading detail-heading">
@@ -394,7 +419,37 @@ function SessionDetail({
       <div className="timeline-heading">
         <h3>Timeline</h3>
         <div className="timeline-actions">
-          <span>{loading ? 'Refreshing…' : `${events.length} events`}</span>
+          <label className="timeline-search-label">
+            <span className="sr-only">Search loaded timeline events</span>
+            <input
+              className="timeline-search"
+              value={timelineQuery}
+              onChange={(event) => setTimelineQuery(event.target.value)}
+              placeholder="Search timeline"
+              type="search"
+            />
+          </label>
+          <label className="filter-label">
+            <span className="sr-only">Filter timeline events</span>
+            <select
+              value={timelineFilter}
+              onChange={(event) =>
+                setTimelineFilter(event.target.value as 'all' | 'turn' | 'native' | 'observer')
+              }
+            >
+              <option value="all">All events</option>
+              <option value="turn">Turn boundaries</option>
+              <option value="native">Provider events</option>
+              <option value="observer">Observer activity</option>
+            </select>
+          </label>
+          <span>
+            {loading
+              ? 'Refreshing…'
+              : hasTimelineFilter
+                ? `${visibleEvents.length} / ${events.length} events`
+                : `${events.length} events`}
+          </span>
           {eventsNextCursor !== undefined && (
             <button
               className="quiet-button quiet-button-small"
@@ -407,11 +462,15 @@ function SessionDetail({
           )}
         </div>
       </div>
-      {events.length === 0 ? (
-        <p className="empty-state">No events recorded.</p>
+      {visibleEvents.length === 0 ? (
+        <p className="empty-state">
+          {events.length === 0
+            ? 'No events recorded.'
+            : 'No loaded timeline events match this filter.'}
+        </p>
       ) : (
         <ol className="timeline">
-          {events.map(({ seq, event }) => (
+          {visibleEvents.map(({ seq, event }) => (
             <li key={event.id}>
               <span className="timeline-seq">{seq}</span>
               <div>
@@ -874,8 +933,7 @@ function eventDetail(event: StoredEvent['event']): string | undefined {
       summary?: unknown;
     };
     const label = typeof payload.label === 'string' ? payload.label : 'activity observed';
-    const source =
-      typeof payload.evidenceSource === 'string' ? payload.evidenceSource : 'observer';
+    const source = typeof payload.evidenceSource === 'string' ? payload.evidenceSource : 'observer';
     const kind = typeof payload.evidenceKind === 'string' ? payload.evidenceKind : 'signal';
     const summary = typeof payload.summary === 'string' ? ` · ${payload.summary}` : '';
     return `Observed ${source}/${kind}: ${label}${summary}`;

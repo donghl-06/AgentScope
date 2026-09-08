@@ -53,6 +53,25 @@ button {
   font: inherit;
   font-size: 12px;
 }
+.timeline-search {
+  width: 150px;
+  padding: 8px 10px;
+  border: 1px solid #334967;
+  border-radius: 8px;
+  background: #121f34;
+  color: #d7e5f6;
+  font: inherit;
+  font-size: 12px;
+}
+.timeline-search::placeholder {
+  color: #71839e;
+}
+.timeline-search:focus,
+.filter-label select:focus {
+  border-color: #68b1ff;
+  outline: 2px solid rgb(104 177 255 / 25%);
+  outline-offset: 1px;
+}
 .quiet-button-small {
   padding: 5px 8px;
   font-size: 11px;
@@ -564,6 +583,19 @@ h3 {
 .timeline-heading span {
   color: #8194ad;
   font-size: 12px;
+}
+@media (max-width: 760px) {
+  .timeline-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .timeline-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .timeline-search {
+    width: min(230px, 100%);
+  }
 }
 .timeline {
   display: grid;
