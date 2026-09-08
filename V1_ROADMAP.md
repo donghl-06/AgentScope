@@ -417,6 +417,7 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 - [x] 在 Dashboard turn 列表显示每轮 evidence 数量，并可展开查看来源、类型、原因、时间和置信度。
 - [x] 将 turn projection 的 Progress、ETA、Activity 和 verification 状态写入存储并在展开详情中展示；完成 turn 在没有验证证据时仍遵守 60% 安全上限。
 - [x] 在展开详情中展示包含 `turnId` 的 lifecycle timeline，旧数据也能从 event payload 兼容识别。
+- [x] 对已知 observer payload 渲染紧凑摘要（文件路径、命令/退出码、测试结果、Git 变更计数），不展示完整 raw payload，并对凭据形状做前端脱敏。
 - [ ] 对选中 turn 展示 Progress、ETA、文件、命令、测试、Git evidence 和 timeline。
 - [ ] 解释 confidence 和 reasons，避免伪精确。
 - [ ] 突出等待用户和需要审批的状态。
