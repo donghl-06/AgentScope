@@ -370,20 +370,22 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         // active turn has finished. Keep that evidence for history, but do
         // not let it overwrite the completed turn's final activity label.
         if (coordinator.current === undefined) return;
-        const activityEvent = createObserverActivityEvent(
-          sessionId,
-          source,
-          evidence,
-          turnId,
-        );
+        const activityEvent = createObserverActivityEvent(sessionId, source, evidence, turnId);
         if (activityEvent === undefined) return;
         state = appendEvent(repository, state, activityEvent);
-        persistInteractiveEta(repository, sessionId, state, activityEvent.type, evidence.timestamp, {
-          get: () => lastEtaSnapshot,
-          set: (value) => {
-            lastEtaSnapshot = value;
+        persistInteractiveEta(
+          repository,
+          sessionId,
+          state,
+          activityEvent.type,
+          evidence.timestamp,
+          {
+            get: () => lastEtaSnapshot,
+            set: (value) => {
+              lastEtaSnapshot = value;
+            },
           },
-        });
+        );
         coordinator.observe(activityEvent);
       },
       onError: (error) => {

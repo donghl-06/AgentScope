@@ -69,6 +69,15 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - [x] 普通 PTY 继续保持原生 Claude 体验；PTY 不虚构 Claude 内部 JSONL usage，provider-native telemetry 通过 structured `run claude` 获取。
 - [x] 未来 ETA 不伪装成 provider 精确值：Dashboard 展示 AgentScope 的区间估算，并单独展示 Claude 已观测的真实 timing。
 
+### 2026-09-08 — TTY-first 实时投影进度
+
+- [x] 将进程、文件系统和 Git observer 信号投影为明确的 `observer_activity` 事件；Dashboard 在任务仍运行时显示当前 activity、来源和置信度。
+- [x] observer activity 关联当前 turn；延迟收尾 evidence 仍然保存，但不会覆盖已经完成 turn 的最终 activity。
+- [x] 增加 TTY live projection heartbeat：即使 Claude 暂时没有输出，session/turn 的 Progress 和区间 ETA 仍会周期性刷新。
+- [x] 对 TTY 增加 `observerSignals` capability，避免把推断活动误标为 provider-native tool calls 或 structured events。
+- [x] 对当前 Claude CLI 做旁路能力探测：`--include-hook-events` 及 structured stream 选项只适用于 print/JSONL 路径，未发现可依赖的普通 TTY 原生事件旁路。
+- [ ] 若未来 Claude CLI 提供稳定 hook/side-channel，再增加“TTY + 原生旁路”适配；在此之前保持 observer fallback，不解析完整 ANSI TUI 画面。
+
 ### 第一版 V1 明确不做
 
 - 替换原生 Claude Code 终端或审批界面。

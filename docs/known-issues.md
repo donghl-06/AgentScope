@@ -48,6 +48,16 @@ therefore an evidence-based estimate; provider-reported latency is shown
 separately when available. Explicit native milestones are mapped when present,
 but no milestone stream was observed in every real Claude run.
 
+The installed Claude Code `2.1.263` help output confirms that
+`--include-hook-events`, `--include-partial-messages`, `--input-format
+stream-json`, and `--output-format stream-json` are restricted to print/
+structured mode. There is no documented native JSONL side channel for the
+normal interactive TTY. AgentScope consequently uses observer-derived live
+activity, process/filesystem/Git evidence, and an explainable ETA in TTY mode;
+it does not claim those values are Claude-native milestone or tool-call events.
+The TTY projection refreshes once per second even while Claude emits no new
+output, and labels observer-derived activity with its source and confidence.
+
 ## Manual provider smoke
 
 Real provider sessions depend on the locally installed CLI, endpoint, model,
