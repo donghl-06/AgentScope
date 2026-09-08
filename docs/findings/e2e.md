@@ -140,6 +140,10 @@ above while continuing to delete its temporary database.
 
 ## 2026-09-09 V1 release-hardening rerun
 
+- The final local `pnpm release:check` completed after the conservative continuation and
+  Dashboard grouping changes: formatting, fixture sensitivity, lint, all workspace
+  typechecks, 55 unit test files (253 tests), 5 integration tests, and the workspace
+  build/manifest check all passed.
 - `pnpm benchmark:mock -- --iterations 20` completed 80 isolated Mock wrapper
   sessions (20 rounds × 4 fixtures). Every expected terminal status and event
   count was preserved. The run took 36.447 seconds; wrapper latency P50 was
