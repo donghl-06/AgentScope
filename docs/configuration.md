@@ -24,6 +24,12 @@ of failing immediately; callers can override this when constructing the storage 
 Press `Ctrl+C` to close the foreground server and Dashboard cleanly. AgentScope does not contact a provider API directly; Claude Code or another CLI keeps its
 own endpoint, model, and credential configuration.
 
+Continuation flags are provider arguments rather than AgentScope configuration. Use
+`--resume <provider-session-id>` when the provider gives an explicit id; use
+`--continue` for the provider's native “continue latest” behavior. Each launch still
+gets a new AgentScope execution id. Dashboard grouping appears only for the explicit
+or provider-reported conversation identity.
+
 ## Interactive task text retention
 
 `agent-scope claude` stores a compact task title for each submitted turn so the Dashboard remains

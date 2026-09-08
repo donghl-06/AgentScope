@@ -67,6 +67,10 @@ belongs in the composition layer, where the CLI selects an adapter by name.
 
 - AgentScope owns the persisted `sessionId` and event sequence.
 - Provider session ids are optional metadata, never the primary database key.
+- The composition layer records explicit `--resume <id>` and `--continue` requests
+  as execution metadata; it never derives a conversation id from workspace or prompt text.
+- When a structured provider emits a reliable session id, the reducer may expose it
+  as a safe conversation link while retaining AgentScope's independent execution id.
 - `session_started` must be emitted once when the provider process is attached.
 - `session_finished` must be emitted exactly once for completed, failed, blocked, or
   interrupted terminal paths.
