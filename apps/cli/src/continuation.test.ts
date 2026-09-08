@@ -19,6 +19,7 @@ describe('conservative continuation metadata', () => {
       reference: 'thread-44',
     });
     expect(detectContinuation(['resume', '--last'])).toEqual({ mode: 'resume' });
+    expect(detectContinuation(['-m', 'resume'])).toBeUndefined();
   });
 
   it('recognizes continue without inventing a conversation id', () => {
