@@ -157,6 +157,28 @@ describe('reduceSessionState', () => {
     });
   });
 
+  it('projects observer-derived activity without presenting it as provider telemetry', () => {
+    const projected = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('observer_activity', {
+        kind: 'file',
+        label: 'workspace file modified',
+        evidenceSource: 'filesystem',
+        evidenceKind: 'file',
+        evidenceKey: 'file:src/example.ts',
+        summary: 'src/example.ts',
+      }),
+    );
+
+    expect(projected.status).toBe('running');
+    expect(projected.currentActivity).toMatchObject({
+      kind: 'file',
+      label: 'workspace file modified',
+      source: 'mock',
+    });
+    expect(projected.telemetry).toBeUndefined();
+  });
+
   it('maps completed-with-failed-verification to failed and never reopens terminal state', () => {
     const failed = reduceSessionState(
       reduceSessionState(base, event('test_failed', { testKind: 'unit' })),

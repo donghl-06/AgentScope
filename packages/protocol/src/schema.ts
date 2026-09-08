@@ -120,6 +120,15 @@ const payloadSchemas: Record<AgentEventType, TSchema> = {
   }),
   planning: Type.Object({ summary: Type.Optional(Type.String()) }),
   agent_message: Type.Object({ summary: Type.Optional(Type.String()) }),
+  observer_activity: Type.Object({
+    kind: Type.String({ minLength: 1 }),
+    label: Type.String({ minLength: 1 }),
+    evidenceSource: Type.String({ minLength: 1 }),
+    evidenceKind: Type.String({ minLength: 1 }),
+    evidenceKey: Type.String({ minLength: 1 }),
+    turnId: Type.Optional(Type.String({ minLength: 1 })),
+    summary: Type.Optional(Type.String()),
+  }),
   tool_call_started: Type.Object({
     toolName: Type.String({ minLength: 1 }),
     toolCallId: Type.Optional(Type.String({ minLength: 1 })),

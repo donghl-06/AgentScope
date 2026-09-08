@@ -865,6 +865,21 @@ function eventDetail(event: StoredEvent['event']): string | undefined {
     const subtype = typeof payload.subtype === 'string' ? ` · ${payload.subtype}` : '';
     return `Native ${nativeType}${phase}${subtype}`;
   }
+  if (event.type === 'observer_activity') {
+    const payload = event.payload as {
+      kind?: unknown;
+      label?: unknown;
+      evidenceSource?: unknown;
+      evidenceKind?: unknown;
+      summary?: unknown;
+    };
+    const label = typeof payload.label === 'string' ? payload.label : 'activity observed';
+    const source =
+      typeof payload.evidenceSource === 'string' ? payload.evidenceSource : 'observer';
+    const kind = typeof payload.evidenceKind === 'string' ? payload.evidenceKind : 'signal';
+    const summary = typeof payload.summary === 'string' ? ` · ${payload.summary}` : '';
+    return `Observed ${source}/${kind}: ${label}${summary}`;
+  }
   if (event.type === 'provider_info') {
     const payload = event.payload as { model?: unknown; cliVersion?: unknown };
     const model = typeof payload.model === 'string' ? payload.model : 'model unavailable';

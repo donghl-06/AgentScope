@@ -341,4 +341,55 @@ describe('interactive provider runner', () => {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it('projects observer activity and ETA while a TTY turn is still running', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-tty-live-'));
+    const filename = path.join(workspace, 'session.db');
+    const changedPath = path.join(workspace, 'live.txt');
+    terminalProcess.writeHandler = (data) => {
+      if (!data.endsWith('LIVE\r')) return;
+      fs.writeFileSync(changedPath, 'live evidence\n', 'utf8');
+      terminalProcess.emitData('Working on LIVE...\r\n');
+    };
+    const driver: TerminalDriver = { spawn: () => terminalProcess };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const running = runInteractiveProvider({
+      adapter: 'claude',
+      args: [],
+      filename,
+      workspacePath: workspace,
+      executable: process.execPath,
+      sessionId: 'session-tty-live',
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+
+    setTimeout(() => input.write('LIVE\r'), 100);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const liveStorage = openStorage({ filename, migrate: false });
+    try {
+      const liveRepository = new StorageRepository(liveStorage.client);
+      const session = liveRepository.getSession('session-tty-live');
+      const turns = liveRepository.listTurns('session-tty-live');
+      const events = liveRepository.listEvents('session-tty-live').items;
+      expect(session.status).toBe('running');
+      expect(session.state.currentActivity?.kind).toBe('file');
+      expect(session.state.eta).toBeDefined();
+      expect(turns).toHaveLength(1);
+      expect(turns[0]?.status).toBe('running');
+      expect(turns[0]?.state.currentActivity?.kind).toBe('file');
+      expect(events.some(({ event }) => event.type === 'observer_activity')).toBe(true);
+    } finally {
+      liveStorage.client.close();
+    }
+
+    terminalProcess.finish(0);
+    expect(await running).toBe(0);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  });
 });

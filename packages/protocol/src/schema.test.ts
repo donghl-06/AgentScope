@@ -56,6 +56,13 @@ describe('Protocol runtime schemas', () => {
       turn_finished: { turnId: 'turn-1', reason: 'completed' },
       planning: {},
       agent_message: {},
+      observer_activity: {
+        kind: 'file',
+        label: 'workspace file changed',
+        evidenceSource: 'filesystem',
+        evidenceKind: 'file',
+        evidenceKey: 'file:src/index.ts',
+      },
       tool_call_started: { toolName: 'tool' },
       tool_call_finished: { toolName: 'tool', toolCallId: 'call-1', success: true },
       file_read: { path: 'file.ts' },

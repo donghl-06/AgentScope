@@ -290,6 +290,21 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
         status: state.status === 'blocked' ? state.status : 'running',
         currentActivity: activity('implementation', 'agent message', event),
       };
+    case 'observer_activity': {
+      const payload = event.payload as {
+        kind: SessionState['currentActivity'] extends infer T
+          ? T extends { kind: infer K }
+            ? K
+            : never
+          : never;
+        label: string;
+      };
+      return {
+        ...state,
+        status: state.status === 'blocked' ? state.status : 'running',
+        currentActivity: activity(payload.kind, payload.label, event),
+      };
+    }
     case 'tool_call_started':
       return incrementToolCallCount({
         ...state,

@@ -11,16 +11,25 @@ import {
 } from '@agentscope/core';
 import {
   createInitialSessionState,
+  type ActivityKind,
   type AgentEvent,
   type EventSource,
+  type ObserverActivityPayload,
   type SessionState,
   type TurnState,
 } from '@agentscope/protocol';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
 import { ObserverRuntime } from '@agentscope/observer-runtime';
+import type { ObserverEvidence } from '@agentscope/observer-runtime';
 import { estimateEta } from '@agentscope/eta';
 import { computeProgress } from '@agentscope/progress';
+import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
+
+const INTERACTIVE_PROGRESS_CAPABILITIES = {
+  fileEvents: true,
+  observerSignals: true,
+} as const;
 
 export interface InteractiveSignals {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
@@ -108,6 +117,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       sessionInfo: true,
       milestones: false,
       tty: true,
+      observerSignals: true,
     },
     workspace: { rootPath: options.workspacePath, mode: 'interactive-pty' },
     state,
@@ -119,6 +129,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   let interrupted = false;
   const turnWindows: TurnWindow[] = [];
   const pendingObserverWork = new Set<Promise<unknown>>();
+  let lastEtaSnapshot: SessionState['eta'];
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const environment = prepareInteractiveEnvironment(options.env ?? process.env);
@@ -171,6 +182,12 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           turnEventPayload(update.kind, update.turn),
         ),
       );
+      persistInteractiveEta(repository, sessionId, state, turnEventType(update.kind), timestamp, {
+        get: () => lastEtaSnapshot,
+        set: (value) => {
+          lastEtaSnapshot = value;
+        },
+      });
       syncTurnProjection(repository, update.turn, state, timestamp);
       if (update.kind === 'started' || update.kind === 'finished') {
         queueTurnObserverSnapshots(
@@ -333,14 +350,12 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       file: {},
       onEvidence: (evidence) => {
         const turnWindow = findTurnWindowForEvidence(turnWindows, evidence.timestamp);
+        const turnId =
+          evidence.turnId ?? (turnWindow === undefined ? undefined : turnWindow.turnId);
         repository.saveObserverEvidence({
           id: evidence.id,
           sessionId,
-          ...(evidence.turnId !== undefined
-            ? { turnId: evidence.turnId }
-            : turnWindow === undefined
-              ? {}
-              : { turnId: turnWindow.turnId }),
+          ...(turnId === undefined ? {} : { turnId }),
           key: evidence.key,
           timestamp: evidence.timestamp,
           source: evidence.source,
@@ -349,6 +364,25 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           reason: evidence.reason,
           payload: evidence.payload,
         });
+        // A delayed filesystem/Git/process callback may arrive after the
+        // active turn has finished. Keep that evidence for history, but do
+        // not let it overwrite the completed turn's final activity label.
+        if (coordinator.current === undefined) return;
+        const activityEvent = createObserverActivityEvent(
+          sessionId,
+          source,
+          evidence,
+          turnId,
+        );
+        if (activityEvent === undefined) return;
+        state = appendEvent(repository, state, activityEvent);
+        persistInteractiveEta(repository, sessionId, state, activityEvent.type, evidence.timestamp, {
+          get: () => lastEtaSnapshot,
+          set: (value) => {
+            lastEtaSnapshot = value;
+          },
+        });
+        coordinator.observe(activityEvent);
       },
       onError: (error) => {
         (options.error ?? process.stderr).write(`[observer:${error.source}] ${error.message}\n`);
@@ -407,6 +441,12 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         exitCode: exit.exitCode,
       }),
     );
+    persistInteractiveEta(repository, sessionId, state, 'session_finished', now(), {
+      get: () => lastEtaSnapshot,
+      set: (value) => {
+        lastEtaSnapshot = value;
+      },
+    });
     return state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1;
   } finally {
     input.removeListener('data', onInput);
@@ -430,7 +470,7 @@ function appendEvent(
   repository.appendEvent(event, next, event.timestamp);
   const progress = computeProgress({
     state: next,
-    capabilities: { fileEvents: true },
+    capabilities: INTERACTIVE_PROGRESS_CAPABILITIES,
     now: event.timestamp,
     lastSignalAt: event.timestamp,
   });
@@ -467,7 +507,7 @@ function syncTurnProjection(
   };
   const progress = computeProgress({
     state: turnSession,
-    capabilities: { fileEvents: true },
+    capabilities: INTERACTIVE_PROGRESS_CAPABILITIES,
     now: timestamp,
     lastSignalAt: timestamp,
   });
@@ -488,6 +528,74 @@ function syncTurnProjection(
     },
     timestamp,
   );
+}
+
+function persistInteractiveEta(
+  repository: StorageRepository,
+  sessionId: string,
+  state: SessionState,
+  eventType: AgentEvent['type'],
+  timestamp: number,
+  previous: { get: () => SessionState['eta']; set: (value: SessionState['eta']) => void },
+): void {
+  if (state.eta === undefined || !shouldPersistEtaSnapshot(eventType, previous.get())) return;
+  repository.saveEtaSnapshot(sessionId, state.eta, timestamp);
+  previous.set(state.eta);
+}
+
+function createObserverActivityEvent(
+  sessionId: string,
+  source: EventSource,
+  evidence: ObserverEvidence,
+  turnId: string | undefined,
+): AgentEvent | undefined {
+  const activity = activityForEvidence(evidence);
+  if (activity === undefined) return undefined;
+  const payload: ObserverActivityPayload = {
+    kind: activity.kind,
+    label: activity.label,
+    evidenceSource: evidence.source,
+    evidenceKind: evidence.kind,
+    evidenceKey: evidence.key,
+    ...(turnId === undefined ? {} : { turnId }),
+    ...(activity.summary === undefined ? {} : { summary: activity.summary }),
+  };
+  return {
+    id: `${sessionId}:observer-activity:${evidence.id}`,
+    sessionId,
+    timestamp: evidence.timestamp,
+    source,
+    type: 'observer_activity',
+    payload,
+    confidence: evidence.confidence,
+  };
+}
+
+function activityForEvidence(
+  evidence: ObserverEvidence,
+): { kind: ActivityKind; label: string; summary?: string } | undefined {
+  if (evidence.source === 'process') {
+    const payload = evidence.payload as { readonly kind?: unknown };
+    const phase = payload.kind === 'finished' ? 'finished' : 'started';
+    return { kind: 'command', label: `process ${phase}`, summary: evidence.reason };
+  }
+  if (evidence.source === 'filesystem') {
+    const payload = evidence.payload as { readonly kind?: unknown; readonly path?: unknown };
+    const change = typeof payload.kind === 'string' ? payload.kind : 'changed';
+    const path = typeof payload.path === 'string' ? payload.path : undefined;
+    return {
+      kind: 'file',
+      label: `workspace file ${change}`,
+      ...(path === undefined ? {} : { summary: path }),
+    };
+  }
+  if (evidence.source === 'git') {
+    return { kind: 'review', label: 'workspace snapshot observed', summary: evidence.reason };
+  }
+  if (evidence.source === 'test_observer') {
+    return { kind: 'test', label: 'verification activity observed', summary: evidence.reason };
+  }
+  return undefined;
 }
 
 function sessionStatusForTurn(status: TurnState['status']): SessionState['status'] {

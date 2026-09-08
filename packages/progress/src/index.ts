@@ -11,6 +11,8 @@ export interface ProgressCapabilities {
   readonly commandEvents?: boolean;
   readonly fileEvents?: boolean;
   readonly milestones?: boolean;
+  /** Observer-derived activity is useful but weaker than provider-native data. */
+  readonly observerSignals?: boolean;
 }
 
 export interface ProgressEngineInput {
@@ -220,6 +222,7 @@ function computeConfidence(
   if (capabilities.structuredEvents) confidence += 0.2;
   if (capabilities.commandEvents || capabilities.fileEvents || capabilities.toolCalls)
     confidence += 0.15;
+  if (capabilities.observerSignals) confidence += 0.1;
   if (input.state.milestones.length > 0 || capabilities.milestones) confidence += 0.15;
   if (input.state.milestones.length === 0 && !capabilities.milestones) {
     confidence -= 0.1;

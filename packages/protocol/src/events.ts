@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ActivityKind,
   EtaResult,
   ProgressResult,
   ProviderInfo,
@@ -16,6 +17,7 @@ export const AGENT_EVENT_TYPES = [
   'turn_finished',
   'planning',
   'agent_message',
+  'observer_activity',
   'tool_call_started',
   'tool_call_finished',
   'file_read',
@@ -86,6 +88,22 @@ export interface PlanningPayload {
 }
 
 export interface AgentMessagePayload {
+  readonly summary?: string;
+}
+
+/**
+ * An activity inferred by an AgentScope observer rather than emitted by the
+ * provider. Keeping this as a first-class event lets TTY sessions update their
+ * live projection without pretending that the provider supplied a native
+ * structured event.
+ */
+export interface ObserverActivityPayload {
+  readonly kind: ActivityKind;
+  readonly label: string;
+  readonly evidenceSource: string;
+  readonly evidenceKind: string;
+  readonly evidenceKey: string;
+  readonly turnId?: string;
   readonly summary?: string;
 }
 
@@ -173,6 +191,7 @@ export interface AgentEventPayloadMap {
   readonly turn_finished: TurnFinishedPayload;
   readonly planning: PlanningPayload;
   readonly agent_message: AgentMessagePayload;
+  readonly observer_activity: ObserverActivityPayload;
   readonly tool_call_started: ToolCallStartedPayload;
   readonly tool_call_finished: ToolCallFinishedPayload;
   readonly file_read: FilePayload;
