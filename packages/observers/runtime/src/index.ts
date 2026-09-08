@@ -28,6 +28,7 @@ export interface ObserverRuntimeProcessOptions {
   readonly pid: number;
   readonly startedAt?: number;
   readonly pollMs?: number;
+  readonly observeChildren?: boolean;
   readonly inspect?: (pid: number) => ProcessInspection | Promise<ProcessInspection>;
 }
 
@@ -257,6 +258,9 @@ export class ObserverRuntime {
       pid: processOptions.pid,
       now: this.now,
       ...(processOptions.pollMs === undefined ? {} : { pollMs: processOptions.pollMs }),
+      ...(processOptions.observeChildren === undefined
+        ? {}
+        : { observeChildren: processOptions.observeChildren }),
       ...(processOptions.inspect === undefined ? {} : { inspect: processOptions.inspect }),
       onObservation: (observation) => {
         if (this.active) this.emitProcessObservation(observation);
@@ -303,12 +307,17 @@ export class ObserverRuntime {
 
   private emitProcessObservation(observation: ProcessObservation): void {
     const phase = observation.kind === 'started' ? 'started' : 'finished';
+    const isChild = observation.scope === 'child';
     this.emitEvidence({
-      key: `process:${observation.pid}:${phase}`,
+      key: isChild
+        ? `process:child:${observation.pid}:${phase}`
+        : `process:${observation.pid}:${phase}`,
       source: 'process',
       kind: 'lifecycle',
       confidence: observation.kind === 'started' ? 1 : 0.98,
-      reason: `Process observer reported ${phase} for the wrapper root process.`,
+      reason: isChild
+        ? `Process observer reported ${phase} for a child process.`
+        : `Process observer reported ${phase} for the wrapper root process.`,
       timestamp: observation.observedAt,
       payload: observation,
     });

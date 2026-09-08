@@ -106,6 +106,48 @@ describe('observer runtime', () => {
       fs.rmSync(rootPath, { recursive: true, force: true });
     }
   });
+
+  it('publishes descendant lifecycle evidence when process-tree observation is enabled', async () => {
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-runtime-tree-'));
+    const evidence: Array<{ key: string; reason: string; payload: unknown }> = [];
+    let inspection = {
+      state: 'running' as const,
+      children: [{ pid: 43, parentPid: 42, name: 'tool.exe' }],
+    };
+    try {
+      const runtime = new ObserverRuntime({
+        sessionId: 'session-tree',
+        workspacePath: rootPath,
+        now: () => 100,
+        process: {
+          pid: 42,
+          observeChildren: true,
+          inspect: async () => inspection,
+        },
+        onEvidence: (item) =>
+          evidence.push({ key: item.key, reason: item.reason, payload: item.payload }),
+      });
+      await runtime.start();
+      await runtime.pollProcess();
+      inspection = { state: 'running', children: [] };
+      await runtime.pollProcess();
+      runtime.notifyProcessExit(0, undefined, 120);
+
+      expect(evidence).toContainEqual(
+        expect.objectContaining({
+          key: 'process:child:43:started',
+          reason: 'Process observer reported started for a child process.',
+          payload: expect.objectContaining({ scope: 'child', name: 'tool.exe' }),
+        }),
+      );
+      expect(evidence).toContainEqual(
+        expect.objectContaining({ key: 'process:child:43:finished' }),
+      );
+      runtime.stop();
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+    }
+  });
 });
 
 function gitResult(rootPath: string, args: readonly string[]) {

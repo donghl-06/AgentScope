@@ -119,6 +119,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       milestones: false,
       tty: true,
       observerSignals: true,
+      processTree: options.terminalDriver === undefined,
     },
     workspace: { rootPath: options.workspacePath, mode: 'interactive-pty' },
     state,
@@ -348,7 +349,11 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     observerRuntime = new ObserverRuntime({
       sessionId,
       workspacePath: options.workspacePath,
-      process: { pid: terminal.pid, startedAt },
+      process: {
+        pid: terminal.pid,
+        startedAt,
+        observeChildren: options.terminalDriver === undefined,
+      },
       file: {},
       onEvidence: (evidence) => {
         const turnWindow = findTurnWindowForEvidence(turnWindows, evidence.timestamp);
@@ -618,8 +623,24 @@ function activityForEvidence(
   evidence: ObserverEvidence,
 ): { kind: ActivityKind; label: string; summary?: string } | undefined {
   if (evidence.source === 'process') {
-    const payload = evidence.payload as { readonly kind?: unknown };
+    const payload = evidence.payload as {
+      readonly kind?: unknown;
+      readonly scope?: unknown;
+      readonly pid?: unknown;
+      readonly name?: unknown;
+    };
     const phase = payload.kind === 'finished' ? 'finished' : 'started';
+    if (payload.scope === 'child') {
+      const name = typeof payload.name === 'string' ? payload.name : undefined;
+      const pid = typeof payload.pid === 'number' ? `pid ${payload.pid}` : undefined;
+      return {
+        kind: 'command',
+        label: `child process ${phase}`,
+        summary:
+          [name, pid].filter((value): value is string => value !== undefined).join(' · ') ||
+          evidence.reason,
+      };
+    }
     return { kind: 'command', label: `process ${phase}`, summary: evidence.reason };
   }
   if (evidence.source === 'filesystem') {

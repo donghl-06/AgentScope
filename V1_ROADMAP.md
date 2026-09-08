@@ -75,6 +75,7 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - [x] observer activity 关联当前 turn；延迟收尾 evidence 仍然保存，但不会覆盖已经完成 turn 的最终 activity。
 - [x] 增加 TTY live projection heartbeat：即使 Claude 暂时没有输出，session/turn 的 Progress 和区间 ETA 仍会周期性刷新。
 - [x] 对 TTY 增加 `observerSignals` capability，避免把推断活动误标为 provider-native tool calls 或 structured events。
+- [x] 对 AgentScope 启动的 TTY wrapper 增加可选子进程树观察：仅记录子进程 pid、父 pid 和可用名称，将其投影为 observer-derived command activity；默认 observer 仍只观察根进程。
 - [x] 对当前 Claude CLI 做旁路能力探测：`--include-hook-events` 及 structured stream 选项只适用于 print/JSONL 路径，未发现可依赖的普通 TTY 原生事件旁路。
 - [ ] 若未来 Claude CLI 提供稳定 hook/side-channel，再增加“TTY + 原生旁路”适配；在此之前保持 observer fallback，不解析完整 ANSI TUI 画面。
 

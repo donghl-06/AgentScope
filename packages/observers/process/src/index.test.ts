@@ -81,4 +81,59 @@ describe('process observer', () => {
     await Promise.all([first, second]);
     expect(calls).toBe(1);
   });
+
+  it('tracks descendant processes only when explicitly enabled', async () => {
+    const observations: ProcessObservation[] = [];
+    let inspection: ProcessInspection = {
+      state: 'running',
+      children: [{ pid: 43, parentPid: 42, name: 'tool.exe' }],
+    };
+    const observer = new ProcessObserver({
+      pid: 42,
+      observeChildren: true,
+      now: () => 120,
+      inspect: async () => inspection,
+      onObservation: (event) => observations.push(event),
+    });
+
+    observer.start(100);
+    await observer.pollOnce();
+    inspection = { state: 'running', children: [] };
+    await observer.pollOnce();
+    observer.notifyExit(0, undefined, 130);
+
+    expect(observations).toEqual([
+      { kind: 'started', pid: 42, observedAt: 100, startedAt: 100, reason: 'spawned' },
+      {
+        kind: 'started',
+        pid: 43,
+        parentPid: 42,
+        name: 'tool.exe',
+        observedAt: 120,
+        startedAt: 120,
+        scope: 'child',
+        reason: 'child_spawned',
+      },
+      {
+        kind: 'finished',
+        pid: 43,
+        parentPid: 42,
+        name: 'tool.exe',
+        observedAt: 120,
+        startedAt: 120,
+        endedAt: 120,
+        scope: 'child',
+        reason: 'child_exit',
+      },
+      {
+        kind: 'finished',
+        pid: 42,
+        observedAt: 130,
+        startedAt: 100,
+        endedAt: 130,
+        exitCode: 0,
+        reason: 'exit',
+      },
+    ]);
+  });
 });

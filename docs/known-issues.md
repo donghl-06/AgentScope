@@ -57,6 +57,10 @@ activity, process/filesystem/Git evidence, and an explainable ETA in TTY mode;
 it does not claim those values are Claude-native milestone or tool-call events.
 The TTY projection refreshes once per second even while Claude emits no new
 output, and labels observer-derived activity with its source and confidence.
+For wrappers started by AgentScope, child-process activity is inferred from the
+platform process table and is limited to PID/parent PID/name metadata; command
+arguments, environment variables, and provider-internal tool payloads remain
+unavailable in ordinary TTY mode.
 
 ## Manual provider smoke
 
