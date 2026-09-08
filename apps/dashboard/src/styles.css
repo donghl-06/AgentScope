@@ -46,6 +46,14 @@ button {
   font-size: 11px;
   text-align: right;
 }
+.notification-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notification-status-warning {
+  color: #e8bd72;
+}
 .panel-actions,
 .timeline-actions {
   display: flex;

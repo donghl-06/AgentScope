@@ -14,7 +14,7 @@ import { loadAllPages } from './pagination.js';
 import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline.js';
 
 const api = new DashboardApi();
-type NotificationState = NotificationPermission | 'unsupported' | 'requesting';
+type NotificationState = NotificationPermission | 'unsupported' | 'requesting' | 'unavailable';
 const NOTIFIABLE_SESSION_STATUSES = new Set(['blocked', 'completed', 'failed', 'interrupted']);
 
 export function App() {
@@ -40,6 +40,7 @@ export function App() {
   const selectedIdRef = useRef<string | undefined>(undefined);
   const lastSeqBySessionRef = useRef(new Map<string, number>());
   const notificationStateRef = useRef(notificationState);
+  const notificationRequestRef = useRef(0);
   const notificationKeysRef = useRef(new Set<string>());
   const notificationBaselineReadyRef = useRef(false);
 
@@ -75,10 +76,21 @@ export function App() {
       setNotificationState('granted');
       return;
     }
+
+    const requestId = ++notificationRequestRef.current;
+    let settled = false;
+    const finish = (state: NotificationState) => {
+      if (settled || notificationRequestRef.current !== requestId) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      setNotificationState(state);
+    };
+
     setNotificationState('requesting');
-    void globalThis.Notification.requestPermission().then((permission) => {
-      setNotificationState(permission);
-    });
+    const timeoutId = setTimeout(() => finish('unavailable'), 8_000);
+    void Promise.resolve()
+      .then(() => globalThis.Notification.requestPermission())
+      .then(finish, () => finish('unavailable'));
   }, []);
 
   const notifyLiveStatus = useCallback((message: DashboardLiveNotification) => {
@@ -373,6 +385,23 @@ function NotificationControl({
   }
   if (state === 'denied') {
     return <span className="notification-status">Notifications blocked by browser</span>;
+  }
+  if (state === 'unavailable') {
+    return (
+      <div className="notification-control" role="status">
+        <span className="notification-status notification-status-warning">
+          Permission prompt unavailable
+        </span>
+        <button
+          className="quiet-button quiet-button-small"
+          type="button"
+          onClick={onEnable}
+          title="Retry in a browser that supports notification permission prompts"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
   return (
     <button
