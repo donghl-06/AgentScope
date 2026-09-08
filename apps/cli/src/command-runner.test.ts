@@ -116,7 +116,7 @@ describe('CLI command runner', () => {
   });
 
   it('delegates interactive Claude runs without rewriting their argument list', async () => {
-    const received: { adapter: 'claude'; args: readonly string[] }[] = [];
+    const received: { adapter: 'claude' | 'codex'; args: readonly string[] }[] = [];
     const exitCode = await executeCliCommand(
       parseCliArgs(['claude', '--permission-mode', 'manual']),
       {

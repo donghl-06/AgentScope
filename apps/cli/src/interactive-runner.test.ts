@@ -136,6 +136,60 @@ describe('interactive provider runner', () => {
     expect(outputChunks).toEqual(['PTY_OUTPUT']);
   });
 
+  it('records Codex interactive metadata and multi-turn boundaries through the same PTY runner', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    terminalProcess.writeHandler = (data) => {
+      if (!data.endsWith('CODEX_FIRST\r')) return;
+      terminalProcess.emitData('Working on Codex...\r\n> Try "next"');
+      setTimeout(() => terminalProcess.finish(0), 5);
+    };
+    const driver: TerminalDriver = {
+      spawn: () => {
+        setTimeout(() => terminalProcess.emitData('> Try "task"'), 0);
+        return terminalProcess;
+      },
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-tty-'));
+    const filename = path.join(directory, 'session.db');
+    const running = runInteractiveProvider({
+      adapter: 'codex',
+      args: ['--no-alt-screen'],
+      filename,
+      workspacePath: process.cwd(),
+      executable: process.execPath,
+      sessionId: 'codex-tty-session',
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+    setTimeout(() => input.write('CODEX_FIRST\r'), 5);
+    const exitCode = await running;
+    const storage = openStorage({ filename, migrate: false });
+    try {
+      const repository = new StorageRepository(storage.client);
+      const session = repository.getSession('codex-tty-session');
+      const turns = repository.listTurns('codex-tty-session');
+      const events = repository.listEvents('codex-tty-session').items;
+      expect(exitCode).toBe(0);
+      expect(session.provider).toBe('codex');
+      expect(session.adapter).toBe('codex-cli-tty');
+      expect(session.workspace).toMatchObject({ mode: 'interactive-pty' });
+      expect(turns).toHaveLength(1);
+      expect(turns[0]?.title).toBe('CODEX_FIRST');
+      expect(turns[0]?.status).toBe('completed');
+      expect(events[0]?.event.source).toMatchObject({
+        client: 'codex-cli',
+        adapter: 'codex-cli-tty',
+      });
+    } finally {
+      storage.client.close();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('confirms only the explicit API-key startup prompt when enabled', async () => {
     const terminalProcess = new FakeTerminalProcess();
     const driver: TerminalDriver = {

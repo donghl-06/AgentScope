@@ -14,7 +14,7 @@ export type CliCommand =
   | { readonly kind: 'run'; readonly adapter: string; readonly args: readonly string[] }
   | {
       readonly kind: 'interactive';
-      readonly adapter: 'claude';
+      readonly adapter: 'claude' | 'codex';
       readonly args: readonly string[];
       readonly acceptApiKey?: boolean;
     }
@@ -57,7 +57,9 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
     case 'run':
       return parseRun(rest);
     case 'claude':
-      return parseInteractive(rest);
+      return parseInteractive('claude', rest);
+    case 'codex':
+      return parseInteractive('codex', rest);
     default:
       throw new CliUsageError(`Unknown command: ${command}`);
   }
@@ -72,6 +74,7 @@ export function formatCliHelp(): string {
     '  run <adapter> -- <args...>   Run an adapter and preserve argument boundaries.',
     '  claude [--agent-scope-accept-api-key] [args...]',
     '                                Run Claude Code in a monitored interactive PTY.',
+    '  codex [args...]                Run Codex CLI in a monitored interactive PTY.',
     '  run mock --fixture <name>    Run a deterministic mock fixture.',
     '  sessions                     List stored sessions.',
     '  recover                      Mark stale sessions as interrupted.',
@@ -80,7 +83,10 @@ export function formatCliHelp(): string {
   ].join('\n');
 }
 
-function parseInteractive(argv: readonly string[]): Extract<CliCommand, { kind: 'interactive' }> {
+function parseInteractive(
+  adapter: 'claude' | 'codex',
+  argv: readonly string[],
+): Extract<CliCommand, { kind: 'interactive' }> {
   const args: string[] = [];
   let acceptApiKey = false;
   for (const argument of argv) {
@@ -92,7 +98,7 @@ function parseInteractive(argv: readonly string[]): Extract<CliCommand, { kind: 
   }
   return {
     kind: 'interactive',
-    adapter: 'claude',
+    adapter,
     args,
     ...(acceptApiKey ? { acceptApiKey: true } : {}),
   };

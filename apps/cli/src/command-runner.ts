@@ -9,7 +9,10 @@ export interface CliCommandRunnerOptions {
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
   readonly recover?: () => Promise<RecoverySummary>;
   readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
-  readonly runInteractive?: (adapter: 'claude', args: readonly string[]) => Promise<number>;
+  readonly runInteractive?: (
+    adapter: 'claude' | 'codex',
+    args: readonly string[],
+  ) => Promise<number>;
   readonly start?: () => Promise<number>;
   readonly write: (text: string) => void;
 }

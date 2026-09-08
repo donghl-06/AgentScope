@@ -37,6 +37,7 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
   const writeStderr = options.writeStderr ?? ((chunk: string) => process.stderr.write(chunk));
   const runtimeEnv = options.env ?? process.env;
   const configuredClaudeExecutable = runtimeEnv.AGENTSCOPE_CLAUDE_EXECUTABLE;
+  const configuredCodexExecutable = runtimeEnv.AGENTSCOPE_CODEX_EXECUTABLE;
   try {
     const command = parseCliArgs(options.argv ?? process.argv.slice(2));
     if (command.kind === 'help') {
@@ -112,18 +113,24 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
         : {}),
       ...(command.kind === 'interactive'
         ? {
-            runInteractive: (adapter: 'claude', args: readonly string[]) =>
+            runInteractive: (adapter: 'claude' | 'codex', args: readonly string[]) =>
               runInteractiveProvider({
                 adapter,
                 args,
                 filename: config.database,
                 workspacePath: config.workspacePath,
                 persistPrompt: config.promptRetention === 'full',
-                ...(command.acceptApiKey === true ? { autoAcceptApiKey: true } : {}),
+                ...(adapter === 'claude' && command.acceptApiKey === true
+                  ? { autoAcceptApiKey: true }
+                  : {}),
                 env: runtimeEnv,
-                ...(configuredClaudeExecutable === undefined
-                  ? {}
-                  : { executable: configuredClaudeExecutable }),
+                ...(adapter === 'claude'
+                  ? configuredClaudeExecutable === undefined
+                    ? {}
+                    : { executable: configuredClaudeExecutable }
+                  : configuredCodexExecutable === undefined
+                    ? {}
+                    : { executable: configuredCodexExecutable }),
               }),
           }
         : {}),

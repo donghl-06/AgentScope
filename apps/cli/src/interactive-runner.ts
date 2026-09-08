@@ -45,7 +45,7 @@ interface TurnWindow {
 }
 
 export interface InteractiveProviderOptions {
-  readonly adapter: 'claude';
+  readonly adapter: 'claude' | 'codex';
   readonly args: readonly string[];
   readonly filename: string;
   readonly workspacePath: string;
@@ -104,14 +104,15 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   );
   const source: EventSource = {
     provider: options.adapter,
-    client: 'claude-code',
+    client: options.adapter === 'claude' ? 'claude-code' : 'codex-cli',
     environment: process.platform,
-    adapter: 'claude-code-tty',
+    adapter: options.adapter === 'claude' ? 'claude-code-tty' : 'codex-cli-tty',
   };
+  const ttyAdapter = source.adapter;
   repository.createSession({
     id: sessionId,
     provider: options.adapter,
-    adapter: 'claude-code-tty',
+    adapter: ttyAdapter,
     startedAt,
     capabilities: {
       structuredEvents: false,
@@ -216,7 +217,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   };
   const arbiter = new TurnSignalArbiter(coordinator);
   const detector = new PtyTurnSignalDetector({
-    enablePromptCompletion: !options.args.includes('--bare'),
+    enablePromptCompletion: options.adapter === 'codex' || !options.args.includes('--bare'),
   });
   const inputDecoder = new ConsoleInputDecoder();
   const inputObservation = new TerminalInputObservation();
@@ -307,13 +308,16 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
 
   try {
     try {
-      const executable = resolveExecutable(options.executable ?? 'claude');
+      const executable = resolveExecutable(
+        options.executable ?? (options.adapter === 'claude' ? 'claude' : 'codex'),
+        options.adapter,
+      );
       if (executable === undefined) {
-        throw new Error('Claude executable was not found in PATH or the npm installation.');
+        throw new Error(`${options.adapter} executable was not found in PATH or the installation.`);
       }
       terminal = TerminalSession.spawn(driver, {
-        command: executable,
-        args: [...options.args],
+        command: executable.command,
+        args: [...executable.args, ...options.args],
         cwd: options.workspacePath,
         env: environment,
         dimensions: {
@@ -322,7 +326,8 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         },
       });
     } catch (error) {
-      const message = `Unable to start Claude in a PTY: ${error instanceof Error ? error.message : String(error)} Verify that \`claude --version\` works in this terminal.`;
+      const executableName = options.adapter === 'claude' ? 'claude' : 'codex';
+      const message = `Unable to start ${options.adapter} in a PTY: ${error instanceof Error ? error.message : String(error)} Verify that \`${executableName} --version\` works in this terminal.`;
       (options.error ?? process.stderr).write(`${message}\n`);
       appendEvent(
         repository,
@@ -407,6 +412,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       output.write(chunk);
       for (const signal of detector.ingest(chunk, now())) arbiter.apply(signal);
       if (
+        options.adapter !== 'claude' ||
         options.autoAcceptApiKey !== true ||
         apiKeyAccepted ||
         typeof environment.ANTHROPIC_API_KEY !== 'string' ||
@@ -821,7 +827,7 @@ function describeInputEncoding(raw: string): string {
 
 /**
  * Decodes Windows Console input records emitted by modern terminal hosts while
- * preserving all other input unchanged. The original bytes still go to Claude;
+ * preserving all other input unchanged. The original bytes still go to the provider;
  * this normalized text is only used to identify submitted task boundaries.
  */
 export class ConsoleInputDecoder {
@@ -965,8 +971,19 @@ function ensureStorageDirectory(filename: string): void {
   fs.mkdirSync(path.dirname(path.resolve(filename)), { recursive: true });
 }
 
-function resolveExecutable(executable: string): string | undefined {
-  if (process.platform !== 'win32' || path.extname(executable) !== '') return executable;
+interface ResolvedExecutable {
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
+function resolveExecutable(
+  executable: string,
+  adapter: 'claude' | 'codex',
+): ResolvedExecutable | undefined {
+  if (adapter === 'codex') return resolveCodexExecutable(executable);
+  if (process.platform !== 'win32' || path.extname(executable) !== '') {
+    return { command: executable, args: [] };
+  }
   const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
   for (const directory of searchPath) {
     let entries: fs.Dirent[];
@@ -991,14 +1008,16 @@ function resolveExecutable(executable: string): string | undefined {
       const candidate = path.join(directory, name);
       if (!fs.existsSync(candidate)) continue;
       if (extension === '.exe') {
-        if (isWindowsExecutable(candidate)) return candidate;
+        if (isWindowsExecutable(candidate)) return { command: candidate, args: [] };
         continue;
       }
       const target = fs.readFileSync(candidate, 'utf8').match(/"([^"\r\n]+\.exe)"/iu)?.[1];
       if (target === undefined) continue;
       const expanded = target.replace(/%~?dp0%/giu, directory);
       const resolved = path.resolve(expanded);
-      if (fs.existsSync(resolved) && isWindowsExecutable(resolved)) return resolved;
+      if (fs.existsSync(resolved) && isWindowsExecutable(resolved)) {
+        return { command: resolved, args: [] };
+      }
     }
     const packageExecutable = path.join(
       directory,
@@ -1009,7 +1028,41 @@ function resolveExecutable(executable: string): string | undefined {
       `${executable}.exe`,
     );
     if (fs.existsSync(packageExecutable) && isWindowsExecutable(packageExecutable)) {
-      return packageExecutable;
+      return { command: packageExecutable, args: [] };
+    }
+  }
+  return undefined;
+}
+
+function resolveCodexExecutable(executable: string): ResolvedExecutable | undefined {
+  if (process.platform !== 'win32' || path.extname(executable) !== '') {
+    return { command: executable, args: [] };
+  }
+  if (executable.includes('/') || executable.includes('\\')) {
+    return { command: executable, args: [] };
+  }
+  const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
+  for (const directory of searchPath) {
+    for (const extension of ['.exe', '.cmd', '.bat']) {
+      const candidate = path.join(directory, `${executable}${extension}`);
+      if (!fs.existsSync(candidate)) continue;
+      if (extension === '.exe') return { command: candidate, args: [] };
+      const text = fs.readFileSync(candidate, 'utf8');
+      const directTarget = text.match(/"([^"\r\n]+\.exe)"/iu)?.[1];
+      if (directTarget !== undefined) {
+        const resolved = path.resolve(directTarget.replace(/%~?dp0%/giu, directory));
+        if (fs.existsSync(resolved)) return { command: resolved, args: [] };
+      }
+      const scriptTarget = text.match(/"([^"\r\n]+\.js)"\s+%\*/iu)?.[1];
+      if (scriptTarget === undefined) continue;
+      const script = path.resolve(scriptTarget.replace(/%~?dp0%/giu, directory));
+      if (!fs.existsSync(script)) continue;
+      const nodeTarget = text.match(/SET\s+"_prog=([^"\r\n]*node\.exe)"/iu)?.[1];
+      const node =
+        nodeTarget === undefined
+          ? process.execPath
+          : path.resolve(nodeTarget.replace(/%~?dp0%/giu, directory));
+      return { command: fs.existsSync(node) ? node : process.execPath, args: [script] };
     }
   }
   return undefined;

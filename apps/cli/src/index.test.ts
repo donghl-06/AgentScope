@@ -44,6 +44,11 @@ describe('CLI argument parser', () => {
       args: ['--permission-mode', 'manual'],
       acceptApiKey: true,
     });
+    expect(parseCliArgs(['codex', '--no-alt-screen', '-s', 'workspace-write'])).toEqual({
+      kind: 'interactive',
+      adapter: 'codex',
+      args: ['--no-alt-screen', '-s', 'workspace-write'],
+    });
     expect(parseCliArgs(['show', 'session-1'])).toEqual({
       kind: 'show',
       sessionId: 'session-1',
@@ -81,5 +86,6 @@ describe('CLI argument parser', () => {
   it('renders stable help text', () => {
     expect(formatCliHelp()).toContain('run <adapter> -- <args...>');
     expect(formatCliHelp()).toContain('claude [--agent-scope-accept-api-key] [args...]');
+    expect(formatCliHelp()).toContain('codex [args...]');
   });
 });
