@@ -190,6 +190,47 @@ describe('interactive provider runner', () => {
     }
   });
 
+  it('resolves an explicit Windows Codex Node shim into node plus its script', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-shim-'));
+    const script = path.join(directory, 'codex.js');
+    const shim = path.join(directory, 'codex.cmd');
+    fs.writeFileSync(script, '', 'utf8');
+    fs.writeFileSync(shim, `@echo off\r\n"%dp0%\\codex.js" %*\r\n`, 'utf8');
+    let spawnSpec: { command: string; args: string[] } | undefined;
+    const driver: TerminalDriver = {
+      spawn: (spec) => {
+        spawnSpec = spec;
+        setTimeout(() => terminalProcess.finish(0), 0);
+        return terminalProcess;
+      },
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    try {
+      const exitCode = await runInteractiveProvider({
+        adapter: 'codex',
+        args: ['--no-alt-screen'],
+        filename: ':memory:',
+        workspacePath: process.cwd(),
+        executable: shim,
+        terminalDriver: driver,
+        input: input as unknown as typeof process.stdin,
+        output: output as unknown as typeof process.stdout,
+        signals: new FakeSignals(),
+      });
+      expect(exitCode).toBe(0);
+      expect(spawnSpec).toMatchObject({
+        command: process.execPath,
+        args: [script, '--no-alt-screen'],
+      });
+    } finally {
+      input.destroy();
+      output.destroy();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('confirms only the explicit API-key startup prompt when enabled', async () => {
     const terminalProcess = new FakeTerminalProcess();
     const driver: TerminalDriver = {

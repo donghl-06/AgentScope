@@ -1035,34 +1035,56 @@ function resolveExecutable(
 }
 
 function resolveCodexExecutable(executable: string): ResolvedExecutable | undefined {
-  if (process.platform !== 'win32' || path.extname(executable) !== '') {
+  if (process.platform !== 'win32') {
     return { command: executable, args: [] };
   }
+  const explicitExtension = path.extname(executable).toLowerCase();
   if (executable.includes('/') || executable.includes('\\')) {
-    return { command: executable, args: [] };
+    if (explicitExtension === '.exe') return { command: executable, args: [] };
+    return resolveCodexShim(executable) ?? { command: executable, args: [] };
   }
+  if (explicitExtension !== '') return { command: executable, args: [] };
   const searchPath = process.env.PATH?.split(path.delimiter) ?? [];
   for (const directory of searchPath) {
     for (const extension of ['.exe', '.cmd', '.bat']) {
       const candidate = path.join(directory, `${executable}${extension}`);
       if (!fs.existsSync(candidate)) continue;
-      if (extension === '.exe') return { command: candidate, args: [] };
-      const text = fs.readFileSync(candidate, 'utf8');
-      const directTarget = text.match(/"([^"\r\n]+\.exe)"/iu)?.[1];
-      if (directTarget !== undefined) {
-        const resolved = path.resolve(directTarget.replace(/%~?dp0%/giu, directory));
-        if (fs.existsSync(resolved)) return { command: resolved, args: [] };
-      }
-      const scriptTarget = text.match(/"([^"\r\n]+\.js)"\s+%\*/iu)?.[1];
-      if (scriptTarget === undefined) continue;
-      const script = path.resolve(scriptTarget.replace(/%~?dp0%/giu, directory));
-      if (!fs.existsSync(script)) continue;
+      const resolved = resolveCodexShim(candidate);
+      if (resolved !== undefined) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function resolveCodexShim(candidate: string): ResolvedExecutable | undefined {
+  const extension = path.extname(candidate).toLowerCase();
+  if (extension === '.exe') return { command: candidate, args: [] };
+  if (extension !== '.cmd' && extension !== '.bat') return undefined;
+  let text: string;
+  try {
+    text = fs.readFileSync(candidate, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const directory = path.dirname(candidate);
+  const scriptTarget = text.match(/"([^"\r\n]+\.js)"\s+%\*/iu)?.[1];
+  if (scriptTarget !== undefined) {
+    const script = path.resolve(scriptTarget.replace(/%~?dp0%/giu, directory));
+    if (fs.existsSync(script)) {
       const nodeTarget = text.match(/SET\s+"_prog=([^"\r\n]*node\.exe)"/iu)?.[1];
       const node =
         nodeTarget === undefined
           ? process.execPath
           : path.resolve(nodeTarget.replace(/%~?dp0%/giu, directory));
       return { command: fs.existsSync(node) ? node : process.execPath, args: [script] };
+    }
+  }
+  for (const match of text.matchAll(/"([^"\r\n]+\.exe)"/giu)) {
+    const directTarget = match[1];
+    if (directTarget === undefined) continue;
+    const resolved = path.resolve(directTarget.replace(/%~?dp0%/giu, directory));
+    if (fs.existsSync(resolved) && isWindowsExecutable(resolved)) {
+      return { command: resolved, args: [] };
     }
   }
   return undefined;
