@@ -363,7 +363,7 @@ function SessionDetail({
         </span>
       </div>
       <AgentCard session={session} events={events} />
-      <TurnList turns={turns} evidence={evidence} />
+      <TurnList turns={turns} evidence={evidence} events={events} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
         <strong>{session.state.currentActivity?.label ?? 'No activity signal'}</strong>
@@ -417,9 +417,11 @@ function SessionDetail({
 function TurnList({
   turns,
   evidence,
+  events,
 }: {
   turns: readonly StoredTurn[];
   evidence: readonly StoredObserverEvidence[];
+  events: readonly StoredEvent[];
 }) {
   const [expandedTurnId, setExpandedTurnId] = useState<string>();
 
@@ -438,6 +440,7 @@ function TurnList({
               key={turn.id}
               turn={turn}
               evidence={evidence.filter((item) => evidenceBelongsToTurn(item, turn.id))}
+              events={events.filter((item) => eventBelongsToTurn(item, turn.id))}
               expanded={expandedTurnId === turn.id}
               onToggle={() =>
                 setExpandedTurnId((current) => (current === turn.id ? undefined : turn.id))
@@ -453,11 +456,13 @@ function TurnList({
 function TurnListItem({
   turn,
   evidence,
+  events,
   expanded,
   onToggle,
 }: {
   turn: StoredTurn;
   evidence: readonly StoredObserverEvidence[];
+  events: readonly StoredEvent[];
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -482,6 +487,7 @@ function TurnListItem({
         <>
           <TurnProjectionDetails turn={turn} />
           <TurnEvidenceDetails evidence={evidence} />
+          <TurnTimelineDetails events={events} />
         </>
       )}
     </li>
@@ -533,6 +539,32 @@ function TurnProjectionDetails({ turn }: { turn: StoredTurn }) {
   );
 }
 
+function TurnTimelineDetails({ events }: { events: readonly StoredEvent[] }) {
+  return (
+    <div className="turn-timeline" aria-label="Turn timeline">
+      <span className="eyebrow">TURN TIMELINE</span>
+      {events.length === 0 ? (
+        <small>No turn timeline events recorded yet.</small>
+      ) : (
+        <ol className="turn-timeline-list">
+          {events.map(({ seq, event }) => (
+            <li key={event.id}>
+              <span className="timeline-seq">{seq}</span>
+              <div>
+                <strong>{statusLabel(event.type)}</strong>
+                <small>
+                  {formatTimestamp(event.timestamp)} · confidence{' '}
+                  {Math.round(event.confidence * 100)}%
+                </small>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function TurnEvidenceDetails({
   evidence,
 }: {
@@ -577,6 +609,12 @@ function evidenceBelongsToTurn(evidence: StoredObserverEvidence, turnId: string)
   if (evidence.turnId === turnId) return true;
   if (typeof evidence.payload !== 'object' || evidence.payload === null) return false;
   const payload = evidence.payload as { readonly turnId?: unknown };
+  return payload.turnId === turnId;
+}
+
+function eventBelongsToTurn(stored: StoredEvent, turnId: string): boolean {
+  if (typeof stored.event.payload !== 'object' || stored.event.payload === null) return false;
+  const payload = stored.event.payload as { readonly turnId?: unknown };
   return payload.turnId === turnId;
 }
 
