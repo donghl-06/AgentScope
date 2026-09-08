@@ -93,6 +93,37 @@ build/
     }
   });
 
+  it('keeps the first observation time when a debounce flush is delayed', () => {
+    vi.useFakeTimers();
+    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));
+    const observations: FileObservation[] = [];
+    let emit: Parameters<FileWatchFactory>[1] | undefined;
+    try {
+      const observer = new FilesystemObserver(
+        {
+          rootPath,
+          debounceMs: 100,
+          onChange: (observation) => observations.push(observation),
+        },
+        (_root, onEvent) => {
+          emit = onEvent;
+          return { close: () => {} };
+        },
+      );
+      observer.start();
+      const observedAt = Date.now();
+      emit?.('change', 'src/app.ts');
+      vi.advanceTimersByTime(100);
+
+      expect(observations).toHaveLength(1);
+      expect(observations[0]?.timestamp).toBe(observedAt);
+      observer.stop();
+    } finally {
+      fs.rmSync(rootPath, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
+  });
+
   it('records bounded lstat metadata without reading file contents', () => {
     vi.useFakeTimers();
     const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-files-'));

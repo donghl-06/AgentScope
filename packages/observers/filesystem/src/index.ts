@@ -117,6 +117,7 @@ export class FilesystemObserver {
     const mergedKind = mergeChangeKinds(previous?.kind, kind);
     this.pending.set(path, {
       kind: mergedKind,
+      observedAt: previous?.observedAt ?? Date.now(),
       ...(mergedKind === 'delete'
         ? {}
         : stat === undefined
@@ -137,7 +138,10 @@ export class FilesystemObserver {
           this.onChange({
             path,
             kind: merged.kind,
-            timestamp: Date.now(),
+            // Preserve the first observation time. The debounce callback can
+            // run after a new turn has started; using the flush time would
+            // incorrectly attribute this evidence to that later turn.
+            timestamp: merged.observedAt,
             ...(merged.stat === undefined ? {} : { stat: merged.stat }),
           });
         }
@@ -223,6 +227,7 @@ function validateDebounce(value: number): number {
 
 interface PendingFileChange {
   readonly kind: FileChangeKind;
+  readonly observedAt: number;
   readonly stat?: FileObservationStat;
 }
 
