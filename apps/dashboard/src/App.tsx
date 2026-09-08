@@ -7,7 +7,7 @@ import type {
 } from '@agentscope/storage';
 
 import { DashboardApi, type DashboardLiveNotification } from './api.js';
-import { evidencePayloadSummary } from './evidence.js';
+import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
 import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline.js';
 
@@ -440,7 +440,7 @@ function TurnList({
             <TurnListItem
               key={turn.id}
               turn={turn}
-              evidence={evidence.filter((item) => evidenceBelongsToTurn(item, turn.id))}
+              evidence={evidence.filter((item) => evidenceBelongsToTurn(item, turn))}
               events={events.filter((item) => eventBelongsToTurn(item, turn.id))}
               expanded={expandedTurnId === turn.id}
               onToggle={() =>
@@ -469,12 +469,7 @@ function TurnListItem({
 }) {
   return (
     <li>
-      <button
-        className="turn-summary"
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-      >
+      <button className="turn-summary" type="button" aria-expanded={expanded} onClick={onToggle}>
         <span className="timeline-seq">{turn.sequence}</span>
         <span className="turn-summary-copy">
           <strong>{turn.title ?? 'Untitled task'}</strong>
@@ -566,11 +561,7 @@ function TurnTimelineDetails({ events }: { events: readonly StoredEvent[] }) {
   );
 }
 
-function TurnEvidenceDetails({
-  evidence,
-}: {
-  evidence: readonly StoredObserverEvidence[];
-}) {
+function TurnEvidenceDetails({ evidence }: { evidence: readonly StoredObserverEvidence[] }) {
   return (
     <div className="turn-evidence" aria-label="Turn evidence details">
       {evidence.length === 0 ? (
@@ -588,8 +579,8 @@ function TurnEvidenceDetails({
                   </span>
                 </div>
                 <small>
-                  {formatTimestamp(item.timestamp)} · confidence{' '}
-                  {Math.round(item.confidence * 100)}% · {item.key}
+                  {formatTimestamp(item.timestamp)} · confidence {Math.round(item.confidence * 100)}
+                  % · {item.key}
                 </small>
                 {payloadSummary !== undefined && (
                   <code className="turn-evidence-payload">{payloadSummary}</code>
@@ -610,13 +601,6 @@ function observerEvidenceSummary(evidence: readonly StoredObserverEvidence[]): s
   return latest === undefined
     ? `Sources: ${sources}`
     : `Sources: ${sources}. Latest: ${latest.reason}`;
-}
-
-function evidenceBelongsToTurn(evidence: StoredObserverEvidence, turnId: string): boolean {
-  if (evidence.turnId === turnId) return true;
-  if (typeof evidence.payload !== 'object' || evidence.payload === null) return false;
-  const payload = evidence.payload as { readonly turnId?: unknown };
-  return payload.turnId === turnId;
 }
 
 function eventBelongsToTurn(stored: StoredEvent, turnId: string): boolean {

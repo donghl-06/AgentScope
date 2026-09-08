@@ -1,5 +1,29 @@
+import type { StoredObserverEvidence, StoredTurn } from '@agentscope/storage';
+
 const MAX_PARTS = 5;
 const MAX_TEXT_LENGTH = 96;
+
+/**
+ * Associate observer evidence with a turn using its explicit ID whenever the
+ * API provides one. Older long-lived server processes can decode the same
+ * database row without exposing the newer turn_id column, so a timestamp
+ * window is a safe compatibility fallback for evidence captured during that
+ * turn.
+ */
+export function evidenceBelongsToTurn(
+  evidence: StoredObserverEvidence,
+  turn: Pick<StoredTurn, 'id' | 'submittedAt' | 'startedAt' | 'endedAt'>,
+): boolean {
+  if (evidence.turnId !== undefined) return evidence.turnId === turn.id;
+  if (typeof evidence.payload === 'object' && evidence.payload !== null) {
+    const payload = evidence.payload as { readonly turnId?: unknown };
+    if (payload.turnId !== undefined) return payload.turnId === turn.id;
+  }
+
+  const start = turn.startedAt ?? turn.submittedAt;
+  const end = turn.endedAt ?? Number.POSITIVE_INFINITY;
+  return evidence.timestamp >= start && evidence.timestamp <= end;
+}
 
 /** Return a compact, non-transcript summary of known observer payload fields. */
 export function evidencePayloadSummary(payload: unknown): string | undefined {

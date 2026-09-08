@@ -1,6 +1,45 @@
 import { describe, expect, it } from 'vitest';
 
-import { evidencePayloadSummary } from './evidence.js';
+import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
+
+const turn = {
+  id: 'session-1:turn:1',
+  submittedAt: 100,
+  startedAt: 110,
+  endedAt: 200,
+} as const;
+
+function evidence(overrides: Partial<Parameters<typeof evidenceBelongsToTurn>[0]> = {}) {
+  return {
+    id: 'evidence-1',
+    sessionId: 'session-1',
+    key: 'file:README.md',
+    timestamp: 150,
+    source: 'filesystem',
+    kind: 'file',
+    confidence: 1,
+    reason: 'File changed.',
+    payload: { path: 'README.md' },
+    ...overrides,
+  };
+}
+
+describe('turn evidence association', () => {
+  it('uses an explicit turn ID when available', () => {
+    expect(evidenceBelongsToTurn(evidence({ turnId: turn.id }), turn)).toBe(true);
+    expect(evidenceBelongsToTurn(evidence({ turnId: 'session-1:turn:2' }), turn)).toBe(false);
+  });
+
+  it('falls back to the turn time window for legacy API responses', () => {
+    expect(evidenceBelongsToTurn(evidence({ timestamp: 111 }), turn)).toBe(true);
+    expect(evidenceBelongsToTurn(evidence({ timestamp: 99 }), turn)).toBe(false);
+    expect(evidenceBelongsToTurn(evidence({ timestamp: 201 }), turn)).toBe(false);
+  });
+
+  it('recognizes a turn ID embedded in the legacy payload', () => {
+    expect(evidenceBelongsToTurn(evidence({ payload: { turnId: turn.id } }), turn)).toBe(true);
+  });
+});
 
 describe('evidence payload summaries', () => {
   it('summarizes file and verification fields without serializing the full payload', () => {
