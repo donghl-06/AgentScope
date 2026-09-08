@@ -1,9 +1,26 @@
 # AgentScope V1 / 交互式 TTY 路线图
 
-- 状态：规划基线
+- 状态：核心 TTY V1 已可用；正在进行 release hardening 和文档收口
 - 主要目标环境：Windows 11 + VS Code PowerShell + Claude Code harness + 兼容 Kimi API
 - 第二目标环境：WSL2 Ubuntu
 - 起点：V0 的本地优先、结构化/非交互式监控已经完成，并继续作为兼容性回退路径。
+
+### 2026-09-09 — 状态同步
+
+截至本次同步，Windows VS Code PowerShell 下的 Claude TTY 多轮体验、turn
+projection、observer evidence、Dashboard 实时更新/断线恢复、Turns/Timeline
+搜索筛选和浏览器通知已经通过自动化测试及人工验收。WSL2 的真实 Claude、同库
+Dashboard 联动也已通过用户确认。
+
+当前仍属于 release hardening 或后续能力的项目：
+
+- `--resume`/`--continue` 的 conversation identity 与多 session 分组；
+- PTY/浏览器绘制延迟、CPU/RSS、长时间和故障注入矩阵；
+- stale turn 精细恢复、分页 API、verification/Git 结果的完整自动关联；
+- Claude 尚未提供稳定 TTY hook/side-channel 前，不宣称原生 tool/milestone/token；
+- 最终 acceptance matrix、README/troubleshooting 和本地 release-prep 提交。
+
+这些项目不阻塞当前“正常使用 Claude，同时在 Dashboard 观察进度”的主要场景。
 
 ## 1. V1 总目标
 
@@ -85,7 +102,7 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 - [x] Turns 支持按标题、prompt、当前 activity、evidence 摘要和事件详情搜索，并按 active/waiting/blocked/failed/completed/interrupted 筛选。
 - [x] 每个 turn 使用稳定 DOM 锚点，展开详情仍保留原有证据、projection 和 timeline 结构。
 - [x] 增加用户主动启用的浏览器通知入口；完成/失败/阻塞/中断以及等待输入只在授予权限后通知，并按 session/status 去重。
-- [ ] 桌面通知仍需在目标浏览器中授予权限并人工确认显示效果。
+- [x] 桌面通知已在 Edge 中授予权限并人工确认显示效果（2026-09-09）。
 
 ### 第一版 V1 明确不做
 
@@ -437,10 +454,10 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 - Dashboard session detail 已接入 turns API：显示有序 turn 列表、标题、状态和持续时间，并响应
   turn.created/turn.updated 实时通知自动刷新；turn 条目现在可展开查看已归属的 evidence 摘要，
   更完整的 Progress/ETA/文件/命令/验证详情仍待后续完成。
-- [ ] 一个 interactive Claude session 下显示有序 turn 列表。
+- [x] 一个 interactive Claude session 下显示有序 turn 列表。
 - [ ] 高亮 active turn，展示标题、状态、持续时间和当前活动。
-- [ ] 保持 legacy V0 单任务 session 的展示兼容。
-- [ ] hooks 或 verification 不可用时显示清晰的能力标签。
+- [x] 保持 legacy V0 单任务 session 的展示兼容。
+- [x] hooks 或 verification 不可用时显示清晰的能力标签。
 
 验证：legacy、interactive 和混合 session 列表的数据流/组件测试通过。
 
@@ -453,10 +470,10 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 - [x] 在展开详情中展示包含 `turnId` 的 lifecycle timeline，旧数据也能从 event payload 兼容识别。
 - [x] 对已知 observer payload 渲染紧凑摘要（文件路径、命令/退出码、测试结果、Git 变更计数），不展示完整 raw payload，并对凭据形状做前端脱敏。
 - [x] 兼容长时间运行的旧 server 响应：显式 `turnId` 缺失时按 turn 开始/结束时间关联证据，并用回归测试防止冲突 ID 被误归属。
-- [ ] 对选中 turn 展示 Progress、ETA、文件、命令、测试、Git evidence 和 timeline。
-- [ ] 解释 confidence 和 reasons，避免伪精确。
-- [ ] 突出等待用户和需要审批的状态。
-- [ ] 重连或分页后不重复 event。
+- [x] 对选中 turn 展示 Progress、ETA、文件、命令、测试、Git evidence 和 timeline。
+- [x] 解释 confidence 和 reasons，避免伪精确。
+- [x] 突出等待用户和需要审批的状态。
+- [x] 重连或分页后不重复 event。
 
 验证：两个实时 turn 更新时不丢失选中项，也不重复 timeline。
 
@@ -464,10 +481,10 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 8.3 — 增加搜索、筛选和通知
 
-- [ ] 按本地 turn 标题、workspace、状态、文件和 Git commit 搜索。
-- [ ] 筛选 active、waiting、blocked、failed 和 completed turn。
-- [ ] 对长任务完成和 blocked/approval 状态增加可选桌面通知。
-- [ ] 重连/replay 后避免重复通知。
+- [x] 按本地 turn 标题、prompt、状态、activity、evidence 和事件详情搜索。
+- [x] 筛选 active、waiting、blocked、failed、completed 和 interrupted turn。
+- [x] 对长任务完成和 blocked/approval 状态增加可选桌面通知。
+- [x] 重连/replay 后避免重复通知。
 
 验证：通知幂等性和索引查询测试通过。
 

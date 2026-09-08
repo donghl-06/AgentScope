@@ -1,8 +1,9 @@
 # AgentScope V0 Acceptance Matrix
 
 Status is based on repository tests, Windows native PowerShell evidence
-recorded on 2026-09-06, and the user-confirmed WSL2 smoke recorded on
-2026-09-07. `Partial` means the supported V0 path is verified but a
+recorded on 2026-09-06, the user-confirmed WSL2 smoke recorded on
+2026-09-07, and the Edge notification acceptance recorded on 2026-09-09.
+`Partial` means the supported V0 path is verified but a
 documented limitation or manual-only portion remains.
 
 | ID | Acceptance condition | Status | Evidence |
@@ -17,6 +18,7 @@ documented limitation or manual-only portion remains.
 | AC-08 | SQLite history survives a server restart | Pass | server-recovery integration test and 2026-09-06 same-database restart acceptance |
 | AC-09 | Dashboard refresh/WS catch-up does not duplicate or lose timeline events | Pass | HTTP cursor catch-up tests, user-confirmed Dashboard refresh/reconnect, and 2026-09-06 isolated real WS disconnect/catch-up smoke |
 | AC-10 | ExampleAdapter does not require core/storage/dashboard changes | Pass | `docs/adapter-guide.md`, protocol/core boundary tests |
+| AC-11 | Opt-in Dashboard notifications do not duplicate and can be enabled in the target browser | Pass | Notification state/deduplication tests and user-confirmed Edge acceptance on 2026-09-09 |
 
 ## Supported V0 matrix
 
