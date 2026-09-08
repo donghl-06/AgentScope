@@ -57,6 +57,46 @@ describe('provider runner', () => {
     expect(stdout.join('')).toContain('provider-1');
   });
 
+  it('persists explicit resume metadata without merging execution ids', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-continuation-'));
+    const filename = path.join(directory, 'session.db');
+    try {
+      await runProvider({
+        adapter: 'claude',
+        executable: process.execPath,
+        args: [
+          '-e',
+          script(
+            '{"type":"system","subtype":"init","session_id":"provider-resume"}\n{"type":"result","subtype":"success","is_error":false}',
+            0,
+          ),
+          '--resume',
+          'provider-resume',
+        ],
+        filename,
+        workspacePath,
+        sessionId: 'execution-resume-1',
+      });
+      const storage = openStorage({ filename, migrate: false });
+      try {
+        const session = new StorageRepository(storage.client).getSession('execution-resume-1');
+        expect(session.state.continuation).toEqual({
+          mode: 'resume',
+          reference: 'provider-resume',
+        });
+        expect(session.state.conversation).toEqual({
+          id: 'provider-resume',
+          source: 'explicit-resume',
+        });
+        expect(session.id).toBe('execution-resume-1');
+      } finally {
+        storage.client.close();
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('persists a Codex session with the Codex provider label', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-'));
     const filename = path.join(directory, 'session.db');
