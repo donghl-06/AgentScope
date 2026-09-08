@@ -938,6 +938,7 @@ MockAdapter
 - [x] Mock backend E2E 已在两个并行 session 中验证 overview counts、session detail 的 Progress/ETA、timeline 终态和 observer evidence API；浏览器视觉实时变化仍需手工确认。
 - [x] 验证刷新 Dashboard、断开/恢复 WebSocket、HTTP catch-up、server 重启后 timeline 不重复、不丢失，历史 session 与当前 projection 一致；自动化 server-recovery 覆盖 HTTP cursor catch-up，2026-09-06 同库 server 重启/API 核验通过，Dashboard 刷新、历史数据、Live updates connected 和无 404 人工验收通过。
 - [x] 为 turns、session observer evidence 和 turn observer evidence 增加独立 cursor page API；旧数组接口保持兼容，storage/server/Dashboard typed API 均有跨页无重复回归测试。
+- [x] Dashboard session detail 使用上述 cursor page 自动合并长列表，并以 1000 页安全上限防止异常游标循环；正常短列表的展示和 timeline Load more 行为保持不变。
 - [ ] 测量关键事件端到端延迟、WS backpressure、timeline pagination 和 observer debounce；UI 端到端延迟、backpressure 和 pagination 仍待测量。
 - [x] 增加 `pnpm benchmark:mock -- --iterations <n>` 可重复诊断基线；2026-09-06 八轮/32 样本记录 wrapper P50 13.392s、P95 18.740s、SQLite 331,776 bytes、编排器 CPU/RSS，结果见 `docs/findings/e2e.md`。这些不是 UI SLO 或容量承诺。
 
