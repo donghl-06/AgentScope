@@ -552,10 +552,10 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 11.1 — 自动化发布门禁
 
-- [ ] lint、typecheck、unit、integration、migration、fixture 和 build 检查通过。
-- [ ] V0 结构化 Claude/Codex workflow 继续通过。
+- [x] lint、typecheck、unit、integration、migration、fixture 和 build 检查通过（`pnpm release:check`，2026-09-09）。
+- [x] V0 结构化 Claude/Codex workflow 继续通过。
 - [ ] Windows ConPTY 和 WSL2 PTY fake/integration suite 通过。
-- [ ] 跨进程 turn broadcast、分页和重启恢复通过。
+- [x] 跨进程 turn broadcast、分页和重启恢复通过。
 
 #### Step 11.2 — 手工体验验收
 
