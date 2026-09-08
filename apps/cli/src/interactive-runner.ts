@@ -30,6 +30,7 @@ const INTERACTIVE_PROGRESS_CAPABILITIES = {
   fileEvents: true,
   observerSignals: true,
 } as const;
+const INTERACTIVE_PROJECTION_INTERVAL_MS = 1_000;
 
 export interface InteractiveSignals {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
@@ -126,6 +127,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
 
   let terminal: TerminalSession | undefined;
   let observerRuntime: ObserverRuntime | undefined;
+  let liveProjectionTimer: ReturnType<typeof setInterval> | undefined;
   let interrupted = false;
   const turnWindows: TurnWindow[] = [];
   const pendingObserverWork = new Set<Promise<unknown>>();
@@ -412,6 +414,16 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     output.on('resize', onResize);
     signals.on('SIGINT', onSignal);
     await observerRuntime.start();
+    liveProjectionTimer = setInterval(() => {
+      if (terminal?.state !== 'running') return;
+      const timestamp = now();
+      state = refreshInteractiveProjection(repository, state, timestamp);
+      const currentTurn = coordinator.current;
+      if (currentTurn !== undefined) {
+        syncTurnProjection(repository, currentTurn, state, timestamp);
+      }
+    }, INTERACTIVE_PROJECTION_INTERVAL_MS);
+    liveProjectionTimer.unref?.();
 
     const exit = await exitPromise;
     const reason =
@@ -449,6 +461,8 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     });
     return state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1;
   } finally {
+    if (liveProjectionTimer !== undefined) clearInterval(liveProjectionTimer);
+    liveProjectionTimer = undefined;
     input.removeListener('data', onInput);
     input.pause();
     input.setRawMode?.(false);
@@ -484,6 +498,33 @@ function appendEvent(
     }),
   };
   repository.updateSessionState(next.sessionId, projected, { now: event.timestamp });
+  return projected;
+}
+
+function refreshInteractiveProjection(
+  repository: StorageRepository,
+  state: SessionState,
+  timestamp: number,
+): SessionState {
+  if (state.status === 'completed' || state.status === 'failed' || state.status === 'interrupted') {
+    return state;
+  }
+  const progress = computeProgress({
+    state,
+    capabilities: INTERACTIVE_PROGRESS_CAPABILITIES,
+    now: timestamp,
+    lastSignalAt: state.currentActivity?.startedAt ?? state.startedAt,
+  });
+  const projected: SessionState = {
+    ...state,
+    progress,
+    eta: estimateEta({
+      state,
+      progress,
+      elapsedSeconds: Math.max(0, (timestamp - state.startedAt) / 1_000),
+    }),
+  };
+  repository.updateSessionState(state.sessionId, projected, { now: timestamp });
   return projected;
 }
 

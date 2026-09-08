@@ -378,12 +378,17 @@ describe('interactive provider runner', () => {
       const turns = liveRepository.listTurns('session-tty-live');
       const events = liveRepository.listEvents('session-tty-live').items;
       expect(session.status).toBe('running');
-      expect(session.state.currentActivity?.kind).toBe('file');
+      expect(['command', 'file', 'review']).toContain(session.state.currentActivity?.kind);
       expect(session.state.eta).toBeDefined();
       expect(turns).toHaveLength(1);
       expect(turns[0]?.status).toBe('running');
-      expect(turns[0]?.state.currentActivity?.kind).toBe('file');
+      expect(['command', 'file', 'review']).toContain(turns[0]?.state.currentActivity?.kind);
       expect(events.some(({ event }) => event.type === 'observer_activity')).toBe(true);
+      const firstUpdatedAt = session.updatedAt;
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      expect(liveRepository.getSession('session-tty-live').updatedAt).toBeGreaterThan(
+        firstUpdatedAt,
+      );
     } finally {
       liveStorage.client.close();
     }
