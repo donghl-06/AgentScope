@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global performance, setTimeout */
+/* global clearTimeout, performance, setTimeout */
 
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
