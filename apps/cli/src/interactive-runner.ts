@@ -26,6 +26,12 @@ export interface InteractiveSignals {
   removeListener(signal: NodeJS.Signals, listener: () => void): unknown;
 }
 
+interface TurnWindow {
+  readonly turnId: string;
+  readonly startedAt: number;
+  endedAt?: number;
+}
+
 export interface InteractiveProviderOptions {
   readonly adapter: 'claude';
   readonly args: readonly string[];
@@ -95,7 +101,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     capabilities: {
       structuredEvents: false,
       toolCalls: false,
-      fileEvents: false,
+      fileEvents: true,
       commandEvents: false,
       tokenUsage: false,
       sessionInfo: true,
@@ -110,6 +116,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   let terminal: TerminalSession | undefined;
   let observerRuntime: ObserverRuntime | undefined;
   let interrupted = false;
+  const turnWindows: TurnWindow[] = [];
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const environment = prepareInteractiveEnvironment(options.env ?? process.env);
@@ -120,6 +127,15 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     ...(options.persistPrompt === undefined ? {} : { persistPrompt: options.persistPrompt }),
     onUpdate: (update) => {
       const timestamp = now();
+      if (update.kind === 'started') {
+        turnWindows.push({
+          turnId: update.turn.turnId,
+          startedAt: update.turn.startedAt ?? update.turn.submittedAt,
+        });
+      } else if (update.kind === 'finished') {
+        const window = findTurnWindow(turnWindows, update.turn.turnId);
+        if (window !== undefined) window.endedAt = update.turn.endedAt ?? timestamp;
+      }
       if (update.kind === 'started') {
         repository.createTurn({ state: update.turn, now: timestamp });
       } else {
@@ -269,11 +285,11 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       process: { pid: terminal.pid, startedAt },
       file: {},
       onEvidence: (evidence) => {
-        const activeTurn = coordinator.current;
+        const turnWindow = findTurnWindowForEvidence(turnWindows, evidence.timestamp);
         repository.saveObserverEvidence({
           id: evidence.id,
           sessionId,
-          ...(activeTurn === undefined ? {} : { turnId: activeTurn.turnId }),
+          ...(turnWindow === undefined ? {} : { turnId: turnWindow.turnId }),
           key: evidence.key,
           timestamp: evidence.timestamp,
           source: evidence.source,
@@ -410,6 +426,34 @@ function sessionStatusForTurn(status: TurnState['status']): SessionState['status
   if (status === 'queued') return 'starting';
   if (status === 'waiting') return 'running';
   return status;
+}
+
+function findTurnWindow(
+  turnWindows: readonly TurnWindow[],
+  turnId: string,
+): TurnWindow | undefined {
+  for (let index = turnWindows.length - 1; index >= 0; index -= 1) {
+    const window = turnWindows[index];
+    if (window?.turnId === turnId) return window;
+  }
+  return undefined;
+}
+
+function findTurnWindowForEvidence(
+  turnWindows: readonly TurnWindow[],
+  timestamp: number,
+): TurnWindow | undefined {
+  for (let index = turnWindows.length - 1; index >= 0; index -= 1) {
+    const window = turnWindows[index];
+    if (
+      window !== undefined &&
+      timestamp >= window.startedAt &&
+      (window.endedAt === undefined || timestamp <= window.endedAt)
+    ) {
+      return window;
+    }
+  }
+  return undefined;
 }
 
 function createEvent(

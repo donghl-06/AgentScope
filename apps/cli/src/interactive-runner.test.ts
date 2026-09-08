@@ -231,4 +231,56 @@ describe('interactive provider runner', () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('associates debounced filesystem evidence with the active turn window', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-tty-file-'));
+    const filename = path.join(workspace, 'session.db');
+    const changedPath = path.join(workspace, 'evidence.txt');
+    terminalProcess.writeHandler = (data) => {
+      if (!data.endsWith('FILE\r')) return;
+      fs.writeFileSync(changedPath, 'file evidence\n', 'utf8');
+      setTimeout(() => terminalProcess.emitData('Working...\r\n> Try "next"'), 220);
+      setTimeout(() => terminalProcess.finish(0), 240);
+    };
+    const driver: TerminalDriver = {
+      spawn: () => {
+        setTimeout(() => terminalProcess.emitData('> Try "task"'), 0);
+        return terminalProcess;
+      },
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const running = runInteractiveProvider({
+      adapter: 'claude',
+      args: [],
+      filename,
+      workspacePath: workspace,
+      executable: process.execPath,
+      sessionId: 'session-file-window',
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+    setTimeout(() => input.write('FILE\r'), 5);
+    const exitCode = await running;
+    const storage = openStorage({ filename, migrate: false });
+    try {
+      const repository = new StorageRepository(storage.client);
+      const evidence = repository
+        .listObserverEvidence('session-file-window')
+        .find((item) => item.key === 'file:evidence.txt');
+      expect(exitCode).toBe(0);
+      expect(repository.getSession('session-file-window').capabilities.fileEvents).toBe(true);
+      expect(evidence).toMatchObject({
+        turnId: 'session-file-window:turn:1',
+        source: 'filesystem',
+        payload: { path: 'evidence.txt', kind: 'create' },
+      });
+    } finally {
+      storage.client.close();
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
