@@ -140,12 +140,12 @@ describe('interactive provider runner', () => {
     const terminalProcess = new FakeTerminalProcess();
     terminalProcess.writeHandler = (data) => {
       if (!data.endsWith('CODEX_FIRST\r')) return;
-      terminalProcess.emitData('Working on Codex...\r\n> Try "next"');
+      terminalProcess.emitData('Working on Codex...\r\n› ');
       setTimeout(() => terminalProcess.finish(0), 5);
     };
     const driver: TerminalDriver = {
       spawn: () => {
-        setTimeout(() => terminalProcess.emitData('> Try "task"'), 0);
+        setTimeout(() => terminalProcess.emitData('› '), 0);
         return terminalProcess;
       },
     };

@@ -69,6 +69,17 @@ describe('turn signal detectors', () => {
     ]);
   });
 
+  it('recognizes the Codex chevron prompt after activity', () => {
+    const detector = new PtyTurnSignalDetector({ enablePromptCompletion: true });
+    expect(detector.ingest('› ', 350)).toEqual([
+      { kind: 'waiting', source: 'pty', confidence: 0.55, timestamp: 350 },
+    ]);
+    expect(detector.ingest('Codex is working...\r\n', 360)).toEqual([]);
+    expect(detector.ingest('› ', 370)).toEqual([
+      { kind: 'finished', reason: 'completed', source: 'pty', confidence: 0.88, timestamp: 370 },
+    ]);
+  });
+
   it('keeps approval prompts waiting instead of completing a turn', () => {
     const detector = new PtyTurnSignalDetector({ enablePromptCompletion: true });
     expect(detector.ingest('Working...\r\nAllow this command? [y/N]\r\n', 400)).toEqual([

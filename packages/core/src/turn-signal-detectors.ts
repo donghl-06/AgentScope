@@ -140,7 +140,7 @@ export class PtyTurnSignalDetector {
       this.lineBuffer = '';
       this.activitySincePrompt = false;
       this.approvalPrompt = false;
-    } else if (/(?:^|\n)\s*(?:>|❯)\s?$/u.test(this.buffer)) {
+    } else if (/(?:^|\n)\s*(?:>|❯|›)\s?$/u.test(this.buffer)) {
       signals.push({ kind: 'waiting', source: 'pty', confidence: 0.55, timestamp });
     }
     return deduplicateSignals(signals);
@@ -148,7 +148,7 @@ export class PtyTurnSignalDetector {
 }
 
 function isPromptLine(line: string): boolean {
-  return /^\s*(?:>|❯)\s*(?:Try\b.*)?$/iu.test(line);
+  return /^\s*(?:>|❯|›)\s*(?:(?:Try|Ask)\b.*)?$/iu.test(line);
 }
 
 function isApprovalPrompt(line: string): boolean {

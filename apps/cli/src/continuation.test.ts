@@ -14,6 +14,11 @@ describe('conservative continuation metadata', () => {
       mode: 'resume',
       reference: 'session-43',
     });
+    expect(detectContinuation(['resume', 'thread-44'])).toEqual({
+      mode: 'resume',
+      reference: 'thread-44',
+    });
+    expect(detectContinuation(['resume', '--last'])).toEqual({ mode: 'resume' });
   });
 
   it('recognizes continue without inventing a conversation id', () => {

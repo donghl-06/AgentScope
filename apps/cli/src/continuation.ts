@@ -9,6 +9,12 @@ export function detectContinuation(args: readonly string[]): ContinuationRequest
     const argument = args[index];
     if (argument === undefined) continue;
     if (argument === '--continue' || argument === '-c') return { mode: 'continue' };
+    if (argument === 'resume') {
+      const reference = args[index + 1];
+      return reference === undefined || reference.startsWith('-')
+        ? { mode: 'resume' }
+        : { mode: 'resume', reference };
+    }
     if (argument === '--resume') {
       const reference = args[index + 1];
       return reference === undefined || reference.startsWith('-')
