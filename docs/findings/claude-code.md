@@ -5,6 +5,7 @@
 - Observed version: `2.1.259 (Claude Code)`.
 - Follow-up manual smoke on 2026-09-05 observed `2.1.261 (Claude Code)` with the configured compatible endpoint/model. The minimal `--bare -p` request completed successfully through AgentScope; no raw output is stored because it contained thinking signatures, usage/cost fields and provider diagnostics.
 - Repeat smoke on 2026-09-06 used the same local, gitignored configuration and returned `OK` through `agent-scope run claude`; AgentScope persisted the run as `completed` with the normalized three-event lifecycle. The configuration values and provider session id are intentionally omitted.
+- Autonomous interactive smoke on 2026-09-08 used the normal `--agent-scope-accept-api-key` channel with the configured compatible GLM endpoint. The provider returned the requested sentinel, `/exit` completed cleanly, and the latest session was `completed` with one completed turn, the expected four lifecycle events, and process/filesystem/Git/interactive-PTY evidence. No key, prompt, or provider session id is recorded here.
 - Parallel smoke on 2026-09-06 ran Claude beside a Codex CLI session against the same AgentScope database. Claude returned `OK` and completed independently; no provider/adapter cross-labeling or timeline interleaving was observed.
 - Host: Windows native PowerShell, disposable repository, non-interactive `--bare -p` mode.
 - Structured command used: `--output-format stream-json --verbose`.
