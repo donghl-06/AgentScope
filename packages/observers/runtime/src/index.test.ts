@@ -35,6 +35,19 @@ describe('observer runtime', () => {
       expect(evidence.map((item) => item.key)).toContain('process:42:started');
       expect(evidence.some((item) => item.key.endsWith(':baseline'))).toBe(true);
 
+      await runtime.captureProcessSnapshot({ turnId: 'session-1:turn:1', phase: 'start' });
+      await runtime.captureGitSnapshot({ turnId: 'session-1:turn:1', phase: 'start' });
+      expect(evidence).toContainEqual({
+        source: 'process',
+        kind: 'lifecycle',
+        key: 'process:42:turn:session-1:turn:1:start',
+      });
+      expect(evidence).toContainEqual({
+        source: 'git',
+        kind: 'workspace',
+        key: expect.stringContaining(':turn:session-1:turn:1:start'),
+      });
+
       emitFileEvent?.('change', 'app.ts');
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(evidence).toContainEqual({ source: 'filesystem', kind: 'file', key: 'file:app.ts' });

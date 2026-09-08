@@ -7,6 +7,7 @@ export type ObserverEvidenceKind =
 export interface ObserverEvidence<T = unknown> {
   readonly id: string;
   readonly key: string;
+  readonly turnId?: string;
   readonly timestamp: number;
   readonly source: ObserverEvidenceSource;
   readonly kind: ObserverEvidenceKind;
@@ -81,6 +82,9 @@ export function compareEvidence(left: ObserverEvidence, right: ObserverEvidence)
 function validateEvidence(evidence: ObserverEvidence): void {
   if (evidence.id.length === 0) throw new RangeError('Evidence id must not be empty.');
   if (evidence.key.length === 0) throw new RangeError('Evidence key must not be empty.');
+  if (evidence.turnId !== undefined && evidence.turnId.length === 0) {
+    throw new RangeError('Evidence turnId must not be empty.');
+  }
   if (!Number.isFinite(evidence.timestamp) || evidence.timestamp < 0) {
     throw new RangeError('Evidence timestamp must be a non-negative finite number.');
   }

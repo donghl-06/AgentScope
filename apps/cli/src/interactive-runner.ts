@@ -117,6 +117,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   let observerRuntime: ObserverRuntime | undefined;
   let interrupted = false;
   const turnWindows: TurnWindow[] = [];
+  const pendingObserverWork = new Set<Promise<unknown>>();
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const environment = prepareInteractiveEnvironment(options.env ?? process.env);
@@ -170,8 +171,24 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         ),
       );
       syncTurnProjection(repository, update.turn, state, timestamp);
+      if (update.kind === 'started' || update.kind === 'finished') {
+        queueTurnObserverSnapshots(
+          update.turn.turnId,
+          update.kind === 'started' ? 'start' : 'finish',
+        );
+      }
     },
   });
+
+  const queueTurnObserverSnapshots = (turnId: string, phase: 'start' | 'finish'): void => {
+    if (observerRuntime === undefined) return;
+    const work = Promise.allSettled([
+      observerRuntime.captureProcessSnapshot({ turnId, phase }),
+      observerRuntime.captureGitSnapshot({ turnId, phase }),
+    ]);
+    pendingObserverWork.add(work);
+    void work.finally(() => pendingObserverWork.delete(work));
+  };
   const arbiter = new TurnSignalArbiter(coordinator);
   const detector = new PtyTurnSignalDetector({
     enablePromptCompletion: !options.args.includes('--bare'),
@@ -289,7 +306,11 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         repository.saveObserverEvidence({
           id: evidence.id,
           sessionId,
-          ...(turnWindow === undefined ? {} : { turnId: turnWindow.turnId }),
+          ...(evidence.turnId !== undefined
+            ? { turnId: evidence.turnId }
+            : turnWindow === undefined
+              ? {}
+              : { turnId: turnWindow.turnId }),
           key: evidence.key,
           timestamp: evidence.timestamp,
           source: evidence.source,
@@ -347,6 +368,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         timestamp: now(),
       });
     }
+    await settleObserverWork(pendingObserverWork);
     state = appendEvent(
       repository,
       state,
@@ -362,6 +384,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     input.setRawMode?.(false);
     output.removeListener('resize', onResize);
     signals.removeListener('SIGINT', onSignal);
+    await settleObserverWork(pendingObserverWork);
     observerRuntime?.stop();
     terminal?.dispose();
     storage.client.close();
@@ -454,6 +477,12 @@ function findTurnWindowForEvidence(
     }
   }
   return undefined;
+}
+
+async function settleObserverWork(pending: Set<Promise<unknown>>): Promise<void> {
+  while (pending.size > 0) {
+    await Promise.allSettled([...pending]);
+  }
 }
 
 function createEvent(

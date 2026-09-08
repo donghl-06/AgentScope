@@ -217,7 +217,13 @@ describe('interactive provider runner', () => {
       // One content-free terminal-input observation plus lifecycle evidence
       // for the two submitted turns.
       expect(evidence.length).toBeGreaterThanOrEqual(7);
-      expect(evidence.filter((item) => item.turnId !== undefined)).toHaveLength(4);
+      const turnEvidence = evidence.filter((item) => item.turnId !== undefined);
+      expect(turnEvidence.filter((item) => item.source === 'interactive-pty')).toHaveLength(4);
+      expect(turnEvidence.filter((item) => item.source === 'process')).toHaveLength(4);
+      expect(turnEvidence.filter((item) => item.source === 'git')).toHaveLength(4);
+      expect(new Set(turnEvidence.map((item) => item.turnId))).toEqual(
+        new Set(['session-tty:turn:1', 'session-tty:turn:2']),
+      );
       expect(events.map(({ event }) => event.type)).toEqual([
         'session_started',
         'turn_started',

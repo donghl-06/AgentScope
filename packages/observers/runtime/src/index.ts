@@ -40,6 +40,16 @@ export interface ObserverRuntimeGitOptions {
   readonly run?: GitCommandRunner;
 }
 
+export interface ObserverProcessSnapshotOptions {
+  readonly turnId?: string;
+  readonly phase?: 'start' | 'finish';
+}
+
+export interface ObserverGitSnapshotOptions {
+  readonly turnId?: string;
+  readonly phase?: 'start' | 'finish';
+}
+
 export interface ObserverRuntimeOptions {
   readonly sessionId: string;
   readonly workspacePath: string;
@@ -136,11 +146,46 @@ export class ObserverRuntime {
     }
   }
 
-  async captureGitSnapshot(): Promise<GitSnapshot | undefined> {
+  async captureProcessSnapshot(
+    options: ObserverProcessSnapshotOptions = {},
+  ): Promise<ProcessInspection | undefined> {
+    if (!this.active || this.processObserver === undefined || this.options.process === undefined) {
+      return undefined;
+    }
+    try {
+      const inspection = await this.processObserver.pollOnce();
+      if (!this.active) return inspection;
+      const timestamp = this.now();
+      this.emitEvidence({
+        key: processSnapshotKey(this.options.process.pid, options, this.sequence),
+        source: 'process',
+        kind: 'lifecycle',
+        confidence: inspection.state === 'unknown' ? 0.3 : 0.8,
+        reason: 'Process observer captured the wrapper root process for this turn.',
+        timestamp,
+        ...(options.turnId === undefined ? {} : { turnId: options.turnId }),
+        payload: {
+          pid: this.options.process.pid,
+          state: inspection.state,
+          ...(inspection.exitCode === undefined ? {} : { exitCode: inspection.exitCode }),
+          ...(inspection.signal === undefined ? {} : { signal: inspection.signal }),
+          observedAt: timestamp,
+        },
+      });
+      return inspection;
+    } catch (error) {
+      this.reportError('process', error);
+      return undefined;
+    }
+  }
+
+  async captureGitSnapshot(
+    options: ObserverGitSnapshotOptions = {},
+  ): Promise<GitSnapshot | undefined> {
     if (!this.active || this.gitObserver === undefined) return undefined;
     try {
       const snapshot = await this.gitObserver.capture();
-      this.emitGitSnapshot('snapshot', snapshot);
+      this.emitGitSnapshot('snapshot', snapshot, options);
       return snapshot;
     } catch (error) {
       this.reportError('git', error);
@@ -281,9 +326,13 @@ export class ObserverRuntime {
     });
   }
 
-  private emitGitSnapshot(kind: 'baseline' | 'snapshot', snapshot: GitSnapshot): void {
+  private emitGitSnapshot(
+    kind: 'baseline' | 'snapshot',
+    snapshot: GitSnapshot,
+    options: ObserverGitSnapshotOptions = {},
+  ): void {
     this.emitEvidence({
-      key: `git:${snapshot.rootPath}:${kind}`,
+      key: gitSnapshotKey(snapshot.rootPath, kind, options),
       source: 'git',
       kind: 'workspace',
       confidence: snapshot.isRepository ? 0.8 : 0.3,
@@ -291,6 +340,7 @@ export class ObserverRuntime {
         ? `Git ${kind} snapshot captured for the workspace.`
         : `Git ${kind} unavailable: ${snapshot.reason ?? 'not a repository'}.`,
       timestamp: snapshot.capturedAt,
+      ...(options.turnId === undefined ? {} : { turnId: options.turnId }),
       payload: snapshot,
     });
   }
@@ -343,4 +393,22 @@ export class ObserverRuntime {
       // Error reporting must never become a second observer failure.
     }
   }
+}
+
+function processSnapshotKey(
+  pid: number,
+  options: ObserverProcessSnapshotOptions,
+  sequence: number,
+): string {
+  if (options.turnId === undefined) return `process:${pid}:snapshot:${sequence}`;
+  return `process:${pid}:turn:${options.turnId}:${options.phase ?? 'snapshot'}`;
+}
+
+function gitSnapshotKey(
+  rootPath: string,
+  kind: 'baseline' | 'snapshot',
+  options: ObserverGitSnapshotOptions,
+): string {
+  if (options.turnId === undefined) return `git:${rootPath}:${kind}`;
+  return `git:${rootPath}:turn:${options.turnId}:${options.phase ?? 'snapshot'}`;
 }

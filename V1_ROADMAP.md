@@ -327,12 +327,12 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 - [x] 将 turn lifecycle/task-boundary evidence 绑定到活动 turn，同时保留 session 级来源信息；兼容旧数据中把 `turnId` 放在 payload 的记录。
 - [x] 将交互式 filesystem evidence 按 turn 时间窗口绑定到活动 turn，覆盖 debounce/异步回调，并将 `fileEvents` capability 标为可用。
 - [x] Dashboard 在旧 server 进程暂未暴露 `turnId` 时，按 turn 时间窗口兼容归属 observer evidence，避免已写入的文件证据在展开详情中消失。
-- [ ] 将进程和 Git evidence 绑定到活动 turn，同时保留 session 级来源信息。
-- [ ] 在 turn 开始/结束时 snapshot workspace，只计算路径和统计，不读取无关文件。
+- [x] 将进程和 Git evidence 绑定到活动 turn，同时保留 session 级来源信息；session 启动/退出生命周期仍保留为 session 级 evidence。
+- [x] 在 turn 开始/结束时 snapshot workspace 与 wrapper 进程，只记录路径、统计和进程状态，不读取无关文件。
 - [ ] 防止延迟 debounce event 泄漏到下一个 turn。
 - [ ] 通过 fusion ledger 对 native、hook 和 observer evidence 去重。
 
-验证：turn lifecycle 和 filesystem evidence 的 runner 回归测试已通过；Dashboard 兼容旧 API 响应的时间窗口归属测试已通过；process/Git 归属以及两个快速 turn 的完整 observer 分隔仍需继续验证。
+验证：turn lifecycle、filesystem evidence、process/Git turn snapshot 的 runner 回归测试已通过；两个快速 turn 的 process/Git evidence 均按显式 turnId 分隔；Dashboard 兼容旧 API 响应的时间窗口归属测试已通过。
 
 提交边界：turn-aware observer runtime。
 
