@@ -26,3 +26,9 @@ workspace junction targeting an outside path; the process-runner suite covers
 shell metacharacter arguments with `shell: false`. Raw-log opt-in retention is
 not implemented and remains disabled by policy. Windows/WSL process-tree and
 interactive signal behavior remain manual smoke items.
+
+## 2026-09-09 release-gate dependency recheck
+
+With explicit user authorization, `pnpm audit --prod` completed with
+`No known vulnerabilities found`. This recheck does not change the local-only
+credential boundary or imply that a provider endpoint/account has been audited.
