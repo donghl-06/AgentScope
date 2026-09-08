@@ -246,6 +246,50 @@ describe('interactive provider runner', () => {
     }
   });
 
+  it('starts a new turn when the provider omits its ready-prompt marker', async () => {
+    const terminalProcess = new FakeTerminalProcess();
+    terminalProcess.writeHandler = (data) => {
+      if (data.endsWith('SECOND\r')) setTimeout(() => terminalProcess.finish(0), 0);
+      else if (data.endsWith('FIRST\r'))
+        terminalProcess.emitData('Model response without a prompt marker\r\n');
+    };
+    const driver: TerminalDriver = {
+      spawn: () => terminalProcess,
+    };
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-tty-boundary-'));
+    const filename = path.join(directory, 'session.db');
+    const running = runInteractiveProvider({
+      adapter: 'claude',
+      args: [],
+      filename,
+      workspacePath: directory,
+      executable: process.execPath,
+      sessionId: 'session-unmarked-boundary',
+      terminalDriver: driver,
+      input: input as unknown as typeof process.stdin,
+      output: output as unknown as typeof process.stdout,
+      signals: new FakeSignals(),
+    });
+    setTimeout(() => input.write('FIRST\r'), 5);
+    setTimeout(() => input.write('SECOND\r'), 15);
+    const exitCode = await running;
+    const storage = openStorage({ filename, migrate: false });
+    try {
+      const repository = new StorageRepository(storage.client);
+      const turns = repository.listTurns('session-unmarked-boundary');
+      expect(exitCode).toBe(0);
+      expect(turns.map((turn) => [turn.title, turn.status])).toEqual([
+        ['FIRST', 'completed'],
+        ['SECOND', 'completed'],
+      ]);
+    } finally {
+      storage.client.close();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('associates debounced filesystem evidence with the active turn window', async () => {
     const terminalProcess = new FakeTerminalProcess();
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-tty-file-'));

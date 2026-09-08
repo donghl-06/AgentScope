@@ -281,7 +281,9 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 - 基础 coordinator 已实现：提供显式 submitTask/observe/markWaiting/markBlocked/resume/finish 边界，
   并以确定性测试保护任务输入分类和单调 turn identity。普通交互模式的 PTY 输入已经接线，
-  `--agent-scope-accept-api-key` 路径会记录多轮任务；`--bare` 保持保守兼容路径。
+  `--agent-scope-accept-api-key` 路径会记录多轮任务；当 provider 的 ready marker 不稳定时，
+  下一条普通任务输入也会形成新边界；bracketed paste 的多行 prompt 仍作为一个 turn；`--bare`
+  保持保守兼容路径。
 - 双通道 signal arbiter 已实现：hook/manual 信号优先，PTY fallback 必须达到置信度门槛，
   低置信度信号只返回诊断结果，不改变 turn 状态。
 - hook event mapper 和 PTY detector 已实现并测试：结构化 turn 生命周期为高置信度；普通模式

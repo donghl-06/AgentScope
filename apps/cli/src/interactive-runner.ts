@@ -203,11 +203,22 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     const snapshotNeeded = inputObservation.observe(text, normalized);
     if (snapshotNeeded) saveInputObservation(repository, sessionId, inputObservation, now());
     inputBuffer += normalized;
-    const lines = inputBuffer.split(/[\r\n]/u);
-    inputBuffer = lines.pop() ?? '';
+    // Bracketed paste carries a complete multi-line prompt in one chunk. Keep
+    // it as one logical task so the later lines are not mistaken for new turns.
+    const isBracketedPaste = text.includes(`${CONSOLE_ESCAPE}[200~`);
+    const lines = isBracketedPaste ? [inputBuffer] : inputBuffer.split(/[\r\n]/u);
+    inputBuffer = isBracketedPaste ? '' : (lines.pop() ?? '');
     for (const line of lines) {
       const classification = classifyTurnInput(line);
-      if (!classification.accepted) continue;
+      if (!classification.accepted) {
+        if (
+          classification.reason === 'approval_key' &&
+          (coordinator.mode === 'waiting' || coordinator.mode === 'blocked')
+        ) {
+          arbiter.apply({ kind: 'resumed', source: 'manual', confidence: 1, timestamp: now() });
+        }
+        continue;
+      }
       if (coordinator.mode === 'idle') {
         arbiter.apply({
           kind: 'task_submitted',
@@ -216,8 +227,26 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           confidence: 1,
           timestamp: now(),
         });
-      } else if (coordinator.mode === 'waiting' || coordinator.mode === 'blocked') {
-        arbiter.apply({ kind: 'resumed', source: 'manual', confidence: 1, timestamp: now() });
+      } else if (classification.reason === 'task') {
+        // Claude's native ready prompt is not stable across versions. A new
+        // ordinary task line is therefore an explicit boundary even when the
+        // provider did not emit a recognizable prompt marker. Approval keys
+        // remain continuations above, and bracketed multi-line input is kept
+        // as one task by the path above.
+        arbiter.apply({
+          kind: 'finished',
+          reason: 'completed',
+          source: 'manual',
+          confidence: 1,
+          timestamp: now(),
+        });
+        arbiter.apply({
+          kind: 'task_submitted',
+          prompt: line,
+          source: 'manual',
+          confidence: 1,
+          timestamp: now(),
+        });
       }
     }
     // node-pty can synchronously surface provider output while handling write().

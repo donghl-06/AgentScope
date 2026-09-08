@@ -74,6 +74,12 @@ describe('TurnCoordinator', () => {
     expect(titleOnly.current?.prompt).toBeUndefined();
   });
 
+  it('removes terminal editing control characters from persisted task text', () => {
+    expect(sanitizeTurnInput('\u0015Review the current task\u0007')).toBe(
+      'Review the current task',
+    );
+  });
+
   it('preserves waiting/blocked semantics and resumes without creating another turn', () => {
     const coordinator = new TurnCoordinator({ sessionId: 'session-1' });
     coordinator.submitTask('Ask for input', 100);

@@ -50,12 +50,18 @@ export function classifyTurnInput(input: string): TurnInputClassification {
 
 /** Remove common credential-shaped values before a task enters a projection. */
 export function sanitizeTurnInput(input: string): string {
-  return input
-    .replace(/\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gu, '[REDACTED]')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [REDACTED]')
-    .replace(/\b(?:api[_ -]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/giu, (match) =>
-      match.replace(/([:=]\s*)[^\s,;]+$/u, '$1[REDACTED]'),
-    );
+  return (
+    input
+      // Console editing keys (for example Ctrl+U) can be delivered alongside
+      // the visible line. They must never become part of a persisted title or
+      // prompt, while the original bytes continue to be forwarded to the PTY.
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
+      .replace(/\b(?:sk|pk|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gu, '[REDACTED]')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/giu, 'Bearer [REDACTED]')
+      .replace(/\b(?:api[_ -]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/giu, (match) =>
+        match.replace(/([:=]\s*)[^\s,;]+$/u, '$1[REDACTED]'),
+      )
+  );
 }
 
 export class TurnCoordinator {
