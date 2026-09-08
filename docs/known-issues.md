@@ -101,6 +101,13 @@ V0 has a four-concurrent-Mock baseline, but does not promise a P95 latency,
 CPU/memory ceiling, or maximum session/event count yet. These measurements
 remain release-hardening work.
 
+The 2026-09-09 V1 rerun exercised 80 isolated Mock sessions in 20 concurrent
+rounds and recorded wrapper P50/P95 and orchestrator resource measurements in
+`docs/findings/e2e.md`. It also measured event-to-WebSocket receipt at P50
+173 ms/P95 347 ms and verified cursor recovery after a disconnect. These are
+repeatable diagnostic baselines; browser paint latency, multi-hour real-provider
+capacity, and a supported maximum session count are still not claimed.
+
 The server polls SQLite changes written by independent CLI processes at a bounded
 interval so Dashboard WebSocket updates do not depend on an in-process repository
 subscription. The measured event-to-WebSocket P95 is below three seconds in the

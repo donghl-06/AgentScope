@@ -137,3 +137,26 @@ above while continuing to delete its temporary database.
   below the three-second event-delivery target.
 - This is an event-to-WebSocket baseline, not browser paint latency. Slow-client
   backpressure and actual Dashboard paint measurement remain separate items.
+
+## 2026-09-09 V1 release-hardening rerun
+
+- `pnpm benchmark:mock -- --iterations 20` completed 80 isolated Mock wrapper
+  sessions (20 rounds × 4 fixtures). Every expected terminal status and event
+  count was preserved. The run took 36.447 seconds; wrapper latency P50 was
+  30.824 seconds and P95 was 34.141 seconds. The temporary database reached
+  716,800 bytes; the benchmark orchestrator peak RSS was 57,024,512 bytes and
+  user/system CPU was 265/359 ms. These are a repeatable Mock baseline, not a
+  supported capacity limit or a Claude provider latency claim.
+- `scripts/experiments/event-latency-smoke.mjs 8791` received all 10/10 event
+  notifications. The rerun measured event-timestamp-to-WebSocket receipt P50
+  173 ms, P95 347 ms, and maximum 347 ms. The experiment now waits for the
+  server child cleanup and retries temporary SQLite removal on Windows, so a
+  successful measurement also exits cleanly.
+- The isolated `ws-reconnect-smoke.mjs` run on port 8792 received `hello` on
+  both connections and recovered all 10 events through HTTP cursor catch-up
+  (sequence 1–10, status 200). The temporary server and database were removed
+  afterward.
+- The existing integration suite still covers SQLite busy handling, server
+  restart recovery, and WebSocket disconnect recovery. Browser paint latency,
+  multi-hour real-provider capacity, and injected machine/terminal shutdown
+  remain intentionally unclaimed release-hardening measurements.

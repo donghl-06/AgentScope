@@ -25,7 +25,16 @@ node .\apps\cli\bin\agent-scope.mjs start
 API 默认在 `http://127.0.0.1:8787`。如果 Dashboard 端口被占用，使用
 `--dashboard-port <port>`；如果只需要后端，使用 `--no-dashboard`。
 
-## 3. Claude Code structured smoke
+## 3. 本地 release gate
+
+在提交前可以运行一条命令执行格式、fixture 脱敏、lint、全 workspace
+typecheck、unit/integration tests 和 workspace build：
+
+```powershell
+pnpm release:check
+```
+
+## 4. Claude Code structured smoke
 
 在已经配置 provider 环境变量的窗口执行一个无敏感、无文件修改的最小任务：
 
@@ -43,7 +52,7 @@ node .\apps\cli\bin\agent-scope.mjs show <实际 session id>
 
 记录：CLI 版本、session status、eventCount、是否出现 `session_started`/`agent_message`/`session_finished`、退出码，以及 Dashboard 是否同步显示。
 
-## 4. Codex structured smoke
+## 5. Codex structured smoke
 
 adapter 默认使用已实测的 `codex exec --json --ephemeral` 路径。根据本机 CLI 的公开 `codex exec` 参数，在 `--` 后传入你的最小 prompt/权限参数；不要把 provider 原始输出提交到仓库：
 
@@ -53,7 +62,7 @@ node .\apps\cli\bin\agent-scope.mjs run codex -- <codex exec 参数>
 
 记录同样的生命周期、命令失败、退出码和 Dashboard 展示结果。若 CLI 需要额外登录、审批或网络权限，保留诊断信息即可，不要绕过安全提示。
 
-## 5. 中断与失败补测
+## 6. 中断与失败补测
 
 - 让 Claude/Codex 执行一个短暂运行的命令，在 wrapper 窗口按 `Ctrl+C`，确认最终状态是 `interrupted`，而非 `completed`。Windows PowerShell 可能会先终止外层 CLI，导致 Dashboard 暂时显示 `running`；确认 provider 子进程已结束后，在同一数据库配置下运行 `node .\apps\cli\bin\agent-scope.mjs recover`，再确认会话变为 `interrupted`。
 - 运行一个明确返回非零退出码的测试/命令，确认 timeline 有 command/test failure，最终状态不会伪装成成功。

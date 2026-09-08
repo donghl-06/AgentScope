@@ -96,9 +96,19 @@ try {
     ) + '\n',
   );
 } finally {
-  socket?.close();
-  if (server?.pid !== undefined) await terminateProcessTree(server.pid);
-  await rm(directory, { recursive: true, force: true });
+  socket?.terminate();
+  if (server?.pid !== undefined) {
+    await terminateProcessTree(server.pid);
+    if (server.exitCode === null) {
+      try {
+        server.kill();
+      } catch {
+        // The process may have exited between taskkill and this fallback.
+      }
+    }
+    await waitForChildExit(server);
+  }
+  await removeTemporaryDirectory(directory);
 }
 
 function percentile(values, quantile) {
@@ -174,4 +184,29 @@ function terminateProcessTree(pid) {
     child.once('close', () => resolve());
     child.once('error', () => resolve());
   });
+}
+
+function waitForChildExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 2_000);
+    child.once('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+async function removeTemporaryDirectory(directory) {
+  let lastError;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+  throw lastError;
 }
