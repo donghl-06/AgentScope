@@ -394,6 +394,22 @@ const providerTelemetrySchema = Type.Object({
   toolCallErrorCount: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
+const continuationSchema = Type.Object(
+  {
+    mode: Type.Union([Type.Literal('resume'), Type.Literal('continue')]),
+    reference: Type.Optional(Type.String({ minLength: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+const conversationLinkSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    source: Type.Union([Type.Literal('provider-session'), Type.Literal('explicit-resume')]),
+  },
+  { additionalProperties: false },
+);
+
 const sessionStatusSchema = Type.Union([
   Type.Literal('starting'),
   Type.Literal('running'),
@@ -416,6 +432,8 @@ export const SessionStateSchema = Type.Object(
     workspace: Type.Optional(workspaceSchema),
     verification: verificationSchema,
     telemetry: Type.Optional(providerTelemetrySchema),
+    continuation: Type.Optional(continuationSchema),
+    conversation: Type.Optional(conversationLinkSchema),
   },
   { additionalProperties: false },
 );

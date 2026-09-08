@@ -157,6 +157,14 @@ function reduceProviderInfo(state: SessionState, event: ReducerEvent): SessionSt
   const payload = event.payload as ProviderInfoPayload;
   return {
     ...state,
+    ...(payload.providerSessionId === undefined
+      ? {}
+      : {
+          conversation: {
+            id: payload.providerSessionId,
+            source: 'provider-session' as const,
+          },
+        }),
     telemetry: {
       ...state.telemetry,
       providerInfo: {
@@ -231,8 +239,23 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
   }
 
   switch (event.type) {
-    case 'session_started':
-      return state.status === 'starting' ? { ...state, status: 'running' } : state;
+    case 'session_started': {
+      const payload = event.payload as { providerSessionId?: string };
+      return state.status === 'starting'
+        ? {
+            ...state,
+            status: 'running',
+            ...(payload.providerSessionId === undefined
+              ? {}
+              : {
+                  conversation: {
+                    id: payload.providerSessionId,
+                    source: 'provider-session' as const,
+                  },
+                }),
+          }
+        : state;
+    }
     case 'turn_started': {
       const payload = event.payload as TurnStartedPayload;
       return {

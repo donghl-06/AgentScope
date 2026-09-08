@@ -27,6 +27,18 @@ CLI：Claude Code `2.1.261`
 这些项不能从 `--help` 推断。AgentScope 的 PTY runtime 不依赖 hooks；即使 hooks 不可用，
 基础终端转发仍应保持可用。真实 provider 验证放到 Phase 3 的 disposable project 手工验收。
 
+### AgentScope 的保守续接记录策略（2026-09-09）
+
+AgentScope 现在会在每次新的 execution record 中记录显式 continuation 元数据：
+
+- `--resume <id>` 或 `--resume=<id>`：记录请求，并以该显式 id 建立 `explicit-resume` 链接；
+- `--continue`/`-c`：只记录 `continue requested`，不会按 workspace、prompt 或进程自动猜测会话；
+- 结构化 provider 事件返回可靠 `providerSessionId` 时：以 provider id 建立
+  `provider-session` 链接，并保留 AgentScope 自己的 execution id。
+
+这意味着普通 TTY 的每次启动仍是独立记录，不会因为命令相似而错误合并；完整的
+conversation group UI 以及真实 provider 的 resume 语义验证仍是后续工作。
+
 ## AgentScope interactive wrapper smoke
 
 在 Windows native、当前 Claude Code 安装下执行了不访问 API 的：

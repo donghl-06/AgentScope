@@ -14,7 +14,7 @@ Dashboard 联动也已通过用户确认。
 
 当前仍属于 release hardening 或后续能力的项目：
 
-- `--resume`/`--continue` 的 conversation identity 与多 session 分组；
+- conversation group 的完整 UI/API 与真实 provider resume 语义验收（保守身份元数据已落地）；
 - PTY/浏览器绘制延迟、CPU/RSS、长时间和故障注入矩阵；
 - stale turn 精细恢复、分页 API、verification/Git 结果的完整自动关联；
 - Claude 尚未提供稳定 TTY hook/side-channel 前，不宣称原生 tool/milestone/token；
@@ -494,12 +494,13 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 9.1 — 关联 Claude resume identity
 
-- [ ] 将 provider session id 与 AgentScope execution id 分开保存。
-- [ ] 在可靠时将 `--resume`/`--continue` 关联到原有逻辑 conversation。
+- [x] 将 provider session id 与 AgentScope execution id 分开保存。
+- [x] 记录显式 `--resume <id>`/`--continue` 请求；只对显式 resume id 或 provider 明确返回的 session id 建立关联。
 - [ ] 创建新的 execution record，同时保留一个 conversation group。
-- [ ] provider id 缺失、变化或不明确时采取保守策略。
+- [x] provider id 缺失、变化或不明确时采取保守策略，不按 workspace、prompt 或进程自动合并。
 
-验证：resume 成功、无效 id 和并发 resume 不会合并无关任务。
+验证：元数据/schema/reducer 单元测试通过；真实 provider 的 resume 成功、无效 id
+和并发 resume 仍需用户环境中的行为验收。
 
 提交边界：conversation grouping 和 resume 测试。
 

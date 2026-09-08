@@ -108,6 +108,23 @@ export interface ProviderTelemetry {
   readonly toolCallErrorCount?: number;
 }
 
+/** A continuation request explicitly supplied to the provider CLI. */
+export type ContinuationMode = 'resume' | 'continue';
+
+export interface ContinuationRequest {
+  readonly mode: ContinuationMode;
+  /** The provider's explicit resume reference, when one was supplied. */
+  readonly reference?: string;
+}
+
+export type ConversationLinkSource = 'provider-session' | 'explicit-resume';
+
+/** A conservative link between independent AgentScope executions and one provider conversation. */
+export interface ConversationLink {
+  readonly id: string;
+  readonly source: ConversationLinkSource;
+}
+
 export interface ProgressReason {
   readonly code: string;
   readonly message: string;
@@ -138,6 +155,10 @@ export interface SessionState {
   readonly workspace?: WorkspaceState;
   readonly verification: VerificationState;
   readonly telemetry?: ProviderTelemetry;
+  /** Present only when an explicit continuation was requested or the provider exposed an id. */
+  readonly continuation?: ContinuationRequest;
+  /** Never inferred from workspace or prompt text; only explicit/provider identities are accepted. */
+  readonly conversation?: ConversationLink;
 }
 
 export function isTerminalSessionStatus(status: SessionStatus): status is TerminalSessionStatus {

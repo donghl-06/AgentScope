@@ -12,6 +12,7 @@ import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
+import { applyContinuation, detectContinuation } from './continuation.js';
 
 export interface ProviderRunOptions {
   readonly adapter: 'claude' | 'codex';
@@ -46,7 +47,10 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   const startedAt = now();
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
-  let state = createInitialSessionState(sessionId, startedAt);
+  let state = applyContinuation(
+    createInitialSessionState(sessionId, startedAt),
+    detectContinuation(options.args),
+  );
   const adapter =
     options.adapter === 'claude'
       ? new ClaudeCodeAdapter({

@@ -912,6 +912,8 @@ function AgentCard({
       <div className="agent-facts">
         <Fact label="Client" value={source?.client ?? 'Not reported'} />
         <Fact label="Environment" value={source?.environment ?? 'Not reported'} />
+        <Fact label="Conversation" value={conversationLabel(session)} />
+        <Fact label="Continuation" value={continuationLabel(session)} />
         <Fact
           label="Activity"
           value={session.state.currentActivity?.label ?? 'No activity signal'}
@@ -1097,6 +1099,27 @@ function formatEta(minSeconds: number, maxSeconds: number): string {
 
 function formatCount(value: number | undefined): string {
   return value === undefined ? 'Not reported' : value.toLocaleString();
+}
+
+function conversationLabel(session: StoredSession): string {
+  const conversation = session.state.conversation;
+  if (conversation === undefined) return 'Not linked';
+  const identifier =
+    conversation.id.length > 28
+      ? `${conversation.id.slice(0, 12)}…${conversation.id.slice(-8)}`
+      : conversation.id;
+  return `${conversation.source === 'provider-session' ? 'Provider' : 'Explicit resume'} · ${identifier}`;
+}
+
+function continuationLabel(session: StoredSession): string {
+  const continuation = session.state.continuation;
+  if (continuation === undefined) return 'Not requested';
+  if (continuation.mode === 'continue') {
+    return session.state.conversation === undefined ? 'Continue · unlinked' : 'Continue · linked';
+  }
+  return continuation.reference === undefined
+    ? 'Resume · reference not reported'
+    : 'Resume · explicit';
 }
 
 function formatCost(value: number | undefined): string {

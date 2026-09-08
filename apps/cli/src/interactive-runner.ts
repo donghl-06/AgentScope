@@ -25,6 +25,7 @@ import type { ObserverEvidence } from '@agentscope/observer-runtime';
 import { estimateEta } from '@agentscope/eta';
 import { computeProgress } from '@agentscope/progress';
 import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
+import { applyContinuation, detectContinuation } from './continuation.js';
 
 const INTERACTIVE_PROGRESS_CAPABILITIES = {
   fileEvents: true,
@@ -97,7 +98,10 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
   const startedAt = now();
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
-  let state = createInitialSessionState(sessionId, startedAt);
+  let state = applyContinuation(
+    createInitialSessionState(sessionId, startedAt),
+    detectContinuation(options.args),
+  );
   const source: EventSource = {
     provider: options.adapter,
     client: 'claude-code',

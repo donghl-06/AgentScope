@@ -130,6 +130,7 @@ describe('reduceSessionState', () => {
       toolCallErrorCount: 1,
       nativeEventCounts: { stream_event: 1, 'stream_event/message_delta': 1 },
     });
+    expect(projected.conversation).toEqual({ id: 'provider-1', source: 'provider-session' });
   });
 
   it('projects persisted turn lifecycle events as session activity', () => {

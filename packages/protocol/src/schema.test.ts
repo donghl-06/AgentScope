@@ -152,4 +152,28 @@ describe('Protocol runtime schemas', () => {
     expect(isSessionState(telemetryState)).toBe(true);
     expect(() => assertSessionState(telemetryState)).not.toThrow();
   });
+
+  it('validates conservative continuation and conversation links', () => {
+    const state = createInitialSessionState('session-continuation', 1_700_000_000_000);
+    expect(
+      isSessionState({
+        ...state,
+        continuation: { mode: 'resume', reference: 'provider-session-1' },
+        conversation: { id: 'provider-session-1', source: 'explicit-resume' },
+      }),
+    ).toBe(true);
+    expect(
+      isSessionState({
+        ...state,
+        continuation: { mode: 'continue' },
+        conversation: { id: '', source: 'provider-session' },
+      }),
+    ).toBe(false);
+    expect(
+      isSessionState({
+        ...state,
+        continuation: { mode: 'continue', reference: 'should-not-be-used' },
+      }),
+    ).toBe(true);
+  });
 });
