@@ -170,6 +170,36 @@ describe('provider runner', () => {
     expect(diagnostics.join('')).toContain('synthetic observer sink failure');
   });
 
+  it('keeps a sibling provider session independent after observer failure', async () => {
+    const diagnostics: string[] = [];
+    const [failedObserver, healthyObserver] = await Promise.all([
+      runProvider({
+        adapter: 'claude',
+        executable: process.execPath,
+        args: ['-e', script('{"type":"result","subtype":"success","is_error":false}', 0)],
+        filename: ':memory:',
+        workspacePath,
+        sessionId: 'session-observer-failure',
+        onObserverEvidence: () => {
+          throw new Error('observer failure in one session');
+        },
+        writeStderr: (chunk) => diagnostics.push(chunk),
+      }),
+      runProvider({
+        adapter: 'claude',
+        executable: process.execPath,
+        args: ['-e', script('{"type":"result","subtype":"success","is_error":false}', 0)],
+        filename: ':memory:',
+        workspacePath,
+        sessionId: 'session-observer-healthy',
+      }),
+    ]);
+
+    expect(failedObserver).toMatchObject({ status: 'completed', exitCode: 0 });
+    expect(healthyObserver).toMatchObject({ status: 'completed', exitCode: 0 });
+    expect(diagnostics.join('')).toContain('observer failure in one session');
+  });
+
   it('keeps a session alive when the provider emits a malformed record before completion', async () => {
     const result = await runProvider({
       adapter: 'claude',

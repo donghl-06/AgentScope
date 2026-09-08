@@ -722,7 +722,7 @@ agentscope/
 
 - [ ] 注入 non-zero exit、Ctrl+C、adapter parser error、server restart、DB busy、WS disconnect；provider/adapter 故障和持久化 server restart 已有回归覆盖，真实 WS disconnect/cursor smoke 已通过，DB busy 已有双连接故障注入回归，真实 provider Ctrl+C 仍受 Windows/外部环境限制。
 - [ ] 验证不会把 failed/interrupted/completed 混淆。
-- [ ] 验证 parser/observer 故障不会拖垮其他 session。
+- [x] 验证 parser/observer 故障不会拖垮其他 session；provider-runner 已覆盖 malformed parser、observer sink failure 与并行 sibling session 隔离回归。
 - [x] 验证事务失败时不广播幽灵事件；server regression test 已覆盖 repository duplicate-event rollback。
 - [x] 验证重复 cleanup 不报错、不遗留进程/端口/watcher；server close、adapter stop/detach 和 observer cleanup 已有回归覆盖。
 
