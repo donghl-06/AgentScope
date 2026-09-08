@@ -62,7 +62,29 @@ node .\apps\cli\bin\agent-scope.mjs run codex -- <codex exec 参数>
 
 记录同样的生命周期、命令失败、退出码和 Dashboard 展示结果。若 CLI 需要额外登录、审批或网络权限，保留诊断信息即可，不要绕过安全提示。
 
-## 6. 中断与失败补测
+## 6. Codex interactive TTY smoke
+
+如果要验证和原生 Codex 一样的多轮终端体验，在目标项目目录中使用共享数据库
+启动 wrapper：
+
+```powershell
+Set-Location -LiteralPath 'D:\大学\项目\AgentScope'
+$env:AGENTSCOPE_DATABASE = Join-Path (Get-Location) '.agentscope\agentscope.db'
+pnpm start
+
+# 另一个终端切换到需要 Codex 操作的项目
+Set-Location -LiteralPath 'D:\大学\其他项目\MyProject'
+$env:AGENTSCOPE_DATABASE = 'D:\大学\项目\AgentScope\.agentscope\agentscope.db'
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' codex --no-alt-screen
+```
+
+在 Codex 终端中提交两条只读任务，观察 Dashboard 是否出现一个 `codex-cli-tty`
+session 和两个独立 turns；每轮应有 task title、状态、耗时和 observer evidence。
+该 smoke 验证的是 PTY/turn/observer 链路，不宣称 Codex 原生 token、tool call 或
+milestone；需要这些字段时仍使用上一节的 structured smoke。完整说明见
+[`docs/codex-workflow.md`](codex-workflow.md)。
+
+## 7. 中断与失败补测
 
 - 让 Claude/Codex 执行一个短暂运行的命令，在 wrapper 窗口按 `Ctrl+C`，确认最终状态是 `interrupted`，而非 `completed`。Windows PowerShell 可能会先终止外层 CLI，导致 Dashboard 暂时显示 `running`；确认 provider 子进程已结束后，在同一数据库配置下运行 `node .\apps\cli\bin\agent-scope.mjs recover`，再确认会话变为 `interrupted`。
 - 运行一个明确返回非零退出码的测试/命令，确认 timeline 有 command/test failure，最终状态不会伪装成成功。

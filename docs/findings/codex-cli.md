@@ -39,7 +39,7 @@ The command-failure run emitted a completed command item with `status=failed` an
 | Resume/session id | CLI surface present | `exec resume` and `fork` subcommands are documented; detailed compatibility needs a separate spike | provider id as optional metadata |
 | Token/cost | observed-but-out-of-scope | `turn.completed.usage` contains counters; no cost contract assumed | ignore by default |
 | User interruption | observed with recovery | Ctrl+C during an in-progress command terminated the CLI with process exit code 1; no JSONL terminal event was emitted. AgentScope captured child-process exit and `agent-scope recover` normalized the stale session to `interrupted`. | process/console signal forwarding and atomic terminal persistence remain a V0 hardening item |
-| TTY/resize | unavailable | this spike used non-interactive exec; interactive resize behavior remains unverified | document non-interactive V0 path |
+| TTY/resize | AgentScope wrapper implemented | `codex-cli-tty` uses the shared node-pty/ConPTY runner; fake PTY covers the `›` prompt and turn boundaries, while authenticated provider/terminal-host acceptance remains pending | use `agent-scope codex`; use structured exec for native JSONL |
 
 ## I/O and lifecycle observations
 
@@ -48,6 +48,8 @@ The command-failure run emitted a completed command item with `status=failed` an
 - The CLI can report a command failure at item level without making the enclosing turn fail. Adapter normalization therefore needs separate provider-outcome and workspace-verification signals.
 - During the real Ctrl+C experiment, the process exited with code 1 while the JSONL stream ended after an in-progress command item. The provider child was gone and the observer recorded `process finished`, but the outer CLI was also terminated before it could persist `session_finished`; `agent-scope recover` then marked the stale session `interrupted`. Absence of `turn.completed` is therefore not itself a provider failure.
 - Codex CLI help exposed a stable `exec` command and an experimental `app-server` command; V0 uses `exec` and does not depend on app-server.
+- The interactive wrapper is deliberately separate from the structured adapter: it forwards
+  Codex's native TTY and derives only conservative local turn/observer signals.
 
 ## Fixture policy
 

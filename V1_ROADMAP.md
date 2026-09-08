@@ -1,6 +1,6 @@
 # AgentScope V1 / 交互式 TTY 路线图
 
-- 状态：核心 TTY V1 已可用；正在进行 release hardening 和文档收口
+- 状态：Claude 与 Codex 核心 TTY V1 已可用；正在进行 release hardening 和文档收口
 - 主要目标环境：Windows 11 + VS Code PowerShell + Claude Code harness + 兼容 Kimi API
 - 第二目标环境：WSL2 Ubuntu
 - 起点：V0 的本地优先、结构化/非交互式监控已经完成，并继续作为兼容性回退路径。
@@ -10,7 +10,8 @@
 截至本次同步，Windows VS Code PowerShell 下的 Claude TTY 多轮体验、turn
 projection、observer evidence、Dashboard 实时更新/断线恢复、Turns/Timeline
 搜索筛选和浏览器通知已经通过自动化测试及人工验收。WSL2 的真实 Claude、同库
-Dashboard 联动也已通过用户确认。
+Dashboard 联动也已通过用户确认。Codex TTY 已复用同一 PTY、turn coordinator、observer
+和 Dashboard 管线；fake PTY 多轮回归与本机 `codex --version` shim smoke 已通过。
 
 当前仍属于 release hardening 或后续能力的项目：
 
@@ -19,19 +20,20 @@ Dashboard 联动也已通过用户确认。
 - stale turn 精细恢复、分页 API、verification/Git 结果的完整自动关联；
 - Claude 尚未提供稳定 TTY hook/side-channel 前，不宣称原生 tool/milestone/token；
 - 最终 acceptance matrix、README/troubleshooting 和本地 release-prep 提交。
+- Codex 真实认证 provider 的多轮交互、resume 行为和最终终端体验验收。
 
-这些项目不阻塞当前“正常使用 Claude，同时在 Dashboard 观察进度”的主要场景。
+这些项目不阻塞当前“正常使用 Claude 或 Codex，同时在 Dashboard 观察进度”的主要场景。
 
 ## 1. V1 总目标
 
-V1 要把 AgentScope 从“单个结构化 prompt 的 wrapper”升级为“日常 Claude Code 使用的伴随式监控器”。目标体验是：
+V1 要把 AgentScope 从“单个结构化 prompt 的 wrapper”升级为“日常 Claude Code/Codex CLI 使用的伴随式监控器”。目标体验是：
 
 ```text
 终端 A：agent-scope start
 终端 B：agent-scope claude
 
 用户提交第 1 轮任务 ─┐
-Claude 执行           ├─ Dashboard 实时更新
+Claude/Codex 执行     ├─ Dashboard 实时更新
 用户提交第 2 轮任务 ─┤
 Claude 执行           └─ 每一轮保留独立状态和证据
 ```
@@ -52,13 +54,13 @@ Claude 终端必须仍然像原生 Claude Code 一样使用：颜色、光标、
 ### P0 — 第一版可用 V1 必须包含
 
 - Windows ConPTY 和 WSL2/Linux PTY 透明运行时。
-- 新的交互式 CLI 入口，暂定为 `agent-scope claude`。
+- 新的交互式 CLI 入口：`agent-scope claude` 和 `agent-scope codex`。
 - 一个终端 session 中包含多轮任务。
 - 每轮任务独立的生命周期、持续时间、当前活动、Progress、ETA 和 evidence。
 - 正确的输入/输出转发、窗口缩放、Ctrl+C、正常退出和崩溃恢复。
 - 将进程、文件、Git 和已知验证信号关联到当前 turn。
 - Dashboard 展示 session/turn 层级和实时更新。
-- 当前 Kimi-backed Claude Code 配置能够原样透传。
+- 当前 Kimi-backed Claude Code 配置和 Codex 原生配置能够原样透传。
 
 ### P1 — TTY 稳定后增加的体验增强
 
@@ -274,17 +276,18 @@ backpressure 和 clean-install CI 仍待补齐。
 
 提交边界：Unix runtime 和 WSL2 smoke 文档。
 
-### Phase 3 — 交互式 Claude wrapper MVP
+### Phase 3 — 交互式 Claude/Codex wrapper MVP
 
 #### Step 3.1 — 增加 interactive CLI 命令
 
 - [x] 增加 `agent-scope claude`，透明透传参数和环境。
+- [x] 增加 `agent-scope codex`，透明透传参数和环境，并使用同一 monitored PTY 管线。
 - [x] 从调用方当前目录解析 workspace。
 - [x] 使用运行中 Dashboard 的同一个数据库。
 - [x] PTY 驱动或 Claude executable 不可用时返回可诊断错误。
 - [x] 保持 `agent-scope run claude -- -p ...` 不变。
 
-验证：fake PTY 集成测试、Windows `claude --version` smoke 和 Windows VS Code PowerShell
+验证：fake PTY 集成测试、Windows `claude --version`/`codex --version` smoke 和 Windows VS Code PowerShell
 中的 GLM 真实多轮交互已通过；环境透传、Dashboard 同库联动和第一次 Ctrl+C 中断当前动作
 已确认；终端 resize 人工验收也已通过。
 普通模式下的显式 API key 确认辅助已实现：仅在检测到明确的 provider API key 提示时向 PTY
@@ -305,7 +308,8 @@ Windows 现代终端使用 Console VT 键盘记录时，AgentScope 会仅为本�
 - [ ] 保留 exit code，并分别识别 wrapper/provider/terminal failure。
 - [ ] AgentScope diagnostics 输出到独立且安全的通道或日志。
 
-验证：ANSI snapshot/fake TUI 测试和终端恢复测试。
+验证：ANSI snapshot/fake TUI 测试和终端恢复测试；Codex ready prompt `›` 与 Claude
+ready prompt 的 turn completion 回归均覆盖。
 
 提交边界：交互式 stream 和生命周期行为。
 
@@ -314,7 +318,7 @@ Windows 现代终端使用 Console VT 键盘记录时，AgentScope 会仅为本�
 Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工 smoke：
 
 1. 启动 AgentScope 和 Dashboard。
-2. 在可信的 disposable project 中运行 `agent-scope claude`。
+2. 在可信的 disposable project 中运行 `agent-scope claude` 或 `agent-scope codex`。
 3. 使用普通 Claude 输入、多行粘贴、一次审批和一次 Ctrl+C。
 4. 确认原生界面仍然可用，且没有 orphan process。
 
@@ -560,7 +564,7 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 11.2 — 手工体验验收
 
-- [ ] Windows VS Code PowerShell：一个 session 中完成至少五轮普通 Claude 任务。
+- [ ] Windows VS Code PowerShell：一个 session 中完成至少五轮普通 Claude 或 Codex 任务。
 - [ ] 多行 prompt、审批、文件修改、失败后恢复的命令和测试运行。
 - [ ] 中断当前动作、正常退出 session 和突然关闭终端。
 - [ ] 在 WSL2 重复受支持的交互流程。
@@ -619,7 +623,7 @@ Phase 11 V1 验收
 
 只有真实终端体验或 provider 行为无法可靠自动化时，才请求用户操作：
 
-1. Phase 3 之后：确认 Windows 原生 Claude 交互、审批、缩放和 Ctrl+C 的体验。
+1. Phase 3 之后：确认 Windows 原生 Claude/Codex 交互、审批、缩放和 Ctrl+C 的体验。
 2. Phase 4/6 之后：确认 turn 边界、waiting/blocked 标签是否符合真实使用。
 3. Phase 8 之后：在真实多轮编码任务中确认 Dashboard 是否好用。
 4. Phase 11：最终 Windows 和 WSL2 发布验收。

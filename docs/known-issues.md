@@ -19,12 +19,13 @@ node .\apps\cli\bin\agent-scope.mjs recover
 The recovery command is the supported V0 fallback. Fully atomic Ctrl+C and
 Ctrl+Break behavior across every PowerShell/console host is not claimed.
 
-## Structured, non-interactive provider path
+## Structured and interactive provider paths
 
-V0 targets the documented structured/non-interactive Claude Code and Codex CLI
-paths. Interactive TTY/PTY semantics, terminal resize, and provider-specific
-interactive approval screens remain experimental and are not part of the
-automatic CI contract.
+The documented structured/non-interactive Claude Code and Codex CLI paths remain
+available for provider-native JSONL. Claude and Codex also have a supported local
+interactive TTY/PTY wrapper with fake-PTY regression coverage; real provider
+approval screens and every terminal host remain an acceptance boundary rather than
+an automatic CI contract.
 
 Claude's full native token, timing, stream-phase, hook, and tool-result details
 are available only when Claude is launched with its structured JSONL output
@@ -61,6 +62,12 @@ For wrappers started by AgentScope, child-process activity is inferred from the
 platform process table and is limited to PID/parent PID/name metadata; command
 arguments, environment variables, and provider-internal tool payloads remain
 unavailable in ordinary TTY mode.
+
+Codex's interactive entry point is `agent-scope codex [args...]`. It preserves the
+native terminal but observes Codex through the same conservative turn/observer
+projection as Claude. The wrapper does not claim Codex-native token, tool-call,
+milestone, or exact ETA fields in TTY mode; use the structured `run codex -- ...`
+path for the provider JSONL capability matrix.
 
 ## Manual provider smoke
 

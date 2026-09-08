@@ -88,6 +88,24 @@ shell snapshots, plugin icons, model refresh, or analytics may appear on stderr;
 they are diagnostics and must not be parsed as protocol events. Check the
 normalized session status and timeline instead.
 
+For the native multi-turn workflow, use the interactive TTY entry point rather
+than `run codex`:
+
+```powershell
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' codex --no-alt-screen
+```
+
+The wrapper starts Codex in the current directory, so switch to the project that
+Codex should edit before running it. Keep `AGENTSCOPE_DATABASE` pointed at the
+database used by the Dashboard. `codex --version` should work in the same
+terminal; if PATH resolution fails, set `AGENTSCOPE_CODEX_EXECUTABLE` to the
+absolute `.exe`/`.cmd` path. npm-installed Windows Node shims are supported.
+
+TTY progress, ETA, and evidence are AgentScope observer projections. They do not
+claim Codex-native token usage, tool calls, or milestones unless a future stable
+Codex side-channel reports them. Use `run codex -- ...` when provider-native
+structured JSONL is more important than the full interactive terminal.
+
 ## Resume/continue does not show one merged session
 
 This is intentional. Every AgentScope launch has its own execution id. The

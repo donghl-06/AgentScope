@@ -60,6 +60,16 @@ node .\apps\cli\bin\agent-scope.mjs claude --agent-scope-accept-api-key
 Dashboard 中按安全 id 展示关联执行。`--continue` 只记录“请求续接”，不会按工作目录、
 prompt 或进程自动猜测会话，避免误合并不同任务。
 
+Codex CLI 也支持同一套透明 TTY 多轮体验：
+
+```powershell
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' codex --no-alt-screen
+```
+
+请在你希望 Codex 操作的项目目录启动这条命令，并将 `AGENTSCOPE_DATABASE` 指向
+运行 Dashboard 的 AgentScope 数据库。完整的跨项目、续接、Windows shim 和 Dashboard
+说明见 [`docs/codex-workflow.md`](docs/codex-workflow.md)。
+
 提交前的本地发布门禁为 `pnpm release:check`，它会执行格式、fixture 脱敏、lint、
 全 workspace typecheck、unit/integration tests 和 build。
 

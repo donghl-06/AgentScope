@@ -141,8 +141,8 @@ above while continuing to delete its temporary database.
 ## 2026-09-09 V1 release-hardening rerun
 
 - The final local `pnpm release:check` completed after the conservative continuation and
-  Dashboard grouping changes: formatting, fixture sensitivity, lint, all workspace
-  typechecks, 55 unit test files (253 tests), 5 integration tests, and the workspace
+  Dashboard grouping and Codex TTY changes: formatting, fixture sensitivity, lint, all workspace
+  typechecks, 55 unit test files (255 tests), 5 integration tests, and the workspace
   build/manifest check all passed.
 - `pnpm benchmark:mock -- --iterations 20` completed 80 isolated Mock wrapper
   sessions (20 rounds × 4 fixtures). Every expected terminal status and event
@@ -164,3 +164,19 @@ above while continuing to delete its temporary database.
   restart recovery, and WebSocket disconnect recovery. Browser paint latency,
   multi-hour real-provider capacity, and injected machine/terminal shutdown
   remain intentionally unclaimed release-hardening measurements.
+
+## 2026-09-09 Codex interactive TTY implementation smoke
+
+- The CLI now exposes `agent-scope codex [args...]` and records the interactive
+  source as `codex-cli` / `codex-cli-tty`, while retaining the existing
+  structured `run codex -- ...` path.
+- Fake PTY regression covered a Codex `›` ready prompt, ordinary input, output,
+  turn completion, observer evidence, and session cleanup. The full unit suite
+  passed 255 tests and the integration suite passed 5 tests after this change.
+- A Windows native wrapper smoke launched the installed Node `.cmd` shim with
+  `codex --no-alt-screen --version` and returned `codex-cli 0.152.1`; the
+  temporary SQLite database was removed afterward.
+- This does not claim authenticated Codex multi-turn provider behavior or
+  provider-native token/tool/milestone telemetry. Those remain the final user
+  acceptance and structured-vs-TTY capability boundary documented in
+  `docs/findings/codex-tty.md`.
