@@ -68,6 +68,12 @@ export interface StoredTurn {
 export interface TurnListFilter {
   readonly status?: TurnState['status'];
   readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface EvidenceListFilter {
+  readonly limit?: number;
+  readonly cursor?: string;
 }
 
 export interface SessionListFilter {
@@ -315,6 +321,10 @@ export class StorageRepository {
   }
 
   listTurns(sessionId: string, filter: TurnListFilter = {}): readonly StoredTurn[] {
+    return this.listTurnPage(sessionId, filter).items;
+  }
+
+  listTurnPage(sessionId: string, filter: TurnListFilter = {}): Page<StoredTurn> {
     this.ensureSession(sessionId);
     const clauses = ['session_id = ?'];
     const parameters: Array<string | number> = [sessionId];
@@ -322,14 +332,25 @@ export class StorageRepository {
       clauses.push('status = ?');
       parameters.push(filter.status);
     }
+    if (filter.cursor !== undefined) {
+      const cursor = decodeTurnCursor(filter.cursor);
+      clauses.push('(sequence > ? OR (sequence = ? AND id > ?))');
+      parameters.push(cursor.sequence, cursor.sequence, cursor.id);
+    }
     const limit = clampLimit(filter.limit);
     const rows = this.client
       .prepare(
         `SELECT * FROM turns WHERE ${clauses.join(' AND ')}
-         ORDER BY sequence ASC LIMIT ?`,
+         ORDER BY sequence ASC, id ASC LIMIT ?`,
       )
-      .all(...parameters, limit) as TurnRow[];
-    return rows.map(decodeTurn);
+      .all(...parameters, limit + 1) as TurnRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeTurn),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeTurnCursor(pageRows.at(-1)!) }
+        : {}),
+    };
   }
 
   updateTurnState(id: string, state: TurnState, now = Date.now()): StoredTurn {
@@ -644,31 +665,69 @@ export class StorageRepository {
   }
 
   listObserverEvidence(sessionId: string, limit = 100): readonly StoredObserverEvidence[] {
+    return this.listObserverEvidencePage(sessionId, { limit }).items;
+  }
+
+  listObserverEvidencePage(
+    sessionId: string,
+    filter: EvidenceListFilter = {},
+  ): Page<StoredObserverEvidence> {
     this.ensureSession(sessionId);
+    const cursor = filter.cursor === undefined ? undefined : decodeEvidenceCursor(filter.cursor);
+    const parameters: Array<string | number> = [sessionId];
+    const cursorClause =
+      cursor === undefined ? '' : 'AND (timestamp > ? OR (timestamp = ? AND evidence_key > ?))';
+    if (cursor !== undefined) parameters.push(cursor.timestamp, cursor.timestamp, cursor.key);
+    const limit = clampObserverEvidenceLimit(filter.limit);
     const rows = this.client
       .prepare(
         `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
-         WHERE session_id = ?
+         WHERE session_id = ? ${cursorClause}
          ORDER BY timestamp, evidence_key
          LIMIT ?`,
       )
-      .all(sessionId, clampObserverEvidenceLimit(limit)) as ObserverEvidenceRow[];
-    return rows.map(decodeObserverEvidence);
+      .all(...parameters, limit + 1) as ObserverEvidenceRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeObserverEvidence),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeEvidenceCursor(pageRows.at(-1)!) }
+        : {}),
+    };
   }
 
   listObserverEvidenceForTurn(turnId: string, limit = 100): readonly StoredObserverEvidence[] {
+    return this.listObserverEvidenceForTurnPage(turnId, { limit }).items;
+  }
+
+  listObserverEvidenceForTurnPage(
+    turnId: string,
+    filter: EvidenceListFilter = {},
+  ): Page<StoredObserverEvidence> {
     const turn = this.getTurn(turnId);
+    const cursor = filter.cursor === undefined ? undefined : decodeEvidenceCursor(filter.cursor);
+    const parameters: Array<string | number> = [turn.id];
+    const cursorClause =
+      cursor === undefined ? '' : 'AND (timestamp > ? OR (timestamp = ? AND evidence_key > ?))';
+    if (cursor !== undefined) parameters.push(cursor.timestamp, cursor.timestamp, cursor.key);
+    const limit = clampObserverEvidenceLimit(filter.limit);
     const rows = this.client
       .prepare(
         `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
-         WHERE turn_id = ?
+         WHERE turn_id = ? ${cursorClause}
          ORDER BY timestamp, evidence_key
          LIMIT ?`,
       )
-      .all(turn.id, clampObserverEvidenceLimit(limit)) as ObserverEvidenceRow[];
-    return rows.map(decodeObserverEvidence);
+      .all(...parameters, limit + 1) as ObserverEvidenceRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeObserverEvidence),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeEvidenceCursor(pageRows.at(-1)!) }
+        : {}),
+    };
   }
 
   private getObserverEvidence(sessionId: string, key: string): StoredObserverEvidence {
@@ -945,8 +1004,8 @@ function parseJson<T = unknown>(value: string, label: string): T {
   }
 }
 
-function clampObserverEvidenceLimit(value: number): number {
-  if (!Number.isFinite(value)) return 100;
+function clampObserverEvidenceLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return 100;
   return Math.max(1, Math.min(500, Math.trunc(value)));
 }
 
@@ -973,6 +1032,56 @@ function encodeSessionCursor(row: SessionRow): string {
   return Buffer.from(JSON.stringify({ updatedAt: row.updated_at, id: row.id })).toString(
     'base64url',
   );
+}
+
+function encodeTurnCursor(row: TurnRow): string {
+  return Buffer.from(JSON.stringify({ sequence: row.sequence, id: row.id })).toString('base64url');
+}
+
+function decodeTurnCursor(cursor: string): { sequence: number; id: string } {
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      sequence?: unknown;
+      id?: unknown;
+    };
+    if (
+      typeof value.sequence !== 'number' ||
+      !Number.isInteger(value.sequence) ||
+      value.sequence < 0 ||
+      typeof value.id !== 'string'
+    ) {
+      throw new Error('invalid');
+    }
+    return { sequence: value.sequence, id: value.id };
+  } catch (error) {
+    throw new StorageError('Invalid turn cursor.', 'invalid_query', { cause: error });
+  }
+}
+
+function encodeEvidenceCursor(row: ObserverEvidenceRow): string {
+  return Buffer.from(JSON.stringify({ timestamp: row.timestamp, key: row.evidence_key })).toString(
+    'base64url',
+  );
+}
+
+function decodeEvidenceCursor(cursor: string): { timestamp: number; key: string } {
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      timestamp?: unknown;
+      key?: unknown;
+    };
+    if (
+      typeof value.timestamp !== 'number' ||
+      !Number.isFinite(value.timestamp) ||
+      value.timestamp < 0 ||
+      typeof value.key !== 'string'
+    ) {
+      throw new Error('invalid');
+    }
+    return { timestamp: value.timestamp, key: value.key };
+  } catch (error) {
+    throw new StorageError('Invalid evidence cursor.', 'invalid_query', { cause: error });
+  }
 }
 
 function decodeSessionCursor(cursor: string): { updatedAt: number; id: string } {

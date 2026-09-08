@@ -130,6 +130,78 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('serves cursor pages for turns and observer evidence', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const state = createInitialSessionState('session-pages', 1_700_000_000_000);
+    repository.createSession({
+      id: 'session-pages',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    for (let index = 1; index <= 3; index += 1) {
+      repository.createTurn({
+        state: createInitialTurnState(
+          `page-turn-${index}`,
+          'session-pages',
+          index,
+          state.startedAt + index,
+          { title: `Page task ${index}` },
+        ),
+      });
+      repository.saveObserverEvidence({
+        id: `page-evidence-${index}`,
+        sessionId: 'session-pages',
+        turnId: `page-turn-${index}`,
+        key: `page:${index}`,
+        timestamp: state.startedAt + index,
+        source: 'process',
+        kind: 'lifecycle',
+        confidence: 1,
+        reason: `Page evidence ${index}`,
+        payload: { index },
+      });
+    }
+    const app = createServer({ repository, recoverOnStart: false });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const firstTurns = await app.inject('/api/sessions/session-pages/turns/page?limit=2');
+    expect(firstTurns.statusCode).toBe(200);
+    const firstTurnPage = firstTurns.json() as {
+      items: Array<{ id: string }>;
+      nextCursor?: string;
+    };
+    expect(firstTurnPage.items.map((item) => item.id)).toEqual(['page-turn-1', 'page-turn-2']);
+    expect(firstTurnPage.nextCursor).toBeDefined();
+    const secondTurns = await app.inject(
+      `/api/sessions/session-pages/turns/page?limit=2&cursor=${encodeURIComponent(firstTurnPage.nextCursor!)}`,
+    );
+    expect(secondTurns.json()).toMatchObject({ items: [{ id: 'page-turn-3' }] });
+
+    const firstEvidence = await app.inject('/api/sessions/session-pages/evidence/page?limit=2');
+    expect(firstEvidence.statusCode).toBe(200);
+    const firstEvidencePage = firstEvidence.json() as {
+      items: Array<{ key: string }>;
+      nextCursor?: string;
+    };
+    expect(firstEvidencePage.items.map((item) => item.key)).toEqual(['page:1', 'page:2']);
+    const secondEvidence = await app.inject(
+      `/api/sessions/session-pages/evidence/page?limit=2&cursor=${encodeURIComponent(firstEvidencePage.nextCursor!)}`,
+    );
+    expect(secondEvidence.json()).toMatchObject({ items: [{ key: 'page:3' }] });
+
+    const turnEvidence = await app.inject('/api/turns/page-turn-2/evidence/page?limit=1');
+    expect(turnEvidence.json()).toMatchObject({ items: [{ key: 'page:2' }] });
+  });
+
   it('returns consistent errors for invalid queries and missing sessions', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const app = createServer({ repository: new StorageRepository(client), recoverOnStart: false });

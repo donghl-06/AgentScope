@@ -196,6 +196,76 @@ describe('StorageRepository', () => {
     });
   });
 
+  it('paginates turns and observer evidence without gaps or duplicates', () => {
+    withRepository((repository) => {
+      repository.createSession({
+        id: 'session-page-items',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-page-items'),
+      });
+      for (let index = 1; index <= 5; index += 1) {
+        repository.createTurn({
+          state: createInitialTurnState(
+            `turn-${index}`,
+            'session-page-items',
+            index,
+            1_700_000_000_000 + index,
+            { title: `Task ${index}` },
+          ),
+        });
+        repository.saveObserverEvidence({
+          id: `evidence-${index}`,
+          sessionId: 'session-page-items',
+          turnId: `turn-${index}`,
+          key: `process:${index}`,
+          timestamp: 1_700_000_000_000 + index,
+          source: 'process',
+          kind: 'lifecycle',
+          confidence: 1,
+          reason: `Evidence ${index}`,
+          payload: { index },
+        });
+      }
+
+      const turnIds: string[] = [];
+      let turnCursor: string | undefined;
+      do {
+        const page = repository.listTurnPage('session-page-items', {
+          limit: 2,
+          ...(turnCursor === undefined ? {} : { cursor: turnCursor }),
+        });
+        turnIds.push(...page.items.map((turn) => turn.id));
+        turnCursor = page.nextCursor;
+      } while (turnCursor !== undefined);
+      expect(turnIds).toEqual(['turn-1', 'turn-2', 'turn-3', 'turn-4', 'turn-5']);
+
+      const evidenceKeys: string[] = [];
+      let evidenceCursor: string | undefined;
+      do {
+        const page = repository.listObserverEvidencePage('session-page-items', {
+          limit: 2,
+          ...(evidenceCursor === undefined ? {} : { cursor: evidenceCursor }),
+        });
+        evidenceKeys.push(...page.items.map((item) => item.key));
+        evidenceCursor = page.nextCursor;
+      } while (evidenceCursor !== undefined);
+      expect(evidenceKeys).toEqual([
+        'process:1',
+        'process:2',
+        'process:3',
+        'process:4',
+        'process:5',
+      ]);
+
+      expect(repository.listObserverEvidenceForTurnPage('turn-3', { limit: 1 }).items).toEqual([
+        expect.objectContaining({ key: 'process:3', turnId: 'turn-3' }),
+      ]);
+    });
+  });
+
   it('rejects duplicate events and detects corrupt persisted JSON', () => {
     withRepository((repository, client) => {
       repository.createSession({

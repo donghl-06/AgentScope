@@ -22,7 +22,9 @@ the smaller set that still affects a V0 sign-off.
 2. **WebSocket backpressure — baseline closed in this cycle.** Cursor catch-up,
    real disconnect/reconnect, 250-event multi-page timeline pagination, and a
    bounded slow-client disconnect regression now pass. Long-duration capacity
-   and browser paint measurements remain outside this baseline.
+   and browser paint measurements remain outside this baseline. Turns and
+   observer-evidence also expose bounded cursor-page endpoints; the existing
+   array endpoints remain compatible for the current Dashboard.
 3. **SQLite busy/fault injection — closed in this cycle.** A two-connection
    file-backed regression now holds an `IMMEDIATE` write lock and verifies the
    second append is normalized to `StorageBusyError`; evidence is in

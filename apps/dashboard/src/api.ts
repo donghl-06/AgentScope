@@ -6,6 +6,8 @@ import type {
   StoredObserverEvidence,
   StoredSession,
   StoredTurn,
+  TurnListFilter,
+  EvidenceListFilter,
 } from '@agentscope/storage';
 
 export interface DashboardApiOptions {
@@ -84,6 +86,17 @@ export class DashboardApi {
     );
   }
 
+  listTurnPage(sessionId: string, filter: TurnListFilter = {}): Promise<Page<StoredTurn>> {
+    const query = new URLSearchParams();
+    if (filter.status !== undefined) query.set('status', filter.status);
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
+    return this.get<Page<StoredTurn>>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/turns/page`,
+      query,
+    );
+  }
+
   listEtaSnapshots(sessionId: string): Promise<readonly EtaResult[]> {
     return this.get<readonly EtaResult[]>(
       `/api/sessions/${encodeURIComponent(sessionId)}/eta-snapshots`,
@@ -98,10 +111,36 @@ export class DashboardApi {
     );
   }
 
+  listObserverEvidencePage(
+    sessionId: string,
+    filter: EvidenceListFilter = {},
+  ): Promise<Page<StoredObserverEvidence>> {
+    const query = new URLSearchParams();
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
+    return this.get<Page<StoredObserverEvidence>>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/evidence/page`,
+      query,
+    );
+  }
+
   listTurnEvidence(turnId: string, limit = 100): Promise<readonly StoredObserverEvidence[]> {
     const query = new URLSearchParams({ limit: String(limit) });
     return this.get<readonly StoredObserverEvidence[]>(
       `/api/turns/${encodeURIComponent(turnId)}/evidence`,
+      query,
+    );
+  }
+
+  listTurnEvidencePage(
+    turnId: string,
+    filter: EvidenceListFilter = {},
+  ): Promise<Page<StoredObserverEvidence>> {
+    const query = new URLSearchParams();
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
+    return this.get<Page<StoredObserverEvidence>>(
+      `/api/turns/${encodeURIComponent(turnId)}/evidence/page`,
       query,
     );
   }

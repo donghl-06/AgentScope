@@ -32,12 +32,21 @@ const TurnListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
+const TurnPageQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+});
 const EventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
 const EvidenceQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+const EvidencePageQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
 });
 const CursorPageSchema = Type.Object({
   items: Type.Array(Type.Unknown()),
@@ -353,6 +362,38 @@ export function createServer(options: ServerOptions): FastifyInstance {
   );
 
   app.get(
+    '/api/sessions/:id/turns/page',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: TurnPageQuerySchema,
+        response: {
+          200: CursorPageSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const filter: TurnListFilter = {
+          ...(typeof query.status === 'string'
+            ? { status: query.status as NonNullable<TurnListFilter['status']> }
+            : {}),
+          ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
+          ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+        };
+        return reply.send(options.repository.listTurnPage(id, filter));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
     '/api/sessions/:id/turns',
     {
       schema: {
@@ -424,6 +465,36 @@ export function createServer(options: ServerOptions): FastifyInstance {
   );
 
   app.get(
+    '/api/turns/:id/evidence/page',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: EvidencePageQuerySchema,
+        response: {
+          200: CursorPageSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        return reply.send(
+          options.repository.listObserverEvidenceForTurnPage(id, {
+            ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
+            ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+          }),
+        );
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
     '/api/turns/:id/evidence',
     {
       schema: {
@@ -443,6 +514,36 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const query = request.query as Record<string, unknown>;
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.repository.listObserverEvidenceForTurn(id, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/sessions/:id/evidence/page',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: EvidencePageQuerySchema,
+        response: {
+          200: CursorPageSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        return reply.send(
+          options.repository.listObserverEvidencePage(id, {
+            ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
+            ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+          }),
+        );
       } catch (error) {
         return sendError(reply, error);
       }

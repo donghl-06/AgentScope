@@ -68,6 +68,33 @@ describe('DashboardApi', () => {
     expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/sessions/session%2F1/turns');
   });
 
+  it('builds typed cursor-page requests for turns and evidence', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.listTurnPage('session/1', { limit: 2, cursor: 'turn-cursor' });
+    await api.listObserverEvidencePage('session/1', { limit: 2, cursor: 'evidence-cursor' });
+    await api.listTurnEvidencePage('turn/1', { limit: 2, cursor: 'turn-evidence-cursor' });
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/sessions/session%2F1/turns/page?limit=2&cursor=turn-cursor',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/sessions/session%2F1/evidence/page?limit=2&cursor=evidence-cursor',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      'http://127.0.0.1:8787/api/turns/turn%2F1/evidence/page?limit=2&cursor=turn-evidence-cursor',
+    );
+  });
+
   it('loads ETA snapshot history through the typed client', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
