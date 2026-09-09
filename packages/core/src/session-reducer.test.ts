@@ -41,6 +41,34 @@ describe('reduceSessionState', () => {
     expect(failedTest.verification.overall).toBe('failed');
   });
 
+  it('keeps build and typecheck verification separate from test results', () => {
+    const buildPending = reduceSessionState(
+      base,
+      event('test_started', { testKind: 'build', commandName: 'build' }),
+    );
+    const buildPassed = reduceSessionState(
+      buildPending,
+      event('test_passed', { testKind: 'build' }),
+    );
+    const typecheckFailed = reduceSessionState(
+      buildPassed,
+      event('test_failed', { testKind: 'typecheck', failureSummary: 'typecheck failed' }),
+    );
+
+    expect(buildPending.verification).toMatchObject({
+      tests: 'unknown',
+      build: 'pending',
+      typecheck: 'unknown',
+      overall: 'pending',
+    });
+    expect(buildPassed.verification).toMatchObject({ build: 'passed', overall: 'pending' });
+    expect(typecheckFailed.verification).toMatchObject({
+      build: 'passed',
+      typecheck: 'failed',
+      overall: 'failed',
+    });
+  });
+
   it('covers successful, failed, and interrupted terminal outcomes', () => {
     const completed = reduceSessionState(
       reduceSessionState(base, event('session_started', {})),

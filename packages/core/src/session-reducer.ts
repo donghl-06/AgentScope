@@ -51,6 +51,12 @@ function updateVerification(
   return { ...state, verification: { ...verification, overall } };
 }
 
+function verificationField(testKind: unknown): keyof Omit<VerificationState, 'overall'> {
+  if (testKind === 'build') return 'build';
+  if (testKind === 'typecheck') return 'typecheck';
+  return 'tests';
+}
+
 function updateMilestone(
   state: SessionState,
   event: ReducerEvent,
@@ -347,21 +353,21 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
       const payload = event.payload as TestStartedPayload;
       return updateVerification(
         { ...state, currentActivity: activity('test', payload.testKind ?? 'test', event) },
-        { tests: 'pending' },
+        { [verificationField(payload.testKind)]: 'pending' },
       );
     }
     case 'test_passed': {
       const payload = event.payload as TestPassedPayload;
       return updateVerification(
         { ...state, currentActivity: activity('test', payload.testKind ?? 'test passed', event) },
-        { tests: 'passed' },
+        { [verificationField(payload.testKind)]: 'passed' },
       );
     }
     case 'test_failed': {
       const payload = event.payload as TestFailedPayload;
       return updateVerification(
         { ...state, currentActivity: activity('test', payload.testKind ?? 'test failed', event) },
-        { tests: 'failed' },
+        { [verificationField(payload.testKind)]: 'failed' },
       );
     }
     case 'milestone_started':

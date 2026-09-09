@@ -13,6 +13,7 @@ import { openStorage, StorageRepository } from '@agentscope/storage';
 
 import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
 import { applyContinuation, detectContinuation } from './continuation.js';
+import { createVerificationEvent } from './verification-events.js';
 
 export interface ProviderRunOptions {
   readonly adapter: 'claude' | 'codex';
@@ -82,6 +83,12 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   let attached: Awaited<ReturnType<NonNullable<(typeof adapter)['start']>>> | undefined;
   let observerRuntime: ObserverRuntime | undefined;
   const activeCommandIds: string[] = [];
+  const observerSource = {
+    provider: options.adapter,
+    client: adapter.id,
+    environment: process.platform,
+    adapter: adapter.id,
+  } as const;
   const signals = options.signals ?? process;
   let stopRequested = false;
   const handleSignal = () => {
@@ -115,6 +122,32 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           reason: evidence.reason,
           payload: evidence.payload,
         });
+        const verificationEvent = createVerificationEvent(sessionId, observerSource, evidence);
+        if (verificationEvent === undefined) return;
+        state = reduceSessionState(state, verificationEvent);
+        const progress = computeProgress({
+          state,
+          capabilities: adapter.capabilities(),
+          now: verificationEvent.timestamp,
+          lastSignalAt: verificationEvent.timestamp,
+        });
+        state = {
+          ...state,
+          progress,
+          eta: estimateEta({
+            state,
+            progress,
+            elapsedSeconds: Math.max(0, (verificationEvent.timestamp - startedAt) / 1_000),
+          }),
+        };
+        repository.appendEvent(verificationEvent, state, verificationEvent.timestamp);
+        if (
+          state.eta !== undefined &&
+          shouldPersistEtaSnapshot(verificationEvent.type, lastEtaSnapshot)
+        ) {
+          repository.saveEtaSnapshot(sessionId, state.eta, verificationEvent.timestamp);
+          lastEtaSnapshot = state.eta;
+        }
       },
       onError: (error) => {
         options.writeStderr?.(`[observer:${error.source}] ${error.message}\n`);

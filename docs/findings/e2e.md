@@ -260,3 +260,11 @@ above while continuing to delete its temporary database.
 - The server route `GET /api/turns/:id/events?after=&limit=` and the Dashboard client were covered
   by storage, HTTP, and typed-client tests. Existing session-wide event pagination remains
   unchanged for legacy consumers.
+
+## 2026-09-09 verification projection regression
+
+- Safe `test_observer` evidence now maps known verification commands to normalized
+  `test_started`/`test_passed`/`test_failed` events without retaining the command text.
+- The reducer keeps build and typecheck results separate from test results and recomputes the
+  overall verification status. Unknown or interrupted commands remain `unknown`, and ordinary
+  TTY sessions do not infer verification without a reliable command signal.
