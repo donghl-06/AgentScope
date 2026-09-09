@@ -18,6 +18,14 @@ Codex structured JSONL 也已完成第一阶段的细粒度归一化：`command_
 每条 JSONL record 会进入脱敏 native event family/phase 计数。Codex 当前没有稳定可验证
 的 native milestone 和 cost 合同，因此这两项仍明确显示为 unavailable/fallback，不会猜测。
 
+### 2026-09-09 — Codex structured telemetry
+
+- [x] 记录每条 Codex JSONL 的安全 provider event family/phase，保留未知未来事件的诊断计数。
+- [x] 将 `command_execution` 归一化为 command lifecycle 与 tool-call lifecycle，并关联 item id、状态、退出码和耗时。
+- [x] 将 `turn.completed.usage` 归一化为 input/output/cache-read/reasoning/total token，并在 Dashboard provider telemetry 展示。
+- [x] 明确区分 structured provider telemetry 与 TTY observer projection；TTY 不伪造内部字段。
+- [ ] Codex 原生 milestone/cost：当前没有稳定可验证合同，继续显示 unavailable，不做推断。
+
 ### 2026-09-09 — Codex TTY 最终验收
 
 用户在真实 Codex CLI 会话中完成了 TTY 多轮测试，并确认 AgentScope Dashboard

@@ -65,4 +65,4 @@ The command-failure run emitted a completed command item with `status=failed` an
 
 ## Fixture policy
 
-`tests/fixtures/raw/codex-cli/` contains redacted representative event shapes only. It excludes prompts, command text, absolute paths, thread UUIDs, usage values, and full agent messages. The interrupted fixture intentionally ends at an in-progress command because no provider terminal record was emitted.
+`tests/fixtures/raw/codex-cli/` contains redacted representative event shapes only. It excludes prompts, command text, absolute paths, thread UUIDs, real usage values, and full agent messages. The interrupted fixture intentionally ends at an in-progress command because no provider terminal record was emitted.
