@@ -79,9 +79,10 @@ prompt 文本或进程关系猜测会话身份。
 - **Timeline**：规范化 session/turn 事件，断线后由 WebSocket + HTTP cursor 补齐。
 
 TTY 路径不会伪造 Codex 未公开的原生 token、tool call、milestone 或结构化事件。
-如果将来 Codex 提供稳定的 TTY side-channel，再单独增加 provider-native 能力；
-当前需要精确 usage/tool 数据时，继续使用既有的 `agent-scope run codex -- ...`
-structured 路径。
+当前需要 provider-native usage、command/tool lifecycle 和 native event counts 时，
+继续使用既有的 `agent-scope run codex -- ...` structured 路径；该路径已经归一化
+已观测字段，但 Codex cost 和稳定 native milestone 仍保持 unavailable。TTY 仍只展示
+AgentScope 的实时 observer projection，不能把它与 structured provider telemetry 混为一谈。
 
 ## 5. 检查和恢复
 

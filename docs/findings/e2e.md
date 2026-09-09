@@ -179,9 +179,9 @@ above while continuing to delete its temporary database.
 - The explicit `AGENTSCOPE_CODEX_EXECUTABLE` `.cmd` override path was exercised
   with a fake Windows Node shim and now resolves to an argument-safe `node`
   plus script invocation instead of passing a `.cmd` directly to the PTY.
-- This does not claim authenticated Codex multi-turn provider behavior or
-  provider-native token/tool/milestone telemetry. Those remain the final user
-  acceptance and structured-vs-TTY capability boundary documented in
+- This does not claim provider-native token/tool/milestone telemetry for the TTY wrapper.
+  The separate structured adapter now normalizes the observed usage/tool/native-event
+  fields; the structured-vs-TTY capability boundary remains documented in
   `docs/findings/codex-tty.md`.
 
 ## 2026-09-09 Codex TTY final user acceptance
