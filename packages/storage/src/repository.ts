@@ -515,11 +515,56 @@ export class StorageRepository {
       .all() as SessionRow[];
     return rows.map((row) => {
       const session = decodeSession(row);
-      return this.updateSessionState(
+      const recovered = this.updateSessionState(
         session.id,
         { ...session.state, status: 'interrupted', endedAt: now },
         { now, ...(session.workspace === undefined ? {} : { workspace: session.workspace }) },
       );
+      this.recoverInFlightTurns(session.id, now);
+      return recovered;
+    });
+  }
+
+  /**
+   * Mark non-terminal turns as interrupted after their owning session is known
+   * to be stale. Blocked turns are intentionally preserved: they represent an
+   * explicit user/provider blockage rather than a live PTY that disappeared.
+   */
+  recoverInFlightTurns(sessionId: string, now = Date.now()): readonly StoredTurn[] {
+    this.ensureSession(sessionId);
+    const rows = this.client
+      .prepare(
+        `SELECT * FROM turns WHERE session_id = ?
+         AND status IN ('queued', 'running', 'waiting')
+         ORDER BY sequence ASC, id ASC`,
+      )
+      .all(sessionId) as TurnRow[];
+    return rows.map((row) => {
+      const turn = decodeTurn(row);
+      const endedAt = Math.max(now, turn.state.startedAt ?? turn.state.submittedAt);
+      const recovered = this.updateTurnState(
+        turn.id,
+        { ...turn.state, status: 'interrupted', endedAt },
+        endedAt,
+      );
+      this.saveObserverEvidence({
+        id: `recovery:stale-session:${turn.id}:${endedAt}`,
+        sessionId,
+        turnId: turn.id,
+        key: `recovery:stale-session:${turn.id}:${endedAt}`,
+        timestamp: endedAt,
+        source: 'agent-scope',
+        kind: 'recovery',
+        confidence: 1,
+        reason: 'Turn was interrupted because its owning session was stale.',
+        payload: {
+          turnId: turn.id,
+          previousStatus: turn.status,
+          status: 'interrupted',
+          recovery: 'stale_session',
+        },
+      });
+      return recovered;
     });
   }
 

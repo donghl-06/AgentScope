@@ -461,12 +461,14 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 #### Step 7.2 — 恢复中断的交互式 session
 
-- [ ] 扩展 `agent-scope recover`，区分 stale terminal session 和 stale active turn。
+- [x] 扩展 `agent-scope recover`，区分 stale terminal session 和 stale active turn。
 - [ ] 只标记真正 stale 的记录，不能中断另一个进程拥有的 live PTY。
-- [ ] 记录 recovery reason，保留最后一份安全 evidence。
-- [ ] server 重启与 interactive CLI 生命周期相互独立。
+- [x] 记录 recovery reason，保留最后一份安全 evidence。
+- [x] server 重启与 interactive CLI 生命周期相互独立。
 
-验证：wrapper 突然终止、Dashboard 重启和模拟机器重启后都收敛到一致状态。
+验证：存储回归覆盖 stale session 下 queued/running/waiting turn 的中断收敛、
+blocked turn 保留和 recovery evidence；wrapper 突然终止、Dashboard 重启和模拟机器重启
+的真实终端主机行为仍需保守验收。
 
 提交边界：恢复行为和故障注入测试。
 

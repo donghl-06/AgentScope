@@ -16,8 +16,11 @@ may remain `running` until:
 node .\apps\cli\bin\agent-scope.mjs recover
 ```
 
-The recovery command is the supported V0 fallback. Fully atomic Ctrl+C and
-Ctrl+Break behavior across every PowerShell/console host is not claimed.
+The recovery command is the supported V0 fallback. It now also marks queued,
+running, and waiting turns owned by the stale session as `interrupted` and
+stores a bounded recovery evidence record; explicitly blocked turns remain
+blocked. Fully atomic Ctrl+C and Ctrl+Break behavior across every
+PowerShell/console host is not claimed.
 
 ## Structured and interactive provider paths
 

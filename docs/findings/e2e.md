@@ -240,3 +240,14 @@ above while continuing to delete its temporary database.
 - The fixture is local and contains no API key, prompt, command text, provider transcript, or
   real network call. This closes the deterministic adapter-to-provider-runner-to-storage
   regression path while preserving the documented redaction boundary.
+
+## 2026-09-09 stale interactive turn recovery regression
+
+- Storage recovery now follows an in-flight `starting`/`running` session transition and marks its
+  queued, running, and waiting turns as `interrupted`. Explicitly blocked turns are preserved.
+- Each recovered turn receives a bounded `agent-scope` recovery evidence record with the prior
+  status and `stale_session` reason; no prompt, terminal transcript, command text, or process
+  environment is retained.
+- The storage suite verifies the transition and evidence on a file-backed SQLite database. The
+  command still cannot prove that an unrelated live PTY is absent; that host-level ownership
+  boundary remains documented and requires the existing manual recovery discipline.

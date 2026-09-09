@@ -443,6 +443,25 @@ describe('StorageRepository', () => {
           state: state(id, status),
         });
       }
+      repository.createTurn({
+        state: {
+          ...createInitialTurnState('running-turn', 'running-session', 1, 110),
+          status: 'running',
+          startedAt: 120,
+        },
+        now: 120,
+      });
+      repository.createTurn({
+        state: createInitialTurnState('starting-turn', 'starting-session', 1, 115),
+        now: 115,
+      });
+      repository.createTurn({
+        state: {
+          ...createInitialTurnState('blocked-turn', 'blocked-session', 1, 115),
+          status: 'blocked',
+        },
+        now: 115,
+      });
 
       const recovered = repository.recoverInFlightSessions(1_700_000_010_000);
       expect(recovered.map((session) => session.id)).toEqual([
@@ -455,6 +474,23 @@ describe('StorageRepository', () => {
       });
       expect(repository.getSession('starting-session')).toMatchObject({ status: 'interrupted' });
       expect(repository.getSession('blocked-session').status).toBe('blocked');
+      expect(repository.getTurn('running-turn')).toMatchObject({
+        status: 'interrupted',
+        endedAt: 1_700_000_010_000,
+      });
+      expect(repository.getTurn('starting-turn')).toMatchObject({
+        status: 'interrupted',
+        endedAt: 1_700_000_010_000,
+      });
+      expect(repository.getTurn('blocked-turn').status).toBe('blocked');
+      expect(repository.listObserverEvidenceForTurn('running-turn')).toEqual([
+        expect.objectContaining({
+          source: 'agent-scope',
+          kind: 'recovery',
+          reason: 'Turn was interrupted because its owning session was stale.',
+          payload: expect.objectContaining({ recovery: 'stale_session' }),
+        }),
+      ]);
     });
   });
 

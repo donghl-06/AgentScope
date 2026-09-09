@@ -18,6 +18,7 @@
 | WSL2 真实 Claude 与 Windows Dashboard 同库联动 | Verified | 用户确认的 WSL2 转发/同库测试；provider 并发限制属于外部 endpoint 行为 |
 | `--resume <id>` 保守记录和按 id 展示关联 execution | Verified | protocol/schema/reducer/provider-runner tests；每次 execution 仍保持独立 |
 | `--continue` 自动识别原生会话 | Conservative | 只记录 continuation request；没有稳定 provider id 时不自动合并 |
+| stale session 下的 active turn 恢复 | Verified | `agent-scope recover` 现在将 queued/running/waiting turn 收敛为 `interrupted`，保留 blocked turn，并写入 recovery evidence；无法判断另一个仍存活的外部 PTY 是否属于该 session |
 | 真实 provider 的 resume 成功/无效 id/并发 resume 语义 | Pending | 需要在目标 provider/account 上做行为验收，不能由 CLI help 或 Mock 推断 |
 | Codex structured JSONL usage/tool/native event 归一化 | Verified | Codex fixtures、parser/adapter 回归和 Dashboard shared telemetry projection；cost、native milestone 未观测且不猜测 |
 | Codex 交互式 TTY 多轮会话 | Verified | `codex-cli-tty` fake PTY/Windows shim 回归通过；用户确认真实 Codex TTY 多轮任务和 Dashboard 监控验收通过（2026-09-09） |
