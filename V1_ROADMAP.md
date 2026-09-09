@@ -37,7 +37,7 @@ Codex structured JSONL 也已完成第一阶段的细粒度归一化：`command_
 
 - conversation group 的完整 UI/API 与真实 provider resume 语义验收（保守身份元数据已落地）；
 - PTY/浏览器绘制延迟、CPU/RSS、长时间和故障注入矩阵；
-- stale turn 精细恢复、分页 API、verification/Git 结果的完整自动关联；
+- live PTY 所有权判定、分页 API 与 verification/Git 结果的完整自动关联；
 - Claude 尚未提供稳定 TTY hook/side-channel 前，不宣称原生 tool/milestone/token；
 - 最终 acceptance matrix、README/troubleshooting 和本地 release-prep 提交。
 
