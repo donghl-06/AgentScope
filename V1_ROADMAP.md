@@ -29,6 +29,7 @@ Codex 在 provider JSONL 暂时提供命令文本时只用它做内存分类，�
 - [x] 将 `command_execution` 归一化为 command lifecycle 与 tool-call lifecycle，并关联 item id、状态、退出码和耗时。
 - [x] 将 `turn.completed.usage` 归一化为 input/output/cache-read/reasoning/total token，并在 Dashboard provider telemetry 展示。
 - [x] 明确区分 structured provider telemetry 与 TTY observer projection；TTY 不伪造内部字段。
+- [x] 对 provider JSONL 中可识别的验证命令做瞬时分类并投影为 test/build/typecheck 状态；原始命令文本不进入归一化事件。
 - [ ] Codex 原生 milestone/cost：当前没有稳定可验证合同，继续显示 unavailable，不做推断。
 
 ### 2026-09-09 — Codex TTY 最终验收
