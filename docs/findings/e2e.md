@@ -191,5 +191,18 @@ above while continuing to delete its temporary database.
   Dashboard monitoring both worked as expected.
 - The Codex UI also reported an optional `codex_apps` MCP startup/HTTP error for
   `chatgpt.com/backend-api/ps/mcp`. The main Codex session continued normally;
-  this is an external optional MCP/account/network capability and is not an
-  AgentScope TTY failure.
+  the user later confirmed that the warning disappeared after network recovery. This is
+  an external optional MCP/account/network capability and is not an AgentScope TTY failure.
+
+## 2026-09-09 Codex structured telemetry normalization
+
+- The Codex JSONL adapter now preserves a redacted `provider_event` for every observed
+  record, so the Dashboard can show native event-family/phase counts without retaining
+  prompts, command text, or provider message content.
+- `command_execution` items now produce both command lifecycle events (for command
+  observers/verification) and tool-call lifecycle events (for provider tool totals), with
+  item id, status, exit code and duration only.
+- `turn.completed.usage` is normalized to input, output, cached-input, reasoning and total
+  token fields. Codex cost is not emitted by the observed stream and remains unavailable;
+  no cost estimate is fabricated. Native milestones were not observed and remain an explicit
+  fallback to AgentScope progress/activity.

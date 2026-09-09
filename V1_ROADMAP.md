@@ -13,12 +13,17 @@ projection、observer evidence、Dashboard 实时更新/断线恢复、Turns/Tim
 Dashboard 联动也已通过用户确认。Codex TTY 已复用同一 PTY、turn coordinator、observer
 和 Dashboard 管线；fake PTY 多轮回归与本机 `codex --version` shim smoke 已通过。
 
+Codex structured JSONL 也已完成第一阶段的细粒度归一化：`command_execution` 会同时
+产生 command/tool lifecycle，`turn.completed.usage` 会进入 provider usage telemetry，
+每条 JSONL record 会进入脱敏 native event family/phase 计数。Codex 当前没有稳定可验证
+的 native milestone 和 cost 合同，因此这两项仍明确显示为 unavailable/fallback，不会猜测。
+
 ### 2026-09-09 — Codex TTY 最终验收
 
 用户在真实 Codex CLI 会话中完成了 TTY 多轮测试，并确认 AgentScope Dashboard
 能够正常监控任务。Codex 原生界面、任务输入和 AgentScope 的 session/turn 投影均
-正常。一次 `codex_apps` MCP 启动失败警告被确认不影响 Codex TTY 或 AgentScope
-监控；它属于 Codex 可选 ChatGPT/MCP 后端连接的外部网络/账号边界。
+正常。一次 `codex_apps` MCP 启动失败警告随后被用户确认是暂时网络问题，网络恢复后不再
+复现；它属于 Codex 可选 ChatGPT/MCP 后端连接的外部网络边界，不属于 AgentScope 功能风险。
 
 当前仍属于 release hardening 或后续能力的项目：
 

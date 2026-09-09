@@ -24,10 +24,10 @@ export interface CodexCliAdapterOptions {
 
 const CAPABILITIES: AgentCapabilities = {
   structuredEvents: true,
-  toolCalls: false,
+  toolCalls: true,
   fileEvents: false,
   commandEvents: true,
-  tokenUsage: false,
+  tokenUsage: true,
   sessionInfo: true,
   milestones: false,
 };

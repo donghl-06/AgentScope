@@ -7,7 +7,7 @@ import { CodexStreamDecoder, parseCodexStreamLine } from './parser.js';
 const context = { sessionId: 'session-1', timestamp: 1_700_000_000_000 };
 
 describe('Codex CLI stream parser', () => {
-  it('maps the redacted success stream without retaining provider text or usage', async () => {
+  it('maps the redacted success stream, usage, and native event envelopes', async () => {
     const lines = (await readFile('tests/fixtures/raw/codex-cli/success.exec.jsonl', 'utf8'))
       .trim()
       .split('\n');
@@ -15,16 +15,31 @@ describe('Codex CLI stream parser', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'session_started',
+      'provider_event',
       'planning',
+      'provider_event',
       'agent_message',
+      'provider_event',
+      'usage_updated',
       'session_finished',
+      'provider_event',
     ]);
     expect(events[0]?.payload).toEqual({ providerSessionId: '<provider-thread-id>' });
-    expect(events[2]?.payload).toEqual({ summary: 'agent message' });
-    expect(events[3]?.payload).toEqual({ reason: 'completed' });
-    expect(events).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ usage: expect.anything() })]),
-    );
+    expect(events.find((event) => event.type === 'usage_updated')?.payload).toEqual({
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+      },
+    });
+    expect(events.find((event) => event.type === 'agent_message')?.payload).toEqual({
+      summary: 'agent message',
+    });
+    expect(events.find((event) => event.type === 'session_finished')?.payload).toEqual({
+      reason: 'completed',
+    });
   });
 
   it('maps command execution start and failure without retaining command text', async () => {
@@ -35,25 +50,48 @@ describe('Codex CLI stream parser', () => {
 
     expect(events.map((event) => event.type)).toEqual([
       'session_started',
+      'provider_event',
       'planning',
+      'provider_event',
+      'tool_call_started',
       'command_started',
+      'provider_event',
+      'tool_call_finished',
       'command_finished',
+      'provider_event',
+      'tool_call_started',
       'command_started',
+      'provider_event',
+      'tool_call_finished',
       'command_finished',
+      'provider_event',
+      'usage_updated',
       'session_finished',
+      'provider_event',
     ]);
-    expect(events[2]?.payload).toEqual({
+    expect(events[4]?.payload).toEqual({ toolName: 'command_execution', toolCallId: '<item-id>' });
+    expect(events[5]?.payload).toEqual({
       commandKind: 'command',
       commandName: 'command execution',
     });
-    expect(events[5]?.payload).toEqual({ commandKind: 'command', exitCode: 1 });
+    expect(events[13]?.payload).toEqual({
+      toolName: 'command_execution',
+      toolCallId: '<item-id>',
+      success: false,
+      errorCode: 'provider_tool_error',
+    });
+    expect(events[14]?.payload).toEqual({ commandKind: 'command', exitCode: 1 });
   });
 
   it('accepts split JSONL chunks and keeps interrupted streams non-terminal', async () => {
     const decoder = new CodexStreamDecoder(context);
     expect(decoder.push('{"type":"thread.started","thread_id":"provider-1"}\r\n')).toHaveLength(1);
     expect(decoder.push('{"type":"item.started","item":{"type":"command_execution"}}')).toEqual([]);
-    expect(decoder.flush()[0]?.events[0]?.type).toBe('command_started');
+    expect(decoder.flush()[0]?.events.map((event) => event.type)).toEqual([
+      'tool_call_started',
+      'command_started',
+      'provider_event',
+    ]);
 
     const interrupted = (
       await readFile('tests/fixtures/raw/codex-cli/interrupted.exec.jsonl', 'utf8')
@@ -61,7 +99,17 @@ describe('Codex CLI stream parser', () => {
       .trim()
       .split('\n')
       .flatMap((line) => parseCodexStreamLine(line, context).events);
-    expect(interrupted.at(-1)?.type).toBe('command_started');
+    expect(interrupted.map((event) => event.type)).toEqual([
+      'session_started',
+      'provider_event',
+      'planning',
+      'provider_event',
+      'agent_message',
+      'provider_event',
+      'tool_call_started',
+      'command_started',
+      'provider_event',
+    ]);
   });
 
   it('marks malformed and unsupported records without throwing', () => {
@@ -70,9 +118,9 @@ describe('Codex CLI stream parser', () => {
       ignored: false,
       malformed: true,
     });
-    expect(parseCodexStreamLine('{"type":"unknown"}', context)).toEqual({
-      events: [],
-      ignored: true,
+    expect(parseCodexStreamLine('{"type":"unknown"}', context)).toMatchObject({
+      ignored: false,
+      events: [{ type: 'provider_event', payload: { providerEventType: 'unknown' } }],
     });
   });
 });

@@ -19,8 +19,10 @@
 
 TTY 输出本身不能可靠提供 Codex 内部的 token usage、tool call、milestone、精确 ETA
 或结构化事件。Dashboard 展示的是 AgentScope 根据 turn boundary、进程、Git、文件和
-验证 observer 生成的实时投影。需要 provider-native JSONL 时，继续使用
-`agent-scope run codex -- ...` structured adapter。
+验证 observer 生成的实时投影。需要 provider-native JSONL usage、tool lifecycle 和
+native event counts 时，继续使用 `agent-scope run codex -- ...` structured adapter；
+当前 Codex structured adapter 已完成这些已观测字段的脱敏归一化，仍不虚构 milestone
+或 cost。
 
 ## 最终真实验收
 
@@ -28,8 +30,9 @@ TTY 输出本身不能可靠提供 Codex 内部的 token usage、tool call、mil
 交互界面和 AgentScope Dashboard 监控均正常。至此 Codex TTY 的主要使用场景已通过
 最终验收。
 
-验收期间 Codex 输出过 `MCP client for codex_apps failed to start` 以及对
-`https://chatgpt.com/backend-api/ps/mcp` 的 HTTP 请求错误。该连接属于 Codex 的
-可选 `codex_apps` MCP/ChatGPT 后端，不是 AgentScope 的 adapter 或 TTY 错误；它不
-阻止 Codex 主会话继续工作，也不影响 AgentScope session/turn/observer 记录。若需要
-该 MCP 能力，应另行检查 Codex 登录状态、网络代理和 ChatGPT 后端可达性。
+验收期间 Codex 曾输出过 `MCP client for codex_apps failed to start` 以及对
+`https://chatgpt.com/backend-api/ps/mcp` 的 HTTP 请求错误。用户随后确认网络恢复后该
+警告不再复现。该连接属于 Codex 的可选 `codex_apps` MCP/ChatGPT 后端，不是
+AgentScope 的 adapter 或 TTY 错误；它不阻止 Codex 主会话工作，也不影响 AgentScope
+session/turn/observer 记录。当前不把它列为 AgentScope 功能风险；若未来再次出现，先
+检查 Codex 登录状态、网络代理和 ChatGPT 后端可达性。

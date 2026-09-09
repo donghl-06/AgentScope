@@ -21,10 +21,10 @@ describe('Codex CLI adapter', () => {
   it('exposes only the capabilities supported by the observed JSONL path', () => {
     expect(new CodexCliAdapter().capabilities()).toEqual({
       structuredEvents: true,
-      toolCalls: false,
+      toolCalls: true,
       fileEvents: false,
       commandEvents: true,
-      tokenUsage: false,
+      tokenUsage: true,
       sessionInfo: true,
       milestones: false,
     });
