@@ -13,6 +13,13 @@ projection、observer evidence、Dashboard 实时更新/断线恢复、Turns/Tim
 Dashboard 联动也已通过用户确认。Codex TTY 已复用同一 PTY、turn coordinator、observer
 和 Dashboard 管线；fake PTY 多轮回归与本机 `codex --version` shim smoke 已通过。
 
+### 2026-09-09 — Codex TTY 最终验收
+
+用户在真实 Codex CLI 会话中完成了 TTY 多轮测试，并确认 AgentScope Dashboard
+能够正常监控任务。Codex 原生界面、任务输入和 AgentScope 的 session/turn 投影均
+正常。一次 `codex_apps` MCP 启动失败警告被确认不影响 Codex TTY 或 AgentScope
+监控；它属于 Codex 可选 ChatGPT/MCP 后端连接的外部网络/账号边界。
+
 当前仍属于 release hardening 或后续能力的项目：
 
 - conversation group 的完整 UI/API 与真实 provider resume 语义验收（保守身份元数据已落地）；
@@ -20,7 +27,6 @@ Dashboard 联动也已通过用户确认。Codex TTY 已复用同一 PTY、turn 
 - stale turn 精细恢复、分页 API、verification/Git 结果的完整自动关联；
 - Claude 尚未提供稳定 TTY hook/side-channel 前，不宣称原生 tool/milestone/token；
 - 最终 acceptance matrix、README/troubleshooting 和本地 release-prep 提交。
-- Codex 真实认证 provider 的多轮交互、resume 行为和最终终端体验验收。
 
 这些项目不阻塞当前“正常使用 Claude 或 Codex，同时在 Dashboard 观察进度”的主要场景。
 

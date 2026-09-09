@@ -19,7 +19,7 @@
 | `--resume <id>` 保守记录和按 id 展示关联 execution | Verified | protocol/schema/reducer/provider-runner tests；每次 execution 仍保持独立 |
 | `--continue` 自动识别原生会话 | Conservative | 只记录 continuation request；没有稳定 provider id 时不自动合并 |
 | 真实 provider 的 resume 成功/无效 id/并发 resume 语义 | Pending | 需要在目标 provider/account 上做行为验收，不能由 CLI help 或 Mock 推断 |
-| Codex 交互式 TTY 多轮会话 | Implementation verified; final acceptance pending | `codex-cli-tty` fake PTY 多轮回归、Windows 实际 `codex --version` shim smoke 已通过；真实认证 provider 多轮由最终用户验收 |
+| Codex 交互式 TTY 多轮会话 | Verified | `codex-cli-tty` fake PTY/Windows shim 回归通过；用户确认真实 Codex TTY 多轮任务和 Dashboard 监控验收通过（2026-09-09） |
 | 长时间、多小时、浏览器 paint 和支持容量上限 | Pending | 当前性能数值是诊断基线，不是容量或 SLO 承诺 |
 
 ## 自动化 release gate

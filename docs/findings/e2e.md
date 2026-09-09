@@ -183,3 +183,13 @@ above while continuing to delete its temporary database.
   provider-native token/tool/milestone telemetry. Those remain the final user
   acceptance and structured-vs-TTY capability boundary documented in
   `docs/findings/codex-tty.md`.
+
+## 2026-09-09 Codex TTY final user acceptance
+
+- The user completed a real Codex CLI interactive multi-turn smoke through
+  `agent-scope codex` and confirmed that native terminal interaction and
+  Dashboard monitoring both worked as expected.
+- The Codex UI also reported an optional `codex_apps` MCP startup/HTTP error for
+  `chatgpt.com/backend-api/ps/mcp`. The main Codex session continued normally;
+  this is an external optional MCP/account/network capability and is not an
+  AgentScope TTY failure.
