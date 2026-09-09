@@ -70,6 +70,17 @@ node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' codex --no-alt-s
 运行 Dashboard 的 AgentScope 数据库。完整的跨项目、续接、Windows shim 和 Dashboard
 说明见 [`docs/codex-workflow.md`](docs/codex-workflow.md)。
 
+如果需要 Codex 原生 JSON-RPC 的 item、工具/命令、文件变化、plan 和 token usage
+事件，可显式运行一次 app-server turn：
+
+```powershell
+node .\apps\cli\bin\agent-scope.mjs run codex-app-server -- "Reply with APP_SERVER_OK only"
+```
+
+这条路径适合结构化单次任务，不替代 TTY 多轮体验；审批会保守拒绝并在 Dashboard
+标记 blocked。它由 AgentScope 启动本地 `codex app-server`，不附着到已打开的官方
+Codex Desktop App。详见 [`docs/codex-app-server.md`](docs/codex-app-server.md)。
+
 提交前的本地发布门禁为 `pnpm release:check`，它会执行格式、fixture 脱敏、lint、
 全 workspace typecheck、unit/integration tests 和 build。
 

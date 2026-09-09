@@ -4,6 +4,10 @@ All notable changes to AgentScope are recorded here.
 
 ## Unreleased
 
+- Added an explicit Codex app-server adapter using the locally installed JSON-RPC stdio
+  protocol, with version-derived schema validation, thread resume/interrupt, redacted
+  provider events, command/tool/file/plan/usage normalization, and conservative approval
+  handling. The existing Codex TTY and structured CLI paths remain unchanged.
 - Added one-command `agent-scope start` orchestration for the local server and
   repository Dashboard, with `--no-dashboard` and `--dashboard-port` escape
   hatches.

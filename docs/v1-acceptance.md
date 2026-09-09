@@ -23,6 +23,7 @@
 | Codex structured JSONL usage/tool/native event 归一化 | Verified | Codex fixtures、parser/adapter 回归和 Dashboard shared telemetry projection；cost、native milestone 未观测且不猜测 |
 | Codex structured 已知验证命令投影 | Conservative | provider 命令文本只用于瞬时分类，归一化后更新 tests/build/typecheck；脱敏、缺失或未知命令保持 Unknown |
 | Codex 交互式 TTY 多轮会话 | Verified | `codex-cli-tty` fake PTY/Windows shim 回归通过；用户确认真实 Codex TTY 多轮任务和 Dashboard 监控验收通过（2026-09-09） |
+| Codex app-server 本地结构化接入 | Verified / Conservative | 本机 `codex-cli 0.153.4` schema/protocol 回归覆盖 start、resume、interrupt、item/tool/file/plan/usage 和审批拒绝；官方 Desktop App 直接附着、稳定 cost/精确 ETA 不宣称 |
 | 长时间、多小时、浏览器 paint 和支持容量上限 | Pending | 当前性能数值是诊断基线，不是容量或 SLO 承诺 |
 
 ## 自动化 release gate

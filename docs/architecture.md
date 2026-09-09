@@ -198,7 +198,8 @@ V0 optimizes correctness before scale, while preventing obvious unbounded behavi
 
 - A new provider implements the Adapter contract and fixtures without changing Core/Storage/Dashboard control flow.
 - Future remote collectors transport AgentEvent envelopes; they do not bypass validation.
-- Codex App remains a future capability spike and must not introduce OCR/UI scraping into V0.
+- Codex Desktop App 直接附着 remains unsupported; the local Codex `app-server` adapter is
+  an explicit structured path and must not introduce OCR/UI scraping.
 - Historical/ML ETA can replace the estimator behind the same range/confidence/reasons contract.
 
 ## 12. Open architectural items

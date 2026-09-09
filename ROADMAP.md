@@ -875,7 +875,9 @@ agentscope/
 
 交互式 Claude Code、多轮任务与 TTY/PTY 的完整实施计划见 `V1_ROADMAP.md`；本节仅保留原始长期 backlog 摘要。
 
-- Codex App 的官方/稳定可观测接口 spike；若无接口，仅做 External Level C。
+- Codex app-server 本地 JSON-RPC adapter 已完成为显式结构化路径（精确版本 schema、
+  start/resume/interrupt、原生 event/usage/plan 映射和保守审批）；官方 Desktop App
+  直接附着仍保留为后续 External Level C 调研。
 - IDE Agent、Kimi/Gemini CLI、Docker、SSH/remote adapters。
 - Project/session group 与 Planner/Worker 多 Agent 编排集成。
 - 4+ session 的高级筛选、通知、阻塞告警和历史回放。

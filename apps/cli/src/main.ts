@@ -97,7 +97,7 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
       ...(command.kind === 'run'
         ? {
             runAdapter: (adapter: string, args: readonly string[]) => {
-              if (adapter !== 'claude' && adapter !== 'codex') {
+              if (adapter !== 'claude' && adapter !== 'codex' && adapter !== 'codex-app-server') {
                 throw new CliExecutionError(`Unsupported adapter: ${adapter}`, 'not_implemented');
               }
               return runProvider({
@@ -107,6 +107,13 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 workspacePath: config.workspacePath,
                 writeStdout,
                 writeStderr,
+                ...(adapter === 'claude'
+                  ? configuredClaudeExecutable === undefined
+                    ? {}
+                    : { executable: configuredClaudeExecutable }
+                  : configuredCodexExecutable === undefined
+                    ? {}
+                    : { executable: configuredCodexExecutable }),
               }).then((result) => result.exitCode);
             },
           }

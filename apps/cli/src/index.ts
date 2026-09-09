@@ -72,6 +72,7 @@ export function formatCliHelp(): string {
     'Commands:',
     '  start                         Start the local server and Dashboard.',
     '  run <adapter> -- <args...>   Run an adapter and preserve argument boundaries.',
+    '  run codex-app-server -- <prompt...>',
     '  claude [--agent-scope-accept-api-key] [args...]',
     '                                Run Claude Code in a monitored interactive PTY.',
     '  codex [args...]                Run Codex CLI in a monitored interactive PTY.',

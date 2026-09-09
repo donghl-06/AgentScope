@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { reduceSessionState } from '@agentscope/core';
 import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
+import { CodexAppServerAdapter } from '@agentscope/adapter-codex-app-server';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
 import {
@@ -20,7 +21,7 @@ import { applyContinuation, detectContinuation } from './continuation.js';
 import { createVerificationEvent } from './verification-events.js';
 
 export interface ProviderRunOptions {
-  readonly adapter: 'claude' | 'codex';
+  readonly adapter: 'claude' | 'codex' | 'codex-app-server';
   readonly args: readonly string[];
   readonly filename: string;
   readonly workspacePath: string;
@@ -64,20 +65,31 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
           ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
         })
-      : new CodexCliAdapter({
-          ...(options.executable === undefined ? {} : { executable: options.executable }),
-          now,
-          ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
-          ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
-          classifyCommand: (commandName) => {
-            const kind = classifyVerificationCommand(commandName).kind;
-            return kind === 'unknown' ? 'command' : kind;
-          },
-        });
+      : options.adapter === 'codex'
+        ? new CodexCliAdapter({
+            ...(options.executable === undefined ? {} : { executable: options.executable }),
+            now,
+            ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
+            ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+            classifyCommand: (commandName) => {
+              const kind = classifyVerificationCommand(commandName).kind;
+              return kind === 'unknown' ? 'command' : kind;
+            },
+          })
+        : new CodexAppServerAdapter({
+            ...(options.executable === undefined ? {} : { executable: options.executable }),
+            now,
+            ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
+            ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+            classifyCommand: (commandName) => {
+              const kind = classifyVerificationCommand(commandName).kind;
+              return kind === 'unknown' ? 'command' : kind;
+            },
+          });
 
   repository.createSession({
     id: sessionId,
-    provider: options.adapter,
+    provider: options.adapter === 'claude' ? 'claude' : 'codex',
     adapter: adapter.id,
     startedAt,
     capabilities: { ...adapter.capabilities() },
@@ -92,7 +104,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   let observerRuntime: ObserverRuntime | undefined;
   const activeCommandIds: string[] = [];
   const observerSource = {
-    provider: options.adapter,
+    provider: options.adapter === 'claude' ? 'claude' : 'codex',
     client: adapter.id,
     environment: process.platform,
     adapter: adapter.id,

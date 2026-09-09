@@ -44,6 +44,9 @@ importers:
       '@agentscope/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code
+      '@agentscope/adapter-codex-app-server':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex-app-server
       '@agentscope/adapter-codex-cli':
         specifier: workspace:*
         version: link:../../packages/adapters/codex-cli
@@ -131,6 +134,15 @@ importers:
         version: link:../../protocol
 
   packages/adapters/claude-code:
+    dependencies:
+      '@agentscope/adapter-base':
+        specifier: workspace:*
+        version: link:../base
+      '@agentscope/protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+
+  packages/adapters/codex-app-server:
     dependencies:
       '@agentscope/adapter-base':
         specifier: workspace:*

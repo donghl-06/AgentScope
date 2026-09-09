@@ -99,3 +99,18 @@ node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' recover
 ```
 
 恢复命令会把遗留的 `starting`/`running` session 标记为 `interrupted`，不会删除历史。
+
+## 6. 需要 provider 原生细粒度事件时：app-server
+
+如果任务不是交互式多轮，而是希望在 Dashboard 中看到 Codex 原生的 item、命令/工具、
+文件变化、计划和 token usage，可以使用独立的 app-server 适配器：
+
+```powershell
+node 'D:\大学\项目\AgentScope\apps\cli\bin\agent-scope.mjs' `
+  run codex-app-server -- "Reply with APP_SERVER_OK only"
+```
+
+它每次启动一个本地 JSON-RPC stdio server 并执行一个 turn；需要续接时显式使用
+`--resume <codex-thread-id>`。app-server 没有由 AgentScope 提供的交互式审批 UI，
+请求会被保守拒绝并在 Dashboard 标记 blocked。完整协议、版本边界和字段映射见
+[`docs/codex-app-server.md`](codex-app-server.md)。

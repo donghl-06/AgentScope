@@ -72,6 +72,14 @@ projection as Claude. The wrapper does not claim Codex-native token, tool-call,
 milestone, or exact ETA fields in TTY mode; use the structured `run codex -- ...`
 path for the provider JSONL capability matrix.
 
+Codex also has an explicit `run codex-app-server -- ...` path. It starts a local
+JSON-RPC stdio server and can expose provider-native item/tool/file/plan/usage events,
+but it is one-turn rather than an interactive terminal. Because AgentScope does not
+yet provide an approval UI for app-server requests, commands/file changes/permission
+requests are declined conservatively and the session is marked blocked. Use the TTY
+path for normal multi-turn work with approvals. Attaching to an already-running
+official Codex Desktop App is not claimed.
+
 On structured provider paths, a known verification command can update the shared
 tests/build/typecheck projection from safe observer evidence. Codex command text is
 used only transiently for classification and is not retained in normalized events;

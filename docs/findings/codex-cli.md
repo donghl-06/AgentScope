@@ -61,7 +61,10 @@ The command-failure run emitted a completed command item with `status=failed` an
   `command_execution` item. The duplicate-looking pair is intentional: command events feed
   verification observers, while tool events feed provider telemetry totals.
 - During the real Ctrl+C experiment, the process exited with code 1 while the JSONL stream ended after an in-progress command item. The provider child was gone and the observer recorded `process finished`, but the outer CLI was also terminated before it could persist `session_finished`; `agent-scope recover` then marked the stale session `interrupted`. Absence of `turn.completed` is therefore not itself a provider failure.
-- Codex CLI help exposed a stable `exec` command and an experimental `app-server` command; V0 uses `exec` and does not depend on app-server.
+- Codex CLI help exposes a stable `exec` command and an experimental `app-server` command.
+  The regular `codex` TTY and `run codex` structured paths remain stable defaults; the
+  version-pinned app-server adapter is an explicit, richer telemetry path documented in
+  [`docs/findings/codex-app-server.md`](codex-app-server.md).
 - The interactive wrapper is deliberately separate from the structured adapter: it forwards
   Codex's native TTY and derives only conservative local turn/observer signals.
 - The TTY wrapper does not claim the structured-only usage/tool/milestone fields; use
