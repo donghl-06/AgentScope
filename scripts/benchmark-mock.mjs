@@ -12,13 +12,22 @@ const cli = path.join(repoRoot, 'apps', 'cli', 'bin', 'agent-scope.mjs');
 const argumentsList = process.argv.slice(2);
 const iterationsIndex = argumentsList.indexOf('--iterations');
 const iterations = iterationsIndex === -1 ? 1 : parseIterations(argumentsList[iterationsIndex + 1]);
+const concurrencyIndex = argumentsList.indexOf('--concurrency');
 const fixtures = argumentsList.filter(
-  (argument, index) => argument !== '--iterations' && index !== iterationsIndex + 1,
+  (argument, index) =>
+    argument !== '--iterations' &&
+    argument !== '--concurrency' &&
+    index !== iterationsIndex + 1 &&
+    index !== concurrencyIndex + 1,
 );
 const selectedFixtures =
   fixtures.length > 0
     ? fixtures
     : ['basic-success', 'test-failure', 'blocked-then-resumed', 'low-signal'];
+const concurrency =
+  concurrencyIndex === -1
+    ? selectedFixtures.length
+    : parseConcurrency(argumentsList[concurrencyIndex + 1]);
 
 const directory = await mkdtemp(path.join(os.tmpdir(), 'agentscope-benchmark-'));
 const database = path.join(directory, 'benchmark.db');
@@ -37,9 +46,13 @@ try {
   const workloads = Array.from({ length: iterations }, (_, iteration) =>
     selectedFixtures.map((fixture) => ({ fixture, iteration: iteration + 1 })),
   ).flat();
-  const results = await Promise.all(
-    workloads.map(({ fixture, iteration }) => runFixture(fixture, iteration)),
-  );
+  const results = [];
+  for (let offset = 0; offset < workloads.length; offset += concurrency) {
+    const batch = workloads.slice(offset, offset + concurrency);
+    results.push(
+      ...(await Promise.all(batch.map(({ fixture, iteration }) => runFixture(fixture, iteration)))),
+    );
+  }
   const elapsedMs = Math.round(performance.now() - startedAt);
   const cpu = process.cpuUsage(cpuStarted);
   const wrapperLatencies = results.map((result) => result.elapsedMs).sort((a, b) => a - b);
@@ -49,6 +62,7 @@ try {
       {
         fixtures: results,
         iterations,
+        concurrency,
         elapsedMs,
         databaseBytes,
         wrapperLatencyMs: {
@@ -82,6 +96,14 @@ function parseIterations(value) {
   return parsed;
 }
 
+function parseConcurrency(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 32) {
+    throw new Error('--concurrency must be an integer between 1 and 32.');
+  }
+  return parsed;
+}
+
 function percentile(values, quantile) {
   if (values.length === 0) return 0;
   const index = Math.min(values.length - 1, Math.ceil(values.length * quantile) - 1);
@@ -111,13 +133,16 @@ function prepareDatabase() {
 
 async function removeTemporaryDirectory(directory) {
   let lastError;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  // Windows may keep a SQLite handle alive briefly after the last child exits.
+  // Keep the retry bounded, but give the OS enough time to release that handle
+  // so a successful benchmark is not reported as a cleanup failure.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
       await rm(directory, { recursive: true, force: true });
       return;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, 100 * (attempt + 1))));
     }
   }
   throw lastError;

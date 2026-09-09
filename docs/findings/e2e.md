@@ -206,3 +206,24 @@ above while continuing to delete its temporary database.
   token fields. Codex cost is not emitted by the observed stream and remains unavailable;
   no cost estimate is fabricated. Native milestones were not observed and remain an explicit
   fallback to AgentScope progress/activity.
+
+## 2026-09-09 bounded concurrency benchmark rerun
+
+- `pnpm benchmark:mock -- --iterations 20 --concurrency 4` completed 80 isolated Mock
+  wrapper sessions in 60.232 seconds. All expected terminal statuses and event counts were
+  preserved; wrapper latency P50 was 2,507 ms and P95 was 2,995 ms.
+- The temporary database reached 700,416 bytes; the benchmark orchestrator peak RSS was
+  51,531,776 bytes and user/system CPU was 297/125 ms. These are bounded wrapper/SQLite
+  baselines, not browser-paint latency or a supported capacity guarantee.
+- The benchmark now limits simultaneous child processes and uses a longer bounded Windows
+  SQLite-handle cleanup backoff. This avoids reporting an otherwise successful high-round run
+  as failed solely because the OS released a temporary database directory late.
+
+## 2026-09-09 live delivery rerun
+
+- `event-latency-smoke.mjs 8793` received all 10/10 event notifications with no missing
+  sequence. Event timestamp to WebSocket receipt latency was P50 219 ms, P95 397 ms, and
+  maximum 397 ms.
+- The isolated `ws-reconnect-smoke.mjs` run on port 8794 received `hello` on both
+  connections and recovered all 10 events through HTTP cursor catch-up (status 200,
+  sequence 1–10). Temporary server/database resources were removed afterward.
