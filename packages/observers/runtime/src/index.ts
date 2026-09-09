@@ -23,6 +23,8 @@ import {
 import { TestObserver, type TestObservation } from '@agentscope/observer-tests';
 
 export type { ObserverEvidence } from '@agentscope/observer-fusion';
+export { classifyVerificationCommand } from '@agentscope/observer-tests';
+export type { CommandClassification, VerificationKind } from '@agentscope/observer-tests';
 
 export interface ObserverRuntimeProcessOptions {
   readonly pid: number;

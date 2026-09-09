@@ -12,7 +12,15 @@ export interface CodexParserContext {
   readonly sessionId: string;
   readonly timestamp?: number;
   readonly source?: EventSource;
+  /**
+   * Classify a provider command without retaining its raw text in an event.
+   * The callback is intentionally optional so the adapter remains usable as a
+   * standalone parser with the conservative `command` fallback.
+   */
+  readonly classifyCommand?: (commandName: string) => CodexCommandKind;
 }
+
+export type CodexCommandKind = 'test' | 'build' | 'lint' | 'typecheck' | 'command';
 
 export interface CodexParseResult {
   readonly events: readonly AgentEvent[];
@@ -75,17 +83,18 @@ function parseCodexLine(
   }
   const timestamp = context.timestamp ?? Date.now();
   const source = context.source ?? DEFAULT_SOURCE;
-  const events = parseRecord(value, context.sessionId, timestamp, source, toolCalls);
+  const events = parseRecord(value, context, timestamp, source, toolCalls);
   return { events, ignored: events.length === 0 };
 }
 
 function parseRecord(
   record: Record<string, unknown>,
-  sessionId: string,
+  context: CodexParserContext,
   timestamp: number,
   source: EventSource,
   toolCalls: Map<string, ToolCallState>,
 ): readonly AgentEvent[] {
+  const { sessionId } = context;
   const provider = providerEvent(record, sessionId, timestamp, source);
   switch (record.type) {
     case 'thread.started':
@@ -99,12 +108,12 @@ function parseRecord(
       return [event('planning', sessionId, timestamp, source, {}), provider];
     case 'item.started':
       return [
-        ...parseItem(record.item, sessionId, timestamp, source, 'started', toolCalls),
+        ...parseItem(record.item, context, timestamp, source, 'started', toolCalls),
         provider,
       ];
     case 'item.completed':
       return [
-        ...parseItem(record.item, sessionId, timestamp, source, 'completed', toolCalls),
+        ...parseItem(record.item, context, timestamp, source, 'completed', toolCalls),
         provider,
       ];
     case 'turn.completed': {
@@ -124,12 +133,13 @@ function parseRecord(
 
 function parseItem(
   value: unknown,
-  sessionId: string,
+  context: CodexParserContext,
   timestamp: number,
   source: EventSource,
   phase: 'started' | 'completed',
   toolCalls: Map<string, ToolCallState>,
 ): readonly AgentEvent[] {
+  const { sessionId } = context;
   if (!isRecord(value) || typeof value.type !== 'string') return [];
   if (value.type === 'agent_message' && phase === 'completed') {
     return [event('agent_message', sessionId, timestamp, source, { summary: 'agent message' })];
@@ -137,6 +147,9 @@ function parseItem(
   if (value.type !== 'command_execution') return [];
   const toolCallId = typeof value.id === 'string' ? value.id : undefined;
   const toolName = 'command_execution';
+  const rawCommand = stringValue(value.command);
+  const commandKind =
+    rawCommand === undefined ? 'command' : (context.classifyCommand?.(rawCommand) ?? 'command');
   if (phase === 'started') {
     if (toolCallId !== undefined) toolCalls.set(toolCallId, { toolName, startedAt: timestamp });
     return [
@@ -145,8 +158,8 @@ function parseItem(
         ...(toolCallId === undefined ? {} : { toolCallId }),
       }),
       event('command_started', sessionId, timestamp, source, {
-        commandKind: 'command',
-        commandName: 'command execution',
+        commandKind,
+        commandName: commandKind === 'command' ? 'command execution' : commandKind,
       }),
     ];
   }

@@ -73,6 +73,9 @@ export class TestObserver {
 
 export function classifyVerificationCommand(commandName: string): CommandClassification {
   const command = normalizeCommand(commandName);
+  if (command === 'test' || command === 'build' || command === 'lint' || command === 'typecheck') {
+    return { kind: command, confidence: 0.9, reason: 'Normalized verification command kind.' };
+  }
   if (matches(command, TEST_RULES)) {
     return { kind: 'test', confidence: 0.9, reason: 'Known test command pattern.' };
   }

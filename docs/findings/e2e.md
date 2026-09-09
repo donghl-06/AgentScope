@@ -265,6 +265,9 @@ above while continuing to delete its temporary database.
 
 - Safe `test_observer` evidence now maps known verification commands to normalized
   `test_started`/`test_passed`/`test_failed` events without retaining the command text.
+- Codex JSONL command text, when present, is classified transiently before the adapter emits a
+  normalized `test`/`build`/`typecheck`/`lint` kind; redacted or absent command text falls back to
+  the generic command kind.
 - The reducer keeps build and typecheck results separate from test results and recomputes the
   overall verification status. Unknown or interrupted commands remain `unknown`, and ordinary
   TTY sessions do not infer verification without a reliable command signal.

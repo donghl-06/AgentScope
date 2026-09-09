@@ -15,6 +15,9 @@ describe('test observer', () => {
       kind: 'unknown',
       confidence: 0.2,
     });
+    expect(classifyVerificationCommand('test')).toMatchObject({ kind: 'test' });
+    expect(classifyVerificationCommand('build')).toMatchObject({ kind: 'build' });
+    expect(classifyVerificationCommand('typecheck')).toMatchObject({ kind: 'typecheck' });
   });
 
   it('maps known command exit outcomes and preserves duration', () => {

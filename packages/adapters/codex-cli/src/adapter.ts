@@ -13,13 +13,18 @@ import type {
 } from '@agentscope/adapter-base';
 import type { AgentEvent } from '@agentscope/protocol';
 
-import { CodexStreamDecoder, type CodexParseResult } from './parser.js';
+import { CodexStreamDecoder, type CodexCommandKind, type CodexParseResult } from './parser.js';
 
 export interface CodexCliAdapterOptions {
   readonly executable?: string;
   readonly now?: () => number;
   readonly onStdout?: (chunk: string) => void;
   readonly onStderr?: (chunk: string) => void;
+  /**
+   * Optional transient classifier for command verification. The raw command
+   * is passed only to this callback and never copied into normalized events.
+   */
+  readonly classifyCommand?: (commandName: string) => CodexCommandKind;
 }
 
 const CAPABILITIES: AgentCapabilities = {
@@ -38,12 +43,14 @@ export class CodexCliAdapter implements AgentAdapter {
   private readonly now: () => number;
   private readonly onStdout: ((chunk: string) => void) | undefined;
   private readonly onStderr: ((chunk: string) => void) | undefined;
+  private readonly classifyCommand: ((commandName: string) => CodexCommandKind) | undefined;
 
   constructor(options: CodexCliAdapterOptions = {}) {
     this.executable = options.executable ?? 'codex';
     this.now = options.now ?? Date.now;
     this.onStdout = options.onStdout;
     this.onStderr = options.onStderr;
+    this.classifyCommand = options.classifyCommand;
   }
 
   capabilities(): AgentCapabilities {
@@ -75,6 +82,7 @@ export class CodexCliAdapter implements AgentAdapter {
       this.now,
       this.onStdout,
       this.onStderr,
+      this.classifyCommand,
     );
   }
 }
@@ -189,8 +197,12 @@ class CodexAttachedSession implements AttachedSession {
     private readonly now: () => number,
     private readonly onStdout?: (chunk: string) => void,
     private readonly onStderr?: (chunk: string) => void,
+    private readonly classifyCommand?: (commandName: string) => CodexCommandKind,
   ) {
-    this.decoder = new CodexStreamDecoder({ sessionId });
+    this.decoder = new CodexStreamDecoder({
+      sessionId,
+      ...(classifyCommand === undefined ? {} : { classifyCommand }),
+    });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     child.stdout?.on('data', (chunk: string) => {

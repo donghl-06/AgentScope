@@ -6,7 +6,11 @@ import { reduceSessionState } from '@agentscope/core';
 import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
-import { ObserverRuntime, type ObserverEvidence } from '@agentscope/observer-runtime';
+import {
+  classifyVerificationCommand,
+  ObserverRuntime,
+  type ObserverEvidence,
+} from '@agentscope/observer-runtime';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
 import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
@@ -65,6 +69,10 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           now,
           ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
           ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+          classifyCommand: (commandName) => {
+            const kind = classifyVerificationCommand(commandName).kind;
+            return kind === 'unknown' ? 'command' : kind;
+          },
         });
 
   repository.createSession({

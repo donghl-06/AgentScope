@@ -20,7 +20,8 @@ Codex structured JSONL 也已完成第一阶段的细粒度归一化：`command_
 
 结构化路径中的已知 verification command 现在会经过安全 evidence mapper 投影为
 `test_started`/`test_passed`/`test_failed`，并分别更新 tests、build、typecheck 状态；
-普通 TTY 没有可靠命令信号时仍保守显示 Unknown，不伪造验证结果。
+Codex 在 provider JSONL 暂时提供命令文本时只用它做内存分类，归一化 event 不保存原文；
+普通 TTY 或缺少可靠命令信号时仍保守显示 Unknown，不伪造验证结果。
 
 ### 2026-09-09 — Codex structured telemetry
 

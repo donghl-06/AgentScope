@@ -155,7 +155,7 @@ describe('provider runner', () => {
           type: 'command_execution',
           id: 'call-success',
           status: 'in_progress',
-          command: 'redacted command',
+          command: 'pnpm test',
         },
       },
       {
@@ -247,6 +247,12 @@ describe('provider runner', () => {
           tokenUsage: true,
         });
         expect(session.status).toBe('failed');
+        expect(session.state.verification).toMatchObject({
+          tests: 'passed',
+          build: 'unknown',
+          typecheck: 'unknown',
+          overall: 'pending',
+        });
         expect(telemetry?.usage).toMatchObject({
           inputTokens: 12,
           outputTokens: 5,
@@ -274,6 +280,8 @@ describe('provider runner', () => {
             'tool_call_finished',
             'command_started',
             'command_finished',
+            'test_started',
+            'test_passed',
             'usage_updated',
             'session_finished',
           ]),

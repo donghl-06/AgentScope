@@ -73,9 +73,10 @@ milestone, or exact ETA fields in TTY mode; use the structured `run codex -- ...
 path for the provider JSONL capability matrix.
 
 On structured provider paths, a known verification command can update the shared
-tests/build/typecheck projection from safe observer evidence. The command text is
-not retained, and an unclassified command remains Unknown. The normal TTY path
-does not infer verification without a reliable command signal.
+tests/build/typecheck projection from safe observer evidence. Codex command text is
+used only transiently for classification and is not retained in normalized events;
+an unclassified command remains Unknown. The normal TTY path does not infer
+verification without a reliable command signal.
 
 ## Manual provider smoke
 

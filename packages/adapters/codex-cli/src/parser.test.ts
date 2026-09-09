@@ -83,6 +83,31 @@ describe('Codex CLI stream parser', () => {
     expect(events[14]?.payload).toEqual({ commandKind: 'command', exitCode: 1 });
   });
 
+  it('projects a transient command classification without storing the command text', () => {
+    const parsed = parseCodexStreamLine(
+      JSON.stringify({
+        type: 'item.started',
+        item: {
+          id: 'known-test',
+          type: 'command_execution',
+          status: 'in_progress',
+          command: 'pnpm test -- secret-value-is-not-stored',
+        },
+      }),
+      {
+        ...context,
+        classifyCommand: (commandName) =>
+          commandName.startsWith('pnpm test') ? 'test' : 'command',
+      },
+    );
+
+    expect(parsed.events.find((event) => event.type === 'command_started')?.payload).toEqual({
+      commandKind: 'test',
+      commandName: 'test',
+    });
+    expect(JSON.stringify(parsed.events)).not.toContain('secret-value-is-not-stored');
+  });
+
   it('accepts split JSONL chunks and keeps interrupted streams non-terminal', async () => {
     const decoder = new CodexStreamDecoder(context);
     expect(decoder.push('{"type":"thread.started","thread_id":"provider-1"}\r\n')).toHaveLength(1);
