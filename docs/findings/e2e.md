@@ -227,3 +227,16 @@ above while continuing to delete its temporary database.
 - The isolated `ws-reconnect-smoke.mjs` run on port 8794 received `hello` on both
   connections and recovered all 10 events through HTTP cursor catch-up (status 200,
   sequence 1–10). Temporary server/database resources were removed afterward.
+
+## 2026-09-09 Codex structured telemetry persistence regression
+
+- The CLI provider-runner test launched a temporary Windows command shim and a local Node
+  fixture that emitted redacted Codex JSONL records for a thread, turn, two command executions,
+  an agent message, and `turn.completed.usage`.
+- The test reopened the resulting SQLite database and verified `toolCalls`/`tokenUsage`
+  capabilities, input/output/cache/reasoning/total token counters, native event-family counts,
+  two tool-call completions with one error, command lifecycle events, provider events, and the
+  failed terminal session status caused by the non-zero command item.
+- The fixture is local and contains no API key, prompt, command text, provider transcript, or
+  real network call. This closes the deterministic adapter-to-provider-runner-to-storage
+  regression path while preserving the documented redaction boundary.

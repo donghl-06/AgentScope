@@ -131,6 +131,172 @@ describe('provider runner', () => {
     }
   });
 
+  it('persists Codex structured telemetry through the provider runner', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-telemetry-'));
+    const filename = path.join(directory, 'session.db');
+    const executableName = `agentscope-codex-fixture-${Date.now()}`;
+    const scriptPath = path.join(directory, 'codex-fixture.js');
+    const shimPath =
+      process.platform === 'win32'
+        ? path.join(directory, `${executableName}.cmd`)
+        : path.join(directory, executableName);
+    const originalPath = process.env.PATH;
+    const output = [
+      {
+        type: 'thread.started',
+        thread_id: 'thread-telemetry',
+      },
+      {
+        type: 'turn.started',
+      },
+      {
+        type: 'item.started',
+        item: {
+          type: 'command_execution',
+          id: 'call-success',
+          status: 'in_progress',
+          command: 'redacted command',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          id: 'call-success',
+          status: 'completed',
+          exit_code: 0,
+        },
+      },
+      {
+        type: 'item.started',
+        item: {
+          type: 'command_execution',
+          id: 'call-failure',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          type: 'command_execution',
+          id: 'call-failure',
+          status: 'failed',
+          exit_code: 2,
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          type: 'agent_message',
+          text: 'redacted response',
+        },
+      },
+      {
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 12,
+          cached_input_tokens: 3,
+          output_tokens: 5,
+          reasoning_output_tokens: 2,
+          total_tokens: 20,
+          turn_count: 1,
+        },
+      },
+    ]
+      .map((record) => JSON.stringify(record))
+      .join('\n');
+
+    fs.writeFileSync(scriptPath, `process.stdout.write(${JSON.stringify(`${output}\n`)});`);
+    if (process.platform === 'win32') {
+      fs.writeFileSync(shimPath, `@echo off\r\n"%dp0%\\codex-fixture.js" %*\r\n`);
+    } else {
+      fs.writeFileSync(
+        shimPath,
+        `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)} "$@"\n`,
+      );
+      fs.chmodSync(shimPath, 0o755);
+    }
+    process.env.PATH = `${directory}${path.delimiter}${originalPath ?? ''}`;
+
+    try {
+      const result = await runProvider({
+        adapter: 'codex',
+        executable: executableName,
+        args: ['Reply with OK only'],
+        filename,
+        workspacePath: directory,
+        sessionId: 'codex-structured-telemetry',
+      });
+
+      expect(result).toMatchObject({
+        sessionId: 'codex-structured-telemetry',
+        status: 'failed',
+        exitCode: 1,
+      });
+
+      const storage = openStorage({ filename, migrate: false });
+      try {
+        const repository = new StorageRepository(storage.client);
+        const session = repository.getSession('codex-structured-telemetry');
+        const events = repository.listEvents(session.id).items;
+        const telemetry = session.state.telemetry;
+
+        expect(session.capabilities).toMatchObject({
+          structuredEvents: true,
+          toolCalls: true,
+          tokenUsage: true,
+        });
+        expect(session.status).toBe('failed');
+        expect(telemetry?.usage).toMatchObject({
+          inputTokens: 12,
+          outputTokens: 5,
+          cacheReadInputTokens: 3,
+          reasoningTokens: 2,
+          totalTokens: 20,
+          turnCount: 1,
+        });
+        expect(telemetry).toMatchObject({
+          toolCallCount: 2,
+          toolCallFinishedCount: 2,
+          toolCallErrorCount: 1,
+          nativeEventCounts: expect.objectContaining({
+            'thread.started': 1,
+            'turn.started': 1,
+            'item.started': 2,
+            'item.completed': 3,
+            'turn.completed': 1,
+          }),
+        });
+        expect(events.map(({ event }) => event.type)).toEqual(
+          expect.arrayContaining([
+            'provider_event',
+            'tool_call_started',
+            'tool_call_finished',
+            'command_started',
+            'command_finished',
+            'usage_updated',
+            'session_finished',
+          ]),
+        );
+        expect(events.at(-1)?.event).toMatchObject({
+          type: 'session_finished',
+          payload: { reason: 'failed', exitCode: 0 },
+        });
+        expect(
+          events
+            .filter(({ event }) => event.type === 'provider_event')
+            .some(({ event }) => JSON.stringify(event).includes('redacted command')),
+        ).toBe(false);
+      } finally {
+        storage.client.close();
+      }
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  });
+
   it('correlates Codex commands and workspace file changes with observer evidence', async () => {
     const observedPath = path.join(
       workspacePath,

@@ -10,6 +10,10 @@
   every JSONL record, normalizes `command_execution` items to both command and tool-call
   lifecycle events, and maps `turn.completed.usage` to the shared usage snapshot. Command
   text, prompts, agent message text, and other free-form provider content remain excluded.
+- The provider-runner regression on 2026-09-09 exercised the real Windows process/shim path
+  with a redacted JSONL fixture and reopened the resulting SQLite database. It confirmed that
+  capabilities, usage counters, native event-family counts, tool-call totals, command failure
+  status, and the terminal `session_finished` event survive the full adapter-to-storage path.
 - Parallel smoke on 2026-09-06 ran Codex beside a Claude Code session against the same AgentScope database. Codex returned `OK` and completed independently; the two sessions retained separate provider labels and timelines.
 - Workspace-evidence smoke on 2026-09-06 created/read/deleted a temporary file and ran two successful commands. AgentScope persisted command start/finish evidence (both exit code `0`), filesystem deletion evidence, process lifecycle evidence, and a `completed` session; the workspace and Git tree were clean afterward.
 - A real Windows PowerShell Ctrl+C smoke on 2026-09-06 terminated the outer CLI with exit code `1` while Codex was in `Start-Sleep -Seconds 30`. The provider child process ended and process evidence was captured, but the outer CLI could not append a terminal event after console termination, leaving the session temporarily `running`. Running `agent-scope recover` recovered exactly that stale session as `interrupted`. This is the supported Windows recovery path; direct console Ctrl+C still needs a wrapper/console-control improvement before it can be claimed as an atomic terminal transition.
