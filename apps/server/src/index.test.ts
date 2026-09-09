@@ -85,6 +85,21 @@ describe('server HTTP API', () => {
       id: 'turn-1',
       prompt: 'Inspect project files',
     });
+    repository.appendEvent(
+      {
+        id: 'turn-event-1',
+        sessionId: 'session-1',
+        timestamp: 1_700_000_000_202,
+        source,
+        type: 'turn_started',
+        payload: { turnId: 'turn-1', sequence: 1 },
+        confidence: 1,
+      },
+      { ...state, status: 'running' },
+    );
+    expect((await app.inject('/api/turns/turn-1/events?limit=1')).json()).toMatchObject({
+      items: [{ event: { id: 'turn-event-1', type: 'turn_started' } }],
+    });
     repository.saveObserverEvidence({
       id: 'evidence-1',
       sessionId: 'session-1',

@@ -251,3 +251,12 @@ above while continuing to delete its temporary database.
 - The storage suite verifies the transition and evidence on a file-backed SQLite database. The
   command still cannot prove that an unrelated live PTY is absent; that host-level ownership
   boundary remains documented and requires the existing manual recovery discipline.
+
+## 2026-09-09 turn event cursor pagination regression
+
+- Storage now exposes turn-scoped event pages using the existing session sequence cursor. Events
+  without an explicit normalized `turnId` are skipped, so a long session can be read without
+  duplicating unrelated session timeline records.
+- The server route `GET /api/turns/:id/events?after=&limit=` and the Dashboard client were covered
+  by storage, HTTP, and typed-client tests. Existing session-wide event pagination remains
+  unchanged for legacy consumers.

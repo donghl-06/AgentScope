@@ -263,6 +263,51 @@ describe('StorageRepository', () => {
       expect(repository.listObserverEvidenceForTurnPage('turn-3', { limit: 1 }).items).toEqual([
         expect.objectContaining({ key: 'process:3', turnId: 'turn-3' }),
       ]);
+
+      repository.appendEvent(
+        {
+          id: 'turn-event-1',
+          sessionId: 'session-page-items',
+          timestamp: 1_700_000_000_100,
+          source,
+          type: 'turn_started',
+          payload: { turnId: 'turn-3', sequence: 3 },
+          confidence: 1,
+        },
+        state('session-page-items', 'running'),
+      );
+      repository.appendEvent(
+        {
+          id: 'turn-event-unrelated',
+          sessionId: 'session-page-items',
+          timestamp: 1_700_000_000_101,
+          source,
+          type: 'planning',
+          payload: { summary: 'unrelated event' },
+          confidence: 1,
+        },
+        state('session-page-items', 'running'),
+      );
+      repository.appendEvent(
+        {
+          id: 'turn-event-2',
+          sessionId: 'session-page-items',
+          timestamp: 1_700_000_000_102,
+          source,
+          type: 'turn_updated',
+          payload: { turnId: 'turn-3', status: 'waiting' },
+          confidence: 1,
+        },
+        state('session-page-items', 'running'),
+      );
+      const firstTurnEvents = repository.listEventsForTurn('turn-3', 0, 1);
+      expect(firstTurnEvents.items).toMatchObject([
+        { event: { id: 'turn-event-1', type: 'turn_started' } },
+      ]);
+      expect(firstTurnEvents.nextCursor).toBeDefined();
+      expect(
+        repository.listEventsForTurn('turn-3', Number(firstTurnEvents.nextCursor), 1).items,
+      ).toMatchObject([{ event: { id: 'turn-event-2', type: 'turn_updated' } }]);
     });
   });
 

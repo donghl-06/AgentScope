@@ -145,6 +145,11 @@ export class DashboardApi {
     );
   }
 
+  listTurnEvents(turnId: string, after = 0, limit = 100): Promise<EventPage> {
+    const query = new URLSearchParams({ after: String(after), limit: String(limit) });
+    return this.get<EventPage>(`/api/turns/${encodeURIComponent(turnId)}/events`, query);
+  }
+
   connectLive(onMessage: (message: DashboardLiveNotification) => void): WebSocket {
     const url = new URL('/ws', this.baseUrl || globalThis.location.origin);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';

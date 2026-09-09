@@ -448,9 +448,9 @@ Step 3.1–3.2 自动化通过后，进行一次 Windows VS Code Terminal 手工
 
 - session turns 列表和单 turn 查询 API 已提供；repository 的 turn.created/turn.updated/turn.finished
   notification 已通过 WebSocket live hub 广播，并增加了对外部 SQLite writer 的 turn created/updated/finished
- 轮询和去重测试。按 turn 的 evidence endpoint（limit 查询）和 Dashboard evidence 数量/展开详情已提供；
- 游标分页和更完整的 turn event 查询仍待后续完善。
-- [ ] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
+  轮询和去重测试。按 turn 的 evidence endpoint（limit 查询）和 Dashboard evidence 数量/展开详情已提供；
+  turn、turn evidence 和 turn event 均提供游标分页 endpoint。
+- [x] 增加 session-turn 和 turn-event/evidence 的分页 endpoint。
 - [x] 发布 `turn.created`、`turn.updated` 和 `turn.finished` notification；finished 是终态的附加通知，保留旧 updated 以兼容现有客户端。
 - [x] Dashboard 断线/重连后保留 HTTP cursor catch-up。
 - [x] 轮询外部 interactive CLI writer，避免重复广播。

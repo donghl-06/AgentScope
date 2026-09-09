@@ -80,6 +80,7 @@ describe('DashboardApi', () => {
     await api.listTurnPage('session/1', { limit: 2, cursor: 'turn-cursor' });
     await api.listObserverEvidencePage('session/1', { limit: 2, cursor: 'evidence-cursor' });
     await api.listTurnEvidencePage('turn/1', { limit: 2, cursor: 'turn-evidence-cursor' });
+    await api.listTurnEvents('turn/1', 4, 2);
 
     expect(request).toHaveBeenNthCalledWith(
       1,
@@ -92,6 +93,10 @@ describe('DashboardApi', () => {
     expect(request).toHaveBeenNthCalledWith(
       3,
       'http://127.0.0.1:8787/api/turns/turn%2F1/evidence/page?limit=2&cursor=turn-evidence-cursor',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      4,
+      'http://127.0.0.1:8787/api/turns/turn%2F1/events?after=4&limit=2',
     );
   });
 

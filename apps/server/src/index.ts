@@ -443,6 +443,33 @@ export function createServer(options: ServerOptions): FastifyInstance {
   );
 
   app.get(
+    '/api/turns/:id/events',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        querystring: EventQuerySchema,
+        response: {
+          200: CursorPageSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.repository.listEventsForTurn(id, after, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
     '/api/sessions/:id/eta-snapshots',
     {
       schema: {

@@ -659,6 +659,42 @@ export class StorageRepository {
     };
   }
 
+  /** List only events whose normalized payload is explicitly associated with a turn. */
+  listEventsForTurn(turnId: string, afterSeq = 0, limit = 100): EventPage {
+    const turn = this.getTurn(turnId);
+    const pageLimit = clampLimit(limit);
+    const matches: StoredEvent[] = [];
+    let cursor = afterSeq;
+    let exhausted = false;
+
+    // Events do not carry a separate turn_id column yet. Scan bounded session
+    // chunks and filter the normalized payload, preserving a session sequence
+    // cursor so callers can continue without duplicates or gaps.
+    while (!exhausted && matches.length <= pageLimit) {
+      const rows = this.client
+        .prepare(
+          `SELECT seq, id, session_id, timestamp, type, source_json, payload_json, confidence, raw_ref
+           FROM events WHERE session_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?`,
+        )
+        .all(turn.sessionId, cursor, Math.max(pageLimit, 100)) as EventRow[];
+      if (rows.length === 0) break;
+      cursor = rows.at(-1)!.seq;
+      exhausted = rows.length < Math.max(pageLimit, 100);
+      for (const row of rows) {
+        const stored = decodeEvent(row);
+        if (eventBelongsToTurn(stored.event, turnId)) matches.push(stored);
+      }
+    }
+
+    const pageRows = matches.slice(0, pageLimit);
+    return {
+      items: pageRows,
+      ...(matches.length > pageLimit && pageRows.length > 0
+        ? { nextCursor: String(pageRows.at(-1)!.seq) }
+        : {}),
+    };
+  }
+
   saveObserverEvidence(input: ObserverEvidenceInput): StoredObserverEvidence {
     this.ensureSession(input.sessionId);
     if (input.id.length === 0 || input.key.length === 0) {
@@ -1014,6 +1050,12 @@ function decodeEvent(row: EventRow): StoredEvent {
   };
   assertAgentEvent(event);
   return { seq: row.seq, event };
+}
+
+function eventBelongsToTurn(event: AgentEvent, turnId: string): boolean {
+  if (typeof event.payload !== 'object' || event.payload === null) return false;
+  const payload = event.payload as { turnId?: unknown };
+  return payload.turnId === turnId;
 }
 
 function decodeObserverEvidence(row: ObserverEvidenceRow): StoredObserverEvidence {
