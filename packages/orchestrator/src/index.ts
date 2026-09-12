@@ -298,3 +298,5 @@ function isSensitivePath(file: string): boolean {
 function exists(workspace: string, filename: string): boolean {
   return fs.existsSync(path.join(workspace, filename));
 }
+
+export * from './planner.js';

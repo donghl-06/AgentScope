@@ -214,6 +214,9 @@ importers:
       '@agentscope/observer-git':
         specifier: workspace:*
         version: link:../observers/git
+      '@agentscope/storage':
+        specifier: workspace:*
+        version: link:../storage
 
   packages/progress:
     dependencies:
