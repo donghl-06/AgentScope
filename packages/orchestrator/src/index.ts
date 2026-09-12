@@ -300,3 +300,4 @@ function exists(workspace: string, filename: string): boolean {
 }
 
 export * from './planner.js';
+export * from './worker.js';
