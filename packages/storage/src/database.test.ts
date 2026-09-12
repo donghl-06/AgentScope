@@ -35,6 +35,7 @@ describe('storage database', () => {
         'memory_snapshots',
         'milestones',
         'observer_evidence',
+        'orchestrator_commands',
         'orchestrator_events',
         'orchestrator_notifications',
         'roadmap_revision_items',
@@ -46,7 +47,7 @@ describe('storage database', () => {
         'verification_runs',
       ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 9,
+        count: 10,
       });
       expect(
         client
@@ -80,7 +81,7 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 9,
+        count: 10,
       });
       expect(
         client
@@ -116,6 +117,11 @@ describe('storage database', () => {
         client
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
           .get('goal_run_leases'),
+      ).toBeDefined();
+      expect(
+        client
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get('orchestrator_commands'),
       ).toBeDefined();
     } finally {
       client.close();

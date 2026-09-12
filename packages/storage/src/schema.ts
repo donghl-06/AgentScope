@@ -420,6 +420,31 @@ export const orchestratorNotifications = sqliteTable(
   ],
 );
 
+export const orchestratorCommands = sqliteTable(
+  'orchestrator_commands',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    commandKind: text('command_kind').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    expectedRevision: integer('expected_revision'),
+    status: text('status').notNull(),
+    resultJson: text('result_json'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('orchestrator_commands_goal_key_unique').on(table.goalId, table.idempotencyKey),
+    index('orchestrator_commands_goal_created_idx').on(table.goalId, table.createdAt),
+    index('orchestrator_commands_goal_status_idx').on(table.goalId, table.status, table.updatedAt),
+  ],
+);
+
 export const storageTables = {
   sessions,
   turns,
@@ -440,4 +465,5 @@ export const storageTables = {
   goalRunLeases,
   goalMetricSnapshots,
   orchestratorNotifications,
+  orchestratorCommands,
 };

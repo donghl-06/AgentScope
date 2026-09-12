@@ -152,8 +152,8 @@ export class StorageError extends Error {
 }
 
 export class StorageConflictError extends StorageError {
-  constructor(message: string) {
-    super(message, 'conflict');
+  constructor(message: string, code = 'conflict') {
+    super(message, code);
     this.name = 'StorageConflictError';
   }
 }

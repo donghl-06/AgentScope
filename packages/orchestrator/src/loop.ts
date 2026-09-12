@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto';
 
 import {
   StorageConflictError,
+  StorageError,
+  StorageNotFoundError,
   type OrchestratorRepository,
   type CreateGoalInput,
   type JsonObject,
+  type OrchestratorCommandReservation,
   type StoredAttempt,
   type StoredGoal,
+  type StoredOrchestratorCommand,
   type StoredTask,
   type StoredVerificationRun,
 } from '@agentscope/storage';
@@ -52,12 +56,17 @@ export interface OrchestratorEngineOptions {
   readonly leaseHeartbeatMs?: number;
 }
 
-export interface ResumeGoalOptions {
+export interface ControlCommandOptions {
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+}
+
+export interface ResumeGoalOptions extends ControlCommandOptions {
   /** Required for NEEDS_HUMAN recovery so a stale Provider cannot be duplicated. */
   readonly confirmExternalProcessStopped?: boolean;
 }
 
-export interface RetryTaskOptions {
+export interface RetryTaskOptions extends ControlCommandOptions {
   readonly reason?: string;
   readonly confirmExternalProcessStopped?: boolean;
 }
@@ -83,6 +92,13 @@ export class OrchestratorBusyError extends Error {
   }
 }
 
+export class OrchestratorCommandError extends StorageError {
+  constructor(message: string, code = 'command_rejected') {
+    super(message, code);
+    this.name = 'OrchestratorCommandError';
+  }
+}
+
 /**
  * Serial autonomous loop. It owns orchestration decisions but delegates provider execution,
  * deterministic verification, and persistence to explicit collaborators.
@@ -97,7 +113,10 @@ export class OrchestratorEngine {
   private readonly leaseManager: GoalRunLeaseManager;
   private readonly leaseHeartbeatMs: number;
   private activeGoalId: string | undefined;
-  private readonly controlRequests = new Map<string, 'PAUSE' | 'ABORT'>();
+  private readonly controlRequests = new Map<
+    string,
+    { readonly control: 'PAUSE' | 'ABORT'; readonly command: StoredOrchestratorCommand }
+  >();
 
   constructor(private readonly options: OrchestratorEngineOptions) {
     this.planner = options.planner ?? new ConservativePlanner();
@@ -124,71 +143,152 @@ export class OrchestratorEngine {
     return this.activeGoalId !== undefined;
   }
 
-  requestPause(goalId: string): StoredGoal {
-    const goal = this.options.repository.getGoal(goalId);
-    if (goal.status === 'PAUSED') return goal;
-    if (goal.status === 'COMPLETED' || goal.status === 'FAILED' || goal.status === 'ABORTED') {
-      throw new OrchestratorBusyError(`Goal ${goalId} is already terminal.`);
+  requestPause(goalId: string, options: ControlCommandOptions = {}): StoredGoal {
+    const reservation = this.reserveControlCommand(goalId, 'pause', {}, options);
+    if (reservation.replayed) return this.replayGoal(reservation.command);
+    try {
+      const goal = this.options.repository.getGoal(goalId);
+      if (goal.status === 'PAUSED') {
+        this.completeCommand(reservation.command, { goal });
+        return goal;
+      }
+      if (goal.status === 'COMPLETED' || goal.status === 'FAILED' || goal.status === 'ABORTED') {
+        throw new OrchestratorBusyError(goalId, `Goal ${goalId} is already terminal.`);
+      }
+      if (this.activeGoalId === goalId) {
+        this.queueControlRequest(goalId, 'PAUSE', reservation.command);
+        this.options.repository.appendEvent({
+          id: `${goalId}:control:pause:${randomUUID()}`,
+          goalId,
+          type: 'goal.pause_requested',
+          payload: { reason: 'Pause requested; the active Attempt will finish first.' },
+          confidence: 1,
+          timestamp: this.now(),
+        });
+        return goal;
+      }
+      const updatedGoal = this.options.repository.transitionGoal(goalId, 'PAUSED', this.now());
+      this.completeCommand(reservation.command, { goal: updatedGoal });
+      return updatedGoal;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
     }
-    if (this.activeGoalId === goalId) {
-      this.controlRequests.set(goalId, 'PAUSE');
-      this.options.repository.appendEvent({
-        id: `${goalId}:control:pause:${randomUUID()}`,
-        goalId,
-        type: 'goal.pause_requested',
-        payload: { reason: 'Pause requested; the active Attempt will finish first.' },
-        confidence: 1,
-        timestamp: this.now(),
-      });
-      return goal;
-    }
-    return this.options.repository.transitionGoal(goalId, 'PAUSED', this.now());
   }
 
-  requestAbort(goalId: string): StoredGoal {
-    const goal = this.options.repository.getGoal(goalId);
-    if (goal.status === 'ABORTED') return goal;
-    if (goal.status === 'COMPLETED' || goal.status === 'FAILED') {
-      throw new OrchestratorBusyError(`Goal ${goalId} is already terminal.`);
+  requestAbort(goalId: string, options: ControlCommandOptions = {}): StoredGoal {
+    const reservation = this.reserveControlCommand(goalId, 'abort', {}, options);
+    if (reservation.replayed) return this.replayGoal(reservation.command);
+    try {
+      const goal = this.options.repository.getGoal(goalId);
+      if (goal.status === 'ABORTED') {
+        this.completeCommand(reservation.command, { goal });
+        return goal;
+      }
+      if (goal.status === 'COMPLETED' || goal.status === 'FAILED') {
+        throw new OrchestratorBusyError(goalId, `Goal ${goalId} is already terminal.`);
+      }
+      if (this.activeGoalId === goalId) {
+        this.queueControlRequest(goalId, 'ABORT', reservation.command);
+        this.options.repository.appendEvent({
+          id: `${goalId}:control:abort:${randomUUID()}`,
+          goalId,
+          type: 'goal.abort_requested',
+          payload: { reason: 'Abort requested; the active Attempt will finish first.' },
+          confidence: 1,
+          timestamp: this.now(),
+        });
+        return goal;
+      }
+      const updatedGoal = this.options.repository.transitionGoal(goalId, 'ABORTED', this.now());
+      this.completeCommand(reservation.command, { goal: updatedGoal });
+      return updatedGoal;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
     }
-    if (this.activeGoalId === goalId) {
-      this.controlRequests.set(goalId, 'ABORT');
-      this.options.repository.appendEvent({
-        id: `${goalId}:control:abort:${randomUUID()}`,
-        goalId,
-        type: 'goal.abort_requested',
-        payload: { reason: 'Abort requested; the active Attempt will finish first.' },
-        confidence: 1,
-        timestamp: this.now(),
-      });
-      return goal;
-    }
-    return this.options.repository.transitionGoal(goalId, 'ABORTED', this.now());
   }
 
   async resumeGoal(goalId: string, options: ResumeGoalOptions = {}): Promise<GoalRunResult> {
-    const goal = this.options.repository.getGoal(goalId);
-    if (goal.status === 'NEEDS_HUMAN') {
-      if (options.confirmExternalProcessStopped !== true) {
+    const reservation = this.reserveControlCommand(
+      goalId,
+      'resume',
+      { confirmExternalProcessStopped: options.confirmExternalProcessStopped === true },
+      options,
+    );
+    if (reservation.replayed) return this.replayRunResult(reservation.command);
+    try {
+      const goal = this.options.repository.getGoal(goalId);
+      if (goal.status === 'NEEDS_HUMAN') {
+        if (options.confirmExternalProcessStopped !== true) {
+          throw new OrchestratorBusyError(
+            goalId,
+            `Goal ${goalId} requires confirmation that its external Provider process is stopped before resuming.`,
+          );
+        }
+      } else if (goal.status !== 'PAUSED') {
         throw new OrchestratorBusyError(
           goalId,
-          `Goal ${goalId} requires confirmation that its external Provider process is stopped before resuming.`,
+          `Only a PAUSED Goal can be resumed without confirmation; NEEDS_HUMAN requires explicit confirmation: ${goalId}.`,
         );
       }
-      this.prepareHumanRecovery(goalId);
-    } else if (goal.status !== 'PAUSED') {
-      throw new OrchestratorBusyError(
+      const result = await this.runGoal(
         goalId,
-        `Only a PAUSED Goal can be resumed without confirmation; NEEDS_HUMAN requires explicit confirmation: ${goalId}.`,
+        goal.status === 'NEEDS_HUMAN' ? () => this.prepareHumanRecovery(goalId) : undefined,
       );
+      this.completeCommand(reservation.command, asJsonObject(result));
+      return result;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
     }
-    return this.runGoal(goalId);
   }
 
-  async createGoalAndRun(input: CreateGoalInput): Promise<GoalRunResult> {
-    if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
-    const goal = this.options.repository.createGoal(input);
-    return this.runGoal(goal.id);
+  createGoalAndRun(
+    input: CreateGoalInput,
+    options: ControlCommandOptions = {},
+  ): Promise<GoalRunResult> {
+    let existingGoal: StoredGoal | undefined;
+    try {
+      existingGoal = this.options.repository.getGoal(input.id);
+    } catch (error) {
+      if (!(error instanceof StorageNotFoundError)) throw error;
+    }
+    if (existingGoal === undefined && this.activeGoalId !== undefined) {
+      throw new OrchestratorBusyError(this.activeGoalId);
+    }
+    const goal = existingGoal ?? this.options.repository.createGoal(input);
+    const reservation = this.reserveControlCommand(
+      goal.id,
+      'start',
+      {
+        workspace: input.workspace,
+        prompt: input.prompt,
+        provider: input.provider,
+        constraints: input.constraints ?? {},
+        roadmap: input.roadmap ?? [],
+        projectState: input.projectState ?? {},
+        executionMemory: input.executionMemory ?? {},
+        workingSet: input.workingSet ?? {},
+      },
+      options,
+    );
+    if (reservation.replayed) return Promise.resolve(this.replayRunResult(reservation.command));
+    if (existingGoal !== undefined) {
+      const error = new StorageConflictError(`Goal ${goal.id} already exists.`);
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
+    return this.runGoal(goal.id).then(
+      (result) => {
+        this.completeCommand(reservation.command, asJsonObject(result));
+        return result;
+      },
+      (error: unknown) => {
+        this.rejectCommand(reservation.command, error);
+        throw error;
+      },
+    );
   }
 
   async retryTask(
@@ -196,21 +296,127 @@ export class OrchestratorEngine {
     taskId: string,
     options: RetryTaskOptions = {},
   ): Promise<RetryRunResult> {
-    if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
-    const retry = beginTaskRetry(this.options.repository, {
+    const reservation = this.reserveControlCommand(
       goalId,
-      taskId,
-      ...(options.reason === undefined ? {} : { reason: options.reason }),
-      ...(options.confirmExternalProcessStopped === true
-        ? { confirmExternalProcessStopped: true }
-        : {}),
-      now: this.now(),
-    });
-    const result = await this.runGoal(goalId);
-    return { ...result, retry };
+      'retry',
+      {
+        taskId,
+        ...(options.reason === undefined ? {} : { reason: options.reason }),
+        confirmExternalProcessStopped: options.confirmExternalProcessStopped === true,
+      },
+      options,
+    );
+    if (reservation.replayed) return this.replayRetryResult(reservation.command);
+    try {
+      let retry: RetryTaskPlan | undefined;
+      const result = await this.runGoal(goalId, () => {
+        retry = beginTaskRetry(this.options.repository, {
+          goalId,
+          taskId,
+          ...(options.reason === undefined ? {} : { reason: options.reason }),
+          ...(options.confirmExternalProcessStopped === true
+            ? { confirmExternalProcessStopped: true }
+            : {}),
+          now: this.now(),
+        });
+      });
+      if (retry === undefined) {
+        throw new OrchestratorCommandError('Retry preparation did not produce a retry plan.');
+      }
+      const retryResult = { ...result, retry };
+      this.completeCommand(reservation.command, asJsonObject(retryResult));
+      return retryResult;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
   }
 
-  async runGoal(goalId: string): Promise<GoalRunResult> {
+  private reserveControlCommand(
+    goalId: string,
+    commandKind: string,
+    payload: JsonObject,
+    options: ControlCommandOptions,
+  ): OrchestratorCommandReservation {
+    try {
+      return this.options.repository.reserveOrchestratorCommand({
+        id: `${commandKind}:${goalId}:${randomUUID()}`,
+        goalId,
+        commandKind,
+        idempotencyKey: options.idempotencyKey ?? `${commandKind}:${randomUUID()}`,
+        payload,
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: options.expectedRevision }),
+        now: this.now(),
+      });
+    } catch (error) {
+      if (error instanceof StorageConflictError && error.message.includes('still in progress')) {
+        throw new OrchestratorBusyError(goalId, error.message);
+      }
+      throw error;
+    }
+  }
+
+  private completeCommand(command: StoredOrchestratorCommand, result: JsonObject): void {
+    this.options.repository.completeOrchestratorCommand(command.id, result, this.now());
+  }
+
+  private rejectCommand(command: StoredOrchestratorCommand, error: unknown): void {
+    const errorCode = error instanceof StorageError ? error.code : 'command_failed';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    try {
+      this.options.repository.rejectOrchestratorCommand(
+        command.id,
+        errorCode,
+        errorMessage,
+        this.now(),
+      );
+    } catch {
+      // Preserve the original control error if the audit update itself fails.
+    }
+  }
+
+  private replayCommand(command: StoredOrchestratorCommand): JsonObject {
+    if (command.status === 'PENDING') {
+      throw new OrchestratorBusyError(
+        command.goalId,
+        `Command ${command.commandKind} with idempotency key ${command.idempotencyKey} is still in progress.`,
+      );
+    }
+    if (command.status === 'REJECTED') {
+      throw new OrchestratorCommandError(
+        command.errorMessage ?? `Command ${command.commandKind} was rejected.`,
+        command.errorCode ?? 'command_rejected',
+      );
+    }
+    if (command.result === undefined) {
+      throw new OrchestratorCommandError(
+        `Command ${command.commandKind} completed without a persisted result.`,
+        'command_result_missing',
+      );
+    }
+    return command.result;
+  }
+
+  private replayGoal(command: StoredOrchestratorCommand): StoredGoal {
+    const result = this.replayCommand(command);
+    const goal = result.goal;
+    if (typeof goal !== 'object' || goal === null) {
+      throw new OrchestratorCommandError('Persisted Goal command result is invalid.');
+    }
+    return goal as StoredGoal;
+  }
+
+  private replayRunResult(command: StoredOrchestratorCommand): GoalRunResult {
+    return this.replayCommand(command) as unknown as GoalRunResult;
+  }
+
+  private replayRetryResult(command: StoredOrchestratorCommand): RetryRunResult {
+    return this.replayCommand(command) as unknown as RetryRunResult;
+  }
+
+  async runGoal(goalId: string, prepare?: () => void): Promise<GoalRunResult> {
     if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
     let lease: GoalRunLeaseHandle;
     try {
@@ -240,8 +446,11 @@ export class OrchestratorEngine {
     }, this.leaseHeartbeatMs);
     try {
       assertLease();
+      prepare?.();
+      assertLease();
       return await this.runGoalInternal(goalId, assertLease);
     } catch (error) {
+      this.failPendingControl(goalId, error);
       this.markRunFailed(goalId, error);
       throw error;
     } finally {
@@ -347,10 +556,15 @@ export class OrchestratorEngine {
             result.reason,
           );
         }
-        const control = this.controlRequests.get(goal.id);
-        if (control !== undefined) {
+        const controlRequest = this.controlRequests.get(goal.id);
+        if (controlRequest !== undefined) {
+          const controlResult = this.applyControl(
+            goal.id,
+            controlRequest.control,
+            controlRequest.command,
+          );
           this.controlRequests.delete(goal.id);
-          return this.applyControl(goal.id, control);
+          return controlResult;
         }
         continue;
       }
@@ -528,7 +742,11 @@ export class OrchestratorEngine {
     }
   }
 
-  private applyControl(goalId: string, control: 'PAUSE' | 'ABORT'): GoalRunResult {
+  private applyControl(
+    goalId: string,
+    control: 'PAUSE' | 'ABORT',
+    command?: StoredOrchestratorCommand,
+  ): GoalRunResult {
     const repository = this.options.repository;
     const tasks = repository.listTasks(goalId);
     const status = control === 'PAUSE' ? 'PAUSED' : 'ABORTED';
@@ -543,7 +761,31 @@ export class OrchestratorEngine {
       confidence: 1,
       timestamp: this.now(),
     });
-    return { goal: updatedGoal, tasks, status: updatedGoal.status };
+    const result = { goal: updatedGoal, tasks, status: updatedGoal.status };
+    if (command !== undefined) this.completeCommand(command, result);
+    return result;
+  }
+
+  private queueControlRequest(
+    goalId: string,
+    control: 'PAUSE' | 'ABORT',
+    command: StoredOrchestratorCommand,
+  ): void {
+    const existing = this.controlRequests.get(goalId);
+    if (existing !== undefined) {
+      throw new OrchestratorBusyError(
+        goalId,
+        `Goal ${goalId} already has a ${existing.control.toLowerCase()} request in progress.`,
+      );
+    }
+    this.controlRequests.set(goalId, { control, command });
+  }
+
+  private failPendingControl(goalId: string, error: unknown): void {
+    const request = this.controlRequests.get(goalId);
+    if (request === undefined) return;
+    this.controlRequests.delete(goalId);
+    this.rejectCommand(request.command, error);
   }
 
   private markRunFailed(goalId: string, error: unknown): void {

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type Database from 'better-sqlite3';
 
 import {
@@ -69,6 +71,9 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 export const NOTIFICATION_STATUSES = ['PENDING', 'DELIVERED', 'READ', 'DISMISSED'] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export const COMMAND_STATUSES = ['PENDING', 'APPLIED', 'REJECTED'] as const;
+export type CommandStatus = (typeof COMMAND_STATUSES)[number];
 
 export interface JsonObject {
   readonly [key: string]: unknown;
@@ -267,6 +272,21 @@ export interface StoredOrchestratorNotification {
   readonly readAt?: number;
 }
 
+export interface StoredOrchestratorCommand {
+  readonly id: string;
+  readonly goalId: string;
+  readonly commandKind: string;
+  readonly idempotencyKey: string;
+  readonly payloadHash: string;
+  readonly expectedRevision?: number;
+  readonly status: CommandStatus;
+  readonly result?: JsonObject;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
 export interface CreateGoalInput {
   readonly id: string;
   readonly workspace: string;
@@ -363,6 +383,21 @@ export interface CreateOrchestratorNotificationInput {
   readonly now?: number;
 }
 
+export interface ReserveOrchestratorCommandInput {
+  readonly id: string;
+  readonly goalId: string;
+  readonly commandKind: string;
+  readonly idempotencyKey: string;
+  readonly payload?: JsonObject;
+  readonly expectedRevision?: number;
+  readonly now?: number;
+}
+
+export interface OrchestratorCommandReservation {
+  readonly replayed: boolean;
+  readonly command: StoredOrchestratorCommand;
+}
+
 export interface CreateTaskInput {
   readonly id: string;
   readonly goalId: string;
@@ -431,6 +466,10 @@ export type OrchestratorRepositoryNotification =
       readonly type: 'notification.created' | 'notification.updated';
       readonly notification: StoredOrchestratorNotification;
     }
+  | {
+      readonly type: 'command.created' | 'command.updated';
+      readonly command: StoredOrchestratorCommand;
+    }
   | { readonly type: 'event.appended'; readonly event: StoredOrchestratorEvent };
 
 export class OrchestratorStateError extends StorageError {
@@ -485,6 +524,12 @@ export function assertApprovalStatus(value: string): asserts value is ApprovalSt
 export function assertNotificationStatus(value: string): asserts value is NotificationStatus {
   if (!(NOTIFICATION_STATUSES as readonly string[]).includes(value)) {
     throw new OrchestratorStateError(`Unknown notification status: ${value}`);
+  }
+}
+
+export function assertCommandStatus(value: string): asserts value is CommandStatus {
+  if (!(COMMAND_STATUSES as readonly string[]).includes(value)) {
+    throw new OrchestratorStateError(`Unknown command status: ${value}`);
   }
 }
 
@@ -1299,6 +1344,147 @@ export class OrchestratorRepository {
     return notification;
   }
 
+  reserveOrchestratorCommand(
+    input: ReserveOrchestratorCommandInput,
+  ): OrchestratorCommandReservation {
+    this.getGoal(input.goalId);
+    assertCommandText(input.id, 'Command id', 200);
+    assertCommandText(input.commandKind, 'Command kind', 100);
+    assertCommandText(input.idempotencyKey, 'Idempotency key', 200);
+    const payload = input.payload ?? {};
+    const payloadHash = hashJson(payload);
+    const existingByKey = this.findOrchestratorCommandByKey(input.goalId, input.idempotencyKey);
+    if (existingByKey !== undefined) {
+      if (existingByKey.payloadHash !== payloadHash) {
+        throw new StorageConflictError(
+          `Idempotency key ${input.idempotencyKey} was already used with different command input.`,
+          'idempotency_conflict',
+        );
+      }
+      if (existingByKey.status === 'PENDING') {
+        throw new StorageConflictError(
+          `Command ${existingByKey.commandKind} with idempotency key ${input.idempotencyKey} is still in progress.`,
+          'command_in_progress',
+        );
+      }
+      return { replayed: true, command: existingByKey };
+    }
+    if (input.expectedRevision !== undefined) {
+      assertNonNegativeInteger(input.expectedRevision, 'Expected revision');
+      const goal = this.getGoal(input.goalId);
+      if (goal.activeRevision !== input.expectedRevision) {
+        throw new StorageConflictError(
+          `Command revision conflict: expected ${input.expectedRevision}, found ${goal.activeRevision}.`,
+          'revision_conflict',
+        );
+      }
+    }
+    const now = input.now ?? Date.now();
+    try {
+      this.client
+        .prepare(
+          `INSERT INTO orchestrator_commands
+            (id, goal_id, command_kind, idempotency_key, payload_hash, expected_revision,
+             status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.goalId,
+          input.commandKind,
+          input.idempotencyKey,
+          payloadHash,
+          input.expectedRevision ?? null,
+          now,
+          now,
+        );
+    } catch (error) {
+      const existing = this.findOrchestratorCommandByKey(input.goalId, input.idempotencyKey);
+      if (existing === undefined) throw error;
+      if (existing.payloadHash !== payloadHash) {
+        throw new StorageConflictError(
+          `Idempotency key ${input.idempotencyKey} was already used with different command input.`,
+          'idempotency_conflict',
+        );
+      }
+      if (existing.status === 'PENDING') {
+        throw new StorageConflictError(
+          `Command ${existing.commandKind} with idempotency key ${input.idempotencyKey} is still in progress.`,
+          'command_in_progress',
+        );
+      }
+      return { replayed: true, command: existing };
+    }
+    const command = this.getOrchestratorCommand(input.id);
+    this.notify({ type: 'command.created', command });
+    return { replayed: false, command };
+  }
+
+  getOrchestratorCommand(id: string): StoredOrchestratorCommand {
+    const row = this.client.prepare('SELECT * FROM orchestrator_commands WHERE id = ?').get(id) as
+      CommandRow | undefined;
+    if (row === undefined) throw new StorageNotFoundError(`Orchestrator command not found: ${id}`);
+    return decodeCommand(row);
+  }
+
+  listOrchestratorCommands(goalId: string, limit = 100): readonly StoredOrchestratorCommand[] {
+    this.getGoal(goalId);
+    const rows = this.client
+      .prepare(
+        'SELECT * FROM orchestrator_commands WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
+      )
+      .all(goalId, validateLimit(limit, 'Command limit', 500)) as CommandRow[];
+    return rows.map(decodeCommand);
+  }
+
+  completeOrchestratorCommand(
+    id: string,
+    result: JsonObject,
+    now = Date.now(),
+  ): StoredOrchestratorCommand {
+    const existing = this.getOrchestratorCommand(id);
+    if (existing.status === 'APPLIED') return existing;
+    if (existing.status !== 'PENDING') {
+      throw new StorageConflictError(`Command ${id} was already rejected.`);
+    }
+    this.client
+      .prepare(
+        `UPDATE orchestrator_commands
+         SET status = 'APPLIED', result_json = ?, error_code = NULL, error_message = NULL,
+             updated_at = ?
+         WHERE id = ? AND status = 'PENDING'`,
+      )
+      .run(stringifyJson(result), now, id);
+    const command = this.getOrchestratorCommand(id);
+    this.notify({ type: 'command.updated', command });
+    return command;
+  }
+
+  rejectOrchestratorCommand(
+    id: string,
+    errorCode: string,
+    errorMessage: string,
+    now = Date.now(),
+  ): StoredOrchestratorCommand {
+    const existing = this.getOrchestratorCommand(id);
+    if (existing.status === 'REJECTED') return existing;
+    if (existing.status !== 'PENDING') {
+      throw new StorageConflictError(`Command ${id} was already applied.`);
+    }
+    assertCommandText(errorCode, 'Command error code', 100);
+    assertCommandText(errorMessage, 'Command error message', 4_000);
+    this.client
+      .prepare(
+        `UPDATE orchestrator_commands
+         SET status = 'REJECTED', error_code = ?, error_message = ?, updated_at = ?
+         WHERE id = ? AND status = 'PENDING'`,
+      )
+      .run(errorCode, errorMessage, now, id);
+    const command = this.getOrchestratorCommand(id);
+    this.notify({ type: 'command.updated', command });
+    return command;
+  }
+
   createTask(input: CreateTaskInput): StoredTask {
     this.getGoal(input.goalId);
     const now = input.now ?? Date.now();
@@ -1541,6 +1727,16 @@ export class OrchestratorRepository {
     return decodeEvent(row);
   }
 
+  private findOrchestratorCommandByKey(
+    goalId: string,
+    idempotencyKey: string,
+  ): StoredOrchestratorCommand | undefined {
+    const row = this.client
+      .prepare('SELECT * FROM orchestrator_commands WHERE goal_id = ? AND idempotency_key = ?')
+      .get(goalId, idempotencyKey) as CommandRow | undefined;
+    return row === undefined ? undefined : decodeCommand(row);
+  }
+
   private notify(notification: OrchestratorRepositoryNotification): void {
     for (const listener of this.listeners) listener(notification);
   }
@@ -1730,6 +1926,21 @@ interface NotificationRow {
   created_at: number;
   delivered_at: number | null;
   read_at: number | null;
+}
+
+interface CommandRow {
+  id: string;
+  goal_id: string;
+  command_kind: string;
+  idempotency_key: string;
+  payload_hash: string;
+  expected_revision: number | null;
+  status: string;
+  result_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: number;
+  updated_at: number;
 }
 
 function decodeGoal(row: GoalRow): StoredGoal {
@@ -1946,6 +2157,26 @@ function decodeNotification(row: NotificationRow): StoredOrchestratorNotificatio
   };
 }
 
+function decodeCommand(row: CommandRow): StoredOrchestratorCommand {
+  assertCommandStatus(row.status);
+  return {
+    id: row.id,
+    goalId: row.goal_id,
+    commandKind: row.command_kind,
+    idempotencyKey: row.idempotency_key,
+    payloadHash: row.payload_hash,
+    ...(row.expected_revision === null ? {} : { expectedRevision: row.expected_revision }),
+    status: row.status,
+    ...(row.result_json === null
+      ? {}
+      : { result: parseJson<JsonObject>(row.result_json, 'command result') }),
+    ...(row.error_code === null ? {} : { errorCode: row.error_code }),
+    ...(row.error_message === null ? {} : { errorMessage: row.error_message }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function assertInstructionTransition(from: InstructionStatus, to: InstructionStatus): void {
   if (from === to) return;
   const allowed: Readonly<Record<InstructionStatus, readonly InstructionStatus[]>> = {
@@ -2039,6 +2270,15 @@ function assertUnitInterval(value: number, label: string): void {
   }
 }
 
+function assertCommandText(value: string, label: string, maxLength: number): void {
+  if (value.trim().length === 0 || value.length > maxLength) {
+    throw new StorageError(
+      `${label} must be non-empty and at most ${maxLength} characters.`,
+      'invalid_request',
+    );
+  }
+}
+
 function stringifyJson(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
@@ -2047,6 +2287,20 @@ function stringifyJson(value: unknown): string {
   } catch (error) {
     throw new StorageCorruptPayloadError('Value cannot be serialized as JSON.', { cause: error });
   }
+}
+
+function hashJson(value: JsonObject): string {
+  return createHash('sha256').update(stableStringify(value)).digest('hex');
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(',')}}`;
 }
 
 function encodeGoalCursor(row: GoalRow): string {

@@ -190,6 +190,81 @@ describe('OrchestratorRepository', () => {
     client.close();
   });
 
+  it('persists idempotent command reservations and replays only the same payload', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'command-goal',
+        workspace: 'D:/workspace/commands',
+        prompt: 'Exercise command idempotency.',
+        provider: 'mock',
+        now: 1,
+      });
+      const first = repository.reserveOrchestratorCommand({
+        id: 'command-1',
+        goalId: 'command-goal',
+        commandKind: 'pause',
+        idempotencyKey: 'pause-1',
+        payload: { reason: 'operator request', enabled: true },
+        expectedRevision: 0,
+        now: 2,
+      });
+      expect(first).toMatchObject({ replayed: false, command: { status: 'PENDING' } });
+      expect(() =>
+        repository.reserveOrchestratorCommand({
+          id: 'command-2',
+          goalId: 'command-goal',
+          commandKind: 'pause',
+          idempotencyKey: 'pause-2',
+          payload: { reason: 'stale revision' },
+          expectedRevision: 1,
+          now: 3,
+        }),
+      ).toThrow(StorageConflictError);
+      expect(() =>
+        repository.reserveOrchestratorCommand({
+          id: 'command-3',
+          goalId: 'command-goal',
+          commandKind: 'pause',
+          idempotencyKey: 'pause-1',
+          payload: { enabled: false, reason: 'operator request' },
+          expectedRevision: 0,
+          now: 3,
+        }),
+      ).toThrow('different command input');
+      expect(() =>
+        repository.reserveOrchestratorCommand({
+          id: 'command-4',
+          goalId: 'command-goal',
+          commandKind: 'pause',
+          idempotencyKey: 'pause-1',
+          payload: { reason: 'operator request', enabled: true },
+          expectedRevision: 0,
+          now: 3,
+        }),
+      ).toThrow('still in progress');
+
+      repository.completeOrchestratorCommand(
+        'command-1',
+        { goalId: 'command-goal', status: 'PAUSED' },
+        4,
+      );
+      const replay = repository.reserveOrchestratorCommand({
+        id: 'command-5',
+        goalId: 'command-goal',
+        commandKind: 'pause',
+        idempotencyKey: 'pause-1',
+        payload: { reason: 'operator request', enabled: true },
+        expectedRevision: 0,
+        now: 5,
+      });
+      expect(replay).toMatchObject({
+        replayed: true,
+        command: { status: 'APPLIED', result: { status: 'PAUSED' } },
+      });
+      expect(repository.listOrchestratorCommands('command-goal')).toHaveLength(1);
+    });
+  });
+
   it('persists V1 control entities with validation and transactional revision updates', () => {
     withRepository((repository) => {
       repository.createGoal({
@@ -303,7 +378,11 @@ describe('OrchestratorRepository', () => {
         repository.renewGoalRunLease('v1-control-goal', 'owner-a', 1, 100, 150).expiresAt,
       ).toBe(250);
       expect(repository.releaseGoalRunLease('v1-control-goal', 'owner-a', 1, 151)).toBe(true);
-      expect(repository.getGoalRunLease('v1-control-goal')).toBeUndefined();
+      expect(repository.getGoalRunLease('v1-control-goal')).toMatchObject({
+        ownerId: 'owner-a',
+        generation: 1,
+        expiresAt: 151,
+      });
 
       const metric = repository.createGoalMetricSnapshot({
         id: 'v1-metric-1',

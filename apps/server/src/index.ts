@@ -113,16 +113,25 @@ const GoalListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
 const GoalParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
+const GoalTaskParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  taskId: Type.String({ minLength: 1 }),
+});
 const GoalEventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 const GoalCreateSchema = Type.Object({
   id: Type.Optional(Type.String({ minLength: 1 })),
+  idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
   workspace: Type.String({ minLength: 1 }),
   prompt: Type.String({ minLength: 1 }),
   provider: Type.String({ minLength: 1 }),
   constraints: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
+const GoalCommandQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 
 export interface ServerOptions {
@@ -510,6 +519,37 @@ export function createServer(options: ServerOptions): FastifyInstance {
     },
   );
 
+  app.get(
+    '/api/goals/:id/commands',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: GoalCommandQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.orchestratorRepository.listOrchestratorCommands(id, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
   app.post(
     '/api/goals',
     {
@@ -538,6 +578,8 @@ export function createServer(options: ServerOptions): FastifyInstance {
       try {
         const body = request.body as {
           readonly id?: string;
+          readonly idempotencyKey?: string;
+          readonly expectedRevision?: number;
           readonly workspace: string;
           readonly prompt: string;
           readonly provider: string;
@@ -546,7 +588,12 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const activeGoal = options.orchestratorRepository
           .listGoals()
           .find((goal) => ['PLANNING', 'RUNNING', 'VERIFYING'].includes(goal.status));
-        if (activeGoal !== undefined || options.orchestratorEngine.active === true) {
+        const isIdempotentRetry =
+          activeGoal?.id === (body.id ?? '') && body.idempotencyKey !== undefined;
+        if (
+          (activeGoal !== undefined || options.orchestratorEngine.active === true) &&
+          !isIdempotentRetry
+        ) {
           return reply.code(409).send({
             error: {
               code: 'goal_busy',
@@ -559,17 +606,27 @@ export function createServer(options: ServerOptions): FastifyInstance {
         }
         const id = body.id ?? randomUUID();
         void options.orchestratorEngine
-          .createGoalAndRun({
-            id,
-            workspace: body.workspace,
-            prompt: body.prompt,
-            provider: body.provider,
-            ...(body.constraints === undefined ? {} : { constraints: body.constraints }),
-          })
+          .createGoalAndRun(
+            {
+              id,
+              workspace: body.workspace,
+              prompt: body.prompt,
+              provider: body.provider,
+              ...(body.constraints === undefined ? {} : { constraints: body.constraints }),
+            },
+            {
+              ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+              ...(body.expectedRevision === undefined
+                ? {}
+                : { expectedRevision: body.expectedRevision }),
+            },
+          )
           .catch(() => undefined);
-        return reply
-          .code(202)
-          .send({ goalId: id, goal: options.orchestratorRepository.getGoal(id) });
+        return reply.code(202).send({
+          goalId: id,
+          ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+          goal: options.orchestratorRepository.getGoal(id),
+        });
       } catch (error) {
         return sendError(reply, error);
       }
@@ -603,7 +660,13 @@ export function createServer(options: ServerOptions): FastifyInstance {
       }
       try {
         const { id } = request.params as { id: string };
-        return reply.send({ goal: options.orchestratorEngine.requestPause(id), requested: true });
+        return reply.send({
+          goal: options.orchestratorEngine.requestPause(
+            id,
+            controlOptionsFromBody(parseControlCommandBody(request.body)),
+          ),
+          requested: true,
+        });
       } catch (error) {
         if (error instanceof OrchestratorBusyError) {
           return reply
@@ -642,7 +705,13 @@ export function createServer(options: ServerOptions): FastifyInstance {
       }
       try {
         const { id } = request.params as { id: string };
-        return reply.send({ goal: options.orchestratorEngine.requestAbort(id), requested: true });
+        return reply.send({
+          goal: options.orchestratorEngine.requestAbort(
+            id,
+            controlOptionsFromBody(parseControlCommandBody(request.body)),
+          ),
+          requested: true,
+        });
       } catch (error) {
         if (error instanceof OrchestratorBusyError) {
           return reply
@@ -681,7 +750,15 @@ export function createServer(options: ServerOptions): FastifyInstance {
       }
       try {
         const { id } = request.params as { id: string };
-        void options.orchestratorEngine.resumeGoal(id).catch(() => undefined);
+        const body = parseControlCommandBody(request.body);
+        void options.orchestratorEngine
+          .resumeGoal(id, {
+            ...controlOptionsFromBody(body),
+            ...(body?.confirmExternalProcessStopped === undefined
+              ? {}
+              : { confirmExternalProcessStopped: body.confirmExternalProcessStopped }),
+          })
+          .catch(() => undefined);
         return reply
           .code(202)
           .send({ goalId: id, goal: options.orchestratorRepository.getGoal(id) });
@@ -691,6 +768,55 @@ export function createServer(options: ServerOptions): FastifyInstance {
             .code(409)
             .send({ error: { code: 'goal_control_conflict', message: error.message } });
         }
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/tasks/:taskId/retry',
+    {
+      schema: {
+        params: GoalTaskParamsSchema,
+        response: {
+          202: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id, taskId } = request.params as { id: string; taskId: string };
+        const body = parseControlCommandBody(request.body);
+        void options.orchestratorEngine
+          .retryTask(id, taskId, {
+            ...controlOptionsFromBody(body),
+            ...(body?.reason === undefined ? {} : { reason: body.reason }),
+            ...(body?.confirmExternalProcessStopped === undefined
+              ? {}
+              : { confirmExternalProcessStopped: body.confirmExternalProcessStopped }),
+          })
+          .catch(() => undefined);
+        return reply.code(202).send({
+          goalId: id,
+          taskId,
+          ...(body?.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+        });
+      } catch (error) {
         return sendError(reply, error);
       }
     },
@@ -1119,12 +1245,106 @@ function parseNonNegativeInteger(value: unknown): number {
   return parsed;
 }
 
+interface ControlCommandBody {
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+  readonly confirmExternalProcessStopped?: boolean;
+  readonly reason?: string;
+}
+
+function parseControlCommandBody(value: unknown): ControlCommandBody | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new StorageError('Control command body must be an object.', 'invalid_request');
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set([
+    'idempotencyKey',
+    'expectedRevision',
+    'confirmExternalProcessStopped',
+    'reason',
+  ]);
+  if (Object.keys(record).some((key) => !allowed.has(key))) {
+    throw new StorageError('Control command body contains an unknown field.', 'invalid_request');
+  }
+  const idempotencyKey = record.idempotencyKey;
+  if (
+    idempotencyKey !== undefined &&
+    (typeof idempotencyKey !== 'string' ||
+      idempotencyKey.trim().length === 0 ||
+      idempotencyKey.length > 200)
+  ) {
+    throw new StorageError(
+      'idempotencyKey must be a non-empty string of at most 200 characters.',
+      'invalid_request',
+    );
+  }
+  const expectedRevision = record.expectedRevision;
+  if (
+    expectedRevision !== undefined &&
+    (typeof expectedRevision !== 'number' ||
+      !Number.isInteger(expectedRevision) ||
+      expectedRevision < 0)
+  ) {
+    throw new StorageError('expectedRevision must be a non-negative integer.', 'invalid_request');
+  }
+  const confirmExternalProcessStopped = record.confirmExternalProcessStopped;
+  if (
+    confirmExternalProcessStopped !== undefined &&
+    typeof confirmExternalProcessStopped !== 'boolean'
+  ) {
+    throw new StorageError('confirmExternalProcessStopped must be a boolean.', 'invalid_request');
+  }
+  const reason = record.reason;
+  if (
+    reason !== undefined &&
+    (typeof reason !== 'string' || reason.trim().length === 0 || reason.length > 4_000)
+  ) {
+    throw new StorageError(
+      'reason must be a non-empty string of at most 4000 characters.',
+      'invalid_request',
+    );
+  }
+  return {
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    ...(confirmExternalProcessStopped === undefined ? {} : { confirmExternalProcessStopped }),
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+function controlOptionsFromBody(body: ControlCommandBody | undefined): {
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+} {
+  if (body === undefined) return {};
+  return {
+    ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+    ...(body.expectedRevision === undefined ? {} : { expectedRevision: body.expectedRevision }),
+  };
+}
+
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof StorageNotFoundError) {
     return reply.code(404).send({ error: { code: error.code, message: error.message } });
   }
+  if (error instanceof OrchestratorBusyError) {
+    return reply
+      .code(409)
+      .send({ error: { code: 'goal_control_conflict', message: error.message } });
+  }
   if (error instanceof StorageError) {
-    const status = error.code === 'conflict' ? 409 : error.code === 'invalid_query' ? 400 : 500;
+    const status =
+      error.code === 'conflict' ||
+      error.code === 'command_in_progress' ||
+      error.code === 'idempotency_conflict' ||
+      error.code === 'revision_conflict' ||
+      error.code === 'command_rejected' ||
+      error.code === 'invalid_orchestrator_state'
+        ? 409
+        : error.code === 'invalid_query' || error.code === 'invalid_request'
+          ? 400
+          : 500;
     return reply.code(status).send({ error: { code: error.code, message: error.message } });
   }
   return reply

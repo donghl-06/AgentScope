@@ -110,6 +110,7 @@ async function withEngine(
   test: (engine: OrchestratorEngine, repository: OrchestratorRepository) => Promise<void>,
   finalStatus: 'PASS' | 'FAIL' = 'PASS',
   contextProvider: () => Promise<BootstrapContext> = async () => context,
+  onEngine?: (engine: OrchestratorEngine) => void,
 ): Promise<void> {
   const filename = path.join(os.tmpdir(), `agentscope-engine-${Date.now()}-${Math.random()}.db`);
   const { client } = openStorage({ filename, migrate: true });
@@ -154,6 +155,7 @@ async function withEngine(
         return () => (value += 1);
       })(),
     });
+    onEngine?.(engine);
     await test(engine, repository);
   } finally {
     client.close();
@@ -225,6 +227,107 @@ describe('OrchestratorEngine', () => {
       expect(result.status).toBe('COMPLETED');
       expect(repository.getGoal('goal-pause').status).toBe('COMPLETED');
     });
+  });
+
+  it('replays idempotent control commands without repeating their side effects', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-idempotent-control',
+        workspace: projectState.workspace,
+        prompt: 'Exercise idempotent controls.',
+        provider: 'claude',
+      });
+      const firstPause = engine.requestPause('goal-idempotent-control', {
+        idempotencyKey: 'pause-command-1',
+      });
+      const replayedPause = engine.requestPause('goal-idempotent-control', {
+        idempotencyKey: 'pause-command-1',
+      });
+      expect(replayedPause).toEqual(firstPause);
+      expect(repository.listOrchestratorCommands('goal-idempotent-control')).toHaveLength(1);
+
+      const firstResume = await engine.resumeGoal('goal-idempotent-control', {
+        idempotencyKey: 'resume-command-1',
+      });
+      const replayedResume = await engine.resumeGoal('goal-idempotent-control', {
+        idempotencyKey: 'resume-command-1',
+      });
+      expect(replayedResume).toMatchObject({ status: firstResume.status });
+      expect(repository.listAttempts('goal-idempotent-control:task:1')).toHaveLength(1);
+      expect(repository.listOrchestratorCommands('goal-idempotent-control')).toHaveLength(2);
+    });
+  });
+
+  it('replays an idempotent start without creating a second Goal or Attempt', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      const input = {
+        id: 'goal-idempotent-start',
+        workspace: projectState.workspace,
+        prompt: 'Start exactly once.',
+        provider: 'claude',
+      } as const;
+      const first = await engine.createGoalAndRun(input, { idempotencyKey: 'start-command-1' });
+      const replayed = await engine.createGoalAndRun(input, { idempotencyKey: 'start-command-1' });
+      expect(replayed).toEqual(first);
+      expect(repository.listGoals()).toHaveLength(1);
+      expect(repository.listAttempts('goal-idempotent-start:task:1')).toHaveLength(1);
+      expect(repository.listOrchestratorCommands('goal-idempotent-start')).toMatchObject([
+        { commandKind: 'start', status: 'APPLIED', idempotencyKey: 'start-command-1' },
+      ]);
+    });
+  });
+
+  it('rejects a reused start key when the command payload changes', async () => {
+    await withEngine('PASS', async (engine) => {
+      const input = {
+        id: 'goal-idempotent-start-conflict',
+        workspace: projectState.workspace,
+        prompt: 'Start exactly once.',
+        provider: 'claude',
+      } as const;
+      await engine.createGoalAndRun(input, { idempotencyKey: 'start-command-conflict' });
+      expect(() =>
+        engine.createGoalAndRun(
+          { ...input, prompt: 'Do something else.' },
+          { idempotencyKey: 'start-command-conflict' },
+        ),
+      ).toThrow('different command input');
+    });
+  });
+
+  it('completes a queued active pause command only after the safe boundary is applied', async () => {
+    let activeEngine: OrchestratorEngine | undefined;
+    await withEngine(
+      'PASS',
+      async (engine, repository) => {
+        const result = await engine.createGoalAndRun({
+          id: 'goal-active-pause-command',
+          workspace: projectState.workspace,
+          prompt: 'Pause at the next safe boundary.',
+          provider: 'claude',
+        });
+        expect(result.status).toBe('PAUSED');
+        expect(
+          repository
+            .listOrchestratorCommands('goal-active-pause-command')
+            .find((command) => command.commandKind === 'pause'),
+        ).toMatchObject({
+          commandKind: 'pause',
+          status: 'APPLIED',
+          result: { goal: { status: 'PAUSED' } },
+        });
+      },
+      'PASS',
+      async () => {
+        activeEngine?.requestPause('goal-active-pause-command', {
+          idempotencyKey: 'active-pause-1',
+        });
+        return context;
+      },
+      (engine) => {
+        activeEngine = engine;
+      },
+    );
   });
 
   it('requires stopped-process confirmation before resuming NEEDS_HUMAN recovery', async () => {

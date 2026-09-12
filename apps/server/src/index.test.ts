@@ -146,8 +146,13 @@ describe('server HTTP API', () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
     const orchestratorRepository = new OrchestratorRepository(client);
+    let startOptions: unknown;
     const engine = {
-      createGoalAndRun: async (input: Parameters<OrchestratorEngine['createGoalAndRun']>[0]) => {
+      createGoalAndRun: async (
+        input: Parameters<OrchestratorEngine['createGoalAndRun']>[0],
+        options: Parameters<OrchestratorEngine['createGoalAndRun']>[1],
+      ) => {
+        startOptions = options;
         const goal = orchestratorRepository.createGoal(input);
         return { goal, tasks: [], status: goal.status as 'CREATED' };
       },
@@ -170,6 +175,8 @@ describe('server HTTP API', () => {
       url: '/api/goals',
       payload: {
         id: 'submitted-goal',
+        idempotencyKey: 'start-1',
+        expectedRevision: 0,
         workspace: 'D:/workspace',
         prompt: 'Submit a safe goal',
         provider: 'mock',
@@ -178,8 +185,10 @@ describe('server HTTP API', () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({
       goalId: 'submitted-goal',
+      idempotencyKey: 'start-1',
       goal: { id: 'submitted-goal' },
     });
+    expect(startOptions).toEqual({ idempotencyKey: 'start-1', expectedRevision: 0 });
     expect((await app.inject('/api/goals')).json()).toMatchObject([{ id: 'submitted-goal' }]);
   });
 
@@ -229,6 +238,129 @@ describe('server HTTP API', () => {
       (await app.inject({ method: 'POST', url: '/api/goals/control-goal/abort' })).statusCode,
     ).toBe(200);
     expect(orchestratorRepository.getGoal('control-goal').status).toBe('ABORTED');
+  });
+
+  it('forwards idempotent control envelopes and exposes command history', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    orchestratorRepository.createGoal({
+      id: 'control-envelope-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Control envelope',
+      provider: 'mock',
+    });
+    const task = orchestratorRepository.createTask({
+      id: 'control-envelope-goal:task:1',
+      goalId: 'control-envelope-goal',
+      title: 'Retryable task',
+      objective: 'Exercise the retry route.',
+      acceptanceCriteria: ['The route forwards its options.'],
+      sequence: 1,
+    });
+    const calls: {
+      pause?: unknown;
+      resume?: unknown;
+      retry?: unknown;
+    } = {};
+    const engine = {
+      active: false,
+      requestPause: (id: string, options: unknown) => {
+        calls.pause = options;
+        return orchestratorRepository.transitionGoal(id, 'PAUSED');
+      },
+      requestAbort: (id: string) => orchestratorRepository.transitionGoal(id, 'ABORTED'),
+      resumeGoal: async (id: string, options: unknown) => {
+        calls.resume = options;
+        const goal = orchestratorRepository.transitionGoal(id, 'PLANNING');
+        return { goal, tasks: [], status: goal.status };
+      },
+      retryTask: async (id: string, taskId: string, options: unknown) => {
+        calls.retry = { id, taskId, options };
+        return {
+          goal: orchestratorRepository.getGoal(id),
+          tasks: [orchestratorRepository.getTask(taskId)],
+          status: orchestratorRepository.getGoal(id).status,
+          retry: { taskId, attemptNumber: 1 },
+        };
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/goals/control-envelope-goal/pause',
+          payload: { idempotencyKey: 'pause-1', expectedRevision: 0 },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(calls.pause).toEqual({ idempotencyKey: 'pause-1', expectedRevision: 0 });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/goals/control-envelope-goal/continue',
+          payload: {
+            idempotencyKey: 'resume-1',
+            expectedRevision: 0,
+            confirmExternalProcessStopped: true,
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect(calls.resume).toEqual({
+      idempotencyKey: 'resume-1',
+      expectedRevision: 0,
+      confirmExternalProcessStopped: true,
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/goals/control-envelope-goal/tasks/${task.id}/retry`,
+          payload: {
+            idempotencyKey: 'retry-1',
+            reason: 'Retry after inspection.',
+            confirmExternalProcessStopped: true,
+          },
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect(calls.retry).toEqual({
+      id: 'control-envelope-goal',
+      taskId: task.id,
+      options: {
+        idempotencyKey: 'retry-1',
+        reason: 'Retry after inspection.',
+        confirmExternalProcessStopped: true,
+      },
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/goals/control-envelope-goal/pause',
+          payload: { unknown: true },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect((await app.inject('/api/goals/control-envelope-goal/commands')).statusCode).toBe(200);
   });
 
   it('rejects a second Goal while another Goal is active', async () => {
