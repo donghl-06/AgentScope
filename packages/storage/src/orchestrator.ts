@@ -368,6 +368,25 @@ export interface RoadmapTaskMutationResult {
   readonly event: StoredOrchestratorEvent;
 }
 
+export interface InsertRoadmapTaskInput {
+  readonly id: string;
+  readonly goalId: string;
+  readonly taskId: string;
+  readonly title: string;
+  readonly objective: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly verification?: JsonObject;
+  readonly constraints?: JsonObject;
+  readonly maxAttempts?: number;
+  readonly sequence?: number;
+  readonly tentative?: boolean;
+  readonly parentTaskId?: string;
+  readonly reason: string;
+  readonly source?: string;
+  readonly expectedActiveRevision?: number;
+  readonly now?: number;
+}
+
 export interface CreateMemorySnapshotInput {
   readonly id: string;
   readonly goalId: string;
@@ -1223,6 +1242,183 @@ export class OrchestratorRepository {
     return { goal: updatedGoal, task: updatedTask, revision: storedRevision, event };
   }
 
+  insertRoadmapTask(input: InsertRoadmapTaskInput): RoadmapTaskMutationResult {
+    const goal = this.getGoal(input.goalId);
+    if (['COMPLETED', 'FAILED', 'ABORTED'].includes(goal.status)) {
+      throw new OrchestratorStateError(
+        `A roadmap Task cannot be inserted after Goal ${goal.id} is ${goal.status}.`,
+      );
+    }
+    if (this.hasTask(input.taskId)) {
+      throw new StorageConflictError(`Task ${input.taskId} already exists.`, 'duplicate_task');
+    }
+    const expectedActiveRevision = input.expectedActiveRevision ?? goal.activeRevision;
+    assertNonNegativeInteger(expectedActiveRevision, 'Expected active revision');
+    if (expectedActiveRevision !== goal.activeRevision) {
+      throw new StorageConflictError(
+        `Task insertion revision conflict: expected ${expectedActiveRevision}, found ${goal.activeRevision}.`,
+        'revision_conflict',
+      );
+    }
+    assertMutationReason(input.reason);
+    assertTaskContractFields({
+      title: input.title,
+      objective: input.objective,
+      acceptanceCriteria: input.acceptanceCriteria,
+      verification: input.verification ?? {},
+      constraints: input.constraints ?? {},
+      maxAttempts: input.maxAttempts ?? 3,
+    });
+    if (input.parentTaskId !== undefined) {
+      const parent = this.getTask(input.parentTaskId);
+      if (parent.goalId !== goal.id) {
+        throw new StorageError(
+          `Parent Task ${input.parentTaskId} belongs to another Goal.`,
+          'invalid_request',
+        );
+      }
+    }
+    const existingTasks = this.listTasks(goal.id);
+    const immutableBoundary = Math.max(
+      0,
+      ...existingTasks
+        .filter(
+          (task) =>
+            task.status !== 'PENDING' ||
+            task.startedAt !== undefined ||
+            goal.roadmap.find((item) => item.id === task.id)?.status === 'LOCKED',
+        )
+        .map((task) => task.sequence),
+    );
+    const futureTasks = existingTasks.filter(
+      (task) =>
+        task.status === 'PENDING' &&
+        task.startedAt === undefined &&
+        task.sequence > immutableBoundary,
+    );
+    const lastFutureSequence = Math.max(
+      immutableBoundary,
+      ...futureTasks.map((task) => task.sequence),
+    );
+    const sequence = input.sequence ?? lastFutureSequence + 1;
+    if (
+      !Number.isInteger(sequence) ||
+      sequence <= immutableBoundary ||
+      sequence > lastFutureSequence + 1
+    ) {
+      throw new StorageError(
+        `Inserted Task sequence must be between ${immutableBoundary + 1} and ${lastFutureSequence + 1}.`,
+        'invalid_request',
+      );
+    }
+    const now = input.now ?? Date.now();
+    const insertedTask: StoredTask = {
+      id: input.taskId,
+      goalId: goal.id,
+      title: input.title.trim(),
+      objective: input.objective.trim(),
+      acceptanceCriteria: input.acceptanceCriteria,
+      verification: input.verification ?? {},
+      constraints: input.constraints ?? {},
+      maxAttempts: input.maxAttempts ?? 3,
+      status: 'PENDING',
+      sequence,
+      tentative: input.tentative !== false,
+      ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const nextTasks = existingTasks
+      .map((task) =>
+        task.status === 'PENDING' && task.startedAt === undefined && task.sequence >= sequence
+          ? { ...task, sequence: task.sequence + 1, updatedAt: now }
+          : task,
+      )
+      .concat(insertedTask)
+      .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
+    const nextRoadmap = roadmapFromStoredTasks(goal.roadmap, nextTasks);
+    const revision = goal.activeRevision + 1;
+    const revisionInput: CreateRoadmapRevisionInput = {
+      id: input.id,
+      goalId: goal.id,
+      parentRevision: goal.activeRevision,
+      source: input.source ?? 'user',
+      reason: input.reason,
+      items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks, existingTasks),
+      roadmap: nextRoadmap,
+      expectedActiveRevision: goal.activeRevision,
+      now,
+    };
+    const eventId = `${input.id}:task-inserted`;
+    const eventInput: AppendOrchestratorEventInput = {
+      id: eventId,
+      goalId: goal.id,
+      taskId: insertedTask.id,
+      type: 'goal.roadmap.task_inserted',
+      payload: { taskId: insertedTask.id, sequence, revision, reason: input.reason },
+      confidence: 1,
+      timestamp: now,
+    };
+    const shiftedTaskIds = existingTasks
+      .filter(
+        (task) =>
+          task.status === 'PENDING' && task.startedAt === undefined && task.sequence >= sequence,
+      )
+      .map((task) => task.id);
+    const run = this.client.transaction(() => {
+      for (const task of nextTasks) {
+        if (!shiftedTaskIds.includes(task.id)) continue;
+        this.client
+          .prepare('UPDATE tasks SET sequence = ?, updated_at = ? WHERE id = ?')
+          .run(task.sequence, now, task.id);
+      }
+      this.client
+        .prepare(
+          `INSERT INTO tasks
+            (id, goal_id, title, objective, acceptance_criteria_json, verification_json,
+             constraints_json, max_attempts, status, sequence, tentative, parent_task_id,
+             created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          insertedTask.id,
+          insertedTask.goalId,
+          insertedTask.title,
+          insertedTask.objective,
+          stringifyJson(insertedTask.acceptanceCriteria),
+          stringifyJson(insertedTask.verification),
+          stringifyJson(insertedTask.constraints),
+          insertedTask.maxAttempts,
+          insertedTask.sequence,
+          insertedTask.tentative ? 1 : 0,
+          insertedTask.parentTaskId ?? null,
+          now,
+          now,
+        );
+      this.insertRoadmapRevisionRows(
+        revisionInput,
+        goal,
+        revision,
+        goal.activeRevision,
+        nextRoadmap,
+        now,
+      );
+      this.insertEvent(eventInput, now);
+    });
+    run();
+    const updatedTask = this.getTask(insertedTask.id);
+    const storedRevision = this.getRoadmapRevision(input.id);
+    const updatedGoal = this.getGoal(goal.id);
+    const event = this.getEvent(eventId);
+    this.notify({ type: 'task.created', task: updatedTask });
+    for (const taskId of shiftedTaskIds)
+      this.notify({ type: 'task.updated', task: this.getTask(taskId) });
+    this.notify({ type: 'roadmap.revised', revision: storedRevision });
+    this.notify({ type: 'goal.updated', goal: updatedGoal });
+    this.notify({ type: 'event.appended', event });
+    return { goal: updatedGoal, task: updatedTask, revision: storedRevision, event };
+  }
+
   private insertRoadmapRevisionRows(
     input: CreateRoadmapRevisionInput,
     goal: StoredGoal,
@@ -1859,6 +2055,12 @@ export class OrchestratorRepository {
       TaskRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Task not found: ${id}`);
     return decodeTask(row);
+  }
+
+  private hasTask(id: string): boolean {
+    const row = this.client.prepare('SELECT 1 AS present FROM tasks WHERE id = ?').get(id) as
+      { readonly present: number } | undefined;
+    return row !== undefined;
   }
 
   listTasks(goalId: string): readonly StoredTask[] {
@@ -2660,6 +2862,27 @@ function applyTaskContractPatch(task: StoredTask, patch: TaskContractPatch): Sto
   };
 }
 
+function assertTaskContractFields(input: {
+  readonly title: string;
+  readonly objective: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly verification: JsonObject;
+  readonly constraints: JsonObject;
+  readonly maxAttempts: number;
+}): void {
+  assertBoundedText(input.title.trim(), 'Task title', 200);
+  assertBoundedText(input.objective.trim(), 'Task objective', 16_000);
+  assertAcceptanceCriteria(input.acceptanceCriteria);
+  assertJsonObject(input.verification, 'Task verification');
+  assertJsonObject(input.constraints, 'Task constraints');
+  if (!Number.isInteger(input.maxAttempts) || input.maxAttempts < 1 || input.maxAttempts > 10) {
+    throw new StorageError(
+      'Task maxAttempts must be an integer between 1 and 10.',
+      'invalid_request',
+    );
+  }
+}
+
 function roadmapFromStoredTasks(
   previous: readonly RoadmapItem[],
   tasks: readonly StoredTask[],
@@ -2684,8 +2907,10 @@ function roadmapFromStoredTasks(
 function roadmapRevisionItemsFromStoredTasks(
   previous: readonly RoadmapItem[],
   tasks: readonly StoredTask[],
+  previousTasks: readonly StoredTask[] = tasks,
 ): readonly RoadmapRevisionItemInput[] {
   const previousById = new Map(previous.map((item) => [item.id, item]));
+  const previousTasksById = new Map(previousTasks.map((task) => [task.id, task]));
   const nextRoadmap = roadmapFromStoredTasks(previous, tasks);
   const nextById = new Map(nextRoadmap.map((item) => [item.id, item]));
   return [...tasks]
@@ -2693,6 +2918,7 @@ function roadmapRevisionItemsFromStoredTasks(
     .map((task) => {
       const nextItem = nextById.get(task.id)!;
       const previousItem = previousById.get(task.id);
+      const previousTask = previousTasksById.get(task.id);
       const snapshot: JsonObject = {
         id: task.id,
         title: task.title,
@@ -2712,7 +2938,12 @@ function roadmapRevisionItemsFromStoredTasks(
         operation:
           previousItem === undefined
             ? 'added'
-            : JSON.stringify(previousItem) === JSON.stringify(nextItem)
+            : previousTask !== undefined &&
+                previousTask.sequence === task.sequence &&
+                previousTask.title === task.title &&
+                previousTask.objective === task.objective &&
+                previousTask.tentative === task.tentative &&
+                JSON.stringify(previousItem) === JSON.stringify(nextItem)
               ? 'retained'
               : 'updated',
         tentative: task.tentative,

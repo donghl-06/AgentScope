@@ -176,6 +176,25 @@ const TaskContractUpdateSchema = Type.Object({
   reason: Type.String({ minLength: 1, maxLength: 4_000 }),
   patch: TaskContractPatchSchema,
 });
+const TaskInsertSchema = Type.Object({
+  id: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  taskId: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  title: Type.String({ minLength: 1, maxLength: 200 }),
+  objective: Type.String({ minLength: 1, maxLength: 16_000 }),
+  acceptanceCriteria: Type.Array(Type.String({ minLength: 1, maxLength: 4_000 }), {
+    minItems: 1,
+    maxItems: 100,
+  }),
+  verification: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  constraints: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  maxAttempts: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
+  sequence: Type.Optional(Type.Integer({ minimum: 1 })),
+  tentative: Type.Optional(Type.Boolean()),
+  parentTaskId: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  reason: Type.String({ minLength: 1, maxLength: 4_000 }),
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -525,6 +544,79 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const { id } = request.params as { id: string };
         return reply.send(options.orchestratorRepository.listTasks(id));
       } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/tasks',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        body: TaskInsertSchema,
+        response: {
+          201: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const body = request.body as {
+          readonly taskId?: string;
+          readonly idempotencyKey?: string;
+          readonly expectedRevision?: number;
+          readonly title: string;
+          readonly objective: string;
+          readonly acceptanceCriteria: readonly string[];
+          readonly verification?: Record<string, unknown>;
+          readonly constraints?: Record<string, unknown>;
+          readonly maxAttempts?: number;
+          readonly sequence?: number;
+          readonly tentative?: boolean;
+          readonly parentTaskId?: string;
+          readonly reason: string;
+        };
+        const result = options.orchestratorEngine.insertFutureTask(id, {
+          ...(body.taskId === undefined ? {} : { taskId: body.taskId }),
+          title: body.title,
+          objective: body.objective,
+          acceptanceCriteria: body.acceptanceCriteria,
+          ...(body.verification === undefined ? {} : { verification: body.verification }),
+          ...(body.constraints === undefined ? {} : { constraints: body.constraints }),
+          ...(body.maxAttempts === undefined ? {} : { maxAttempts: body.maxAttempts }),
+          ...(body.sequence === undefined ? {} : { sequence: body.sequence }),
+          ...(body.tentative === undefined ? {} : { tentative: body.tentative }),
+          ...(body.parentTaskId === undefined ? {} : { parentTaskId: body.parentTaskId }),
+          reason: body.reason,
+          ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+          ...(body.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: body.expectedRevision }),
+        });
+        return reply.code(201).send(result);
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
         return sendError(reply, error);
       }
     },

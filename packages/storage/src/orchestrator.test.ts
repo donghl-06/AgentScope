@@ -790,6 +790,111 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('inserts a future Task without changing the executed boundary', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'insert-roadmap-goal',
+        workspace: 'D:/workspace/insert-roadmap',
+        prompt: 'Insert a future task.',
+        provider: 'mock',
+        now: 720,
+      });
+      const locked = repository.createTask({
+        id: 'insert-roadmap-locked',
+        goalId: 'insert-roadmap-goal',
+        title: 'Locked task',
+        objective: 'Already selected.',
+        acceptanceCriteria: ['The locked task runs first.'],
+        sequence: 1,
+        tentative: false,
+        now: 721,
+      });
+      const future = repository.createTask({
+        id: 'insert-roadmap-future',
+        goalId: 'insert-roadmap-goal',
+        title: 'Future task',
+        objective: 'Run after the locked task.',
+        acceptanceCriteria: ['The future task remains pending.'],
+        sequence: 2,
+        tentative: true,
+        now: 722,
+      });
+      repository.createRoadmapRevision({
+        id: 'insert-roadmap-revision-1',
+        goalId: 'insert-roadmap-goal',
+        source: 'planner',
+        reason: 'Initial roadmap.',
+        roadmap: [
+          { id: locked.id, title: locked.title, objective: locked.objective, status: 'LOCKED' },
+          { id: future.id, title: future.title, objective: future.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          {
+            taskId: locked.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: false,
+            snapshot: { title: locked.title },
+          },
+          {
+            taskId: future.id,
+            sequence: 2,
+            operation: 'added',
+            tentative: true,
+            snapshot: { title: future.title },
+          },
+        ],
+        now: 723,
+      });
+
+      const inserted = repository.insertRoadmapTask({
+        id: 'insert-roadmap-revision-2',
+        goalId: 'insert-roadmap-goal',
+        taskId: 'insert-roadmap-inserted',
+        title: 'Inserted task',
+        objective: 'Run this before the existing future task.',
+        acceptanceCriteria: ['The inserted task is independently verified.'],
+        sequence: 2,
+        tentative: true,
+        reason: 'Add a missing validation step.',
+        expectedActiveRevision: 1,
+        now: 724,
+      });
+      expect(inserted.task).toMatchObject({ id: 'insert-roadmap-inserted', sequence: 2 });
+      expect(repository.listTasks('insert-roadmap-goal')).toMatchObject([
+        { id: locked.id, sequence: 1 },
+        { id: 'insert-roadmap-inserted', sequence: 2 },
+        { id: future.id, sequence: 3 },
+      ]);
+      expect(inserted.goal.roadmap).toMatchObject([
+        { id: locked.id, status: 'LOCKED' },
+        { id: 'insert-roadmap-inserted', status: 'TENTATIVE' },
+        { id: future.id, status: 'TENTATIVE' },
+      ]);
+      expect(inserted.revision.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ taskId: 'insert-roadmap-inserted', operation: 'added' }),
+          expect.objectContaining({ taskId: future.id, operation: 'updated', sequence: 3 }),
+        ]),
+      );
+
+      repository.transitionTask(locked.id, 'RUNNING', 725);
+      expect(() =>
+        repository.insertRoadmapTask({
+          id: 'insert-roadmap-invalid',
+          goalId: 'insert-roadmap-goal',
+          taskId: 'insert-roadmap-before-locked',
+          title: 'Unsafe task',
+          objective: 'Would change execution order.',
+          acceptanceCriteria: ['Rejected.'],
+          sequence: 1,
+          reason: 'Try to insert before the locked boundary.',
+          now: 726,
+        }),
+      ).toThrow('between 2 and 4');
+    });
+  });
+
   it('lists Goal history with stable cursor pagination and filters', () => {
     withRepository((repository) => {
       repository.createGoal({

@@ -12,6 +12,7 @@ import {
   type OrchestratorCommandReservation,
   type RoadmapRevisionItemInput,
   type RoadmapTaskMutationResult,
+  type InsertRoadmapTaskInput,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
@@ -83,6 +84,20 @@ export interface ResumeGoalOptions extends ControlCommandOptions {
 
 export interface EditFutureTaskOptions extends ControlCommandOptions {
   readonly patch: TaskContractPatch;
+  readonly reason: string;
+}
+
+export interface InsertFutureTaskOptions extends ControlCommandOptions {
+  readonly taskId?: string;
+  readonly title: string;
+  readonly objective: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly verification?: JsonObject;
+  readonly constraints?: JsonObject;
+  readonly maxAttempts?: number;
+  readonly sequence?: number;
+  readonly tentative?: boolean;
+  readonly parentTaskId?: string;
   readonly reason: string;
 }
 
@@ -391,6 +406,52 @@ export class OrchestratorEngine {
         now: this.now(),
       };
       const result = this.options.repository.updateFutureTaskContract(mutation);
+      this.completeCommand(reservation.command, asJsonObject(result));
+      return result;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
+  }
+
+  insertFutureTask(goalId: string, options: InsertFutureTaskOptions): RoadmapTaskMutationResult {
+    const taskId = options.taskId ?? `${goalId}:task:${randomUUID()}`;
+    const payload: JsonObject = {
+      taskId,
+      title: options.title,
+      objective: options.objective,
+      acceptanceCriteria: options.acceptanceCriteria,
+      verification: options.verification ?? {},
+      constraints: options.constraints ?? {},
+      maxAttempts: options.maxAttempts ?? 3,
+      ...(options.sequence === undefined ? {} : { sequence: options.sequence }),
+      tentative: options.tentative !== false,
+      ...(options.parentTaskId === undefined ? {} : { parentTaskId: options.parentTaskId }),
+      reason: options.reason,
+    };
+    const reservation = this.reserveControlCommand(goalId, 'insert-task', payload, options);
+    if (reservation.replayed) return this.replayTaskMutation(reservation.command);
+    try {
+      const input: InsertRoadmapTaskInput = {
+        id: `${goalId}:roadmap:${randomUUID()}`,
+        goalId,
+        taskId,
+        title: options.title,
+        objective: options.objective,
+        acceptanceCriteria: options.acceptanceCriteria,
+        ...(options.verification === undefined ? {} : { verification: options.verification }),
+        ...(options.constraints === undefined ? {} : { constraints: options.constraints }),
+        maxAttempts: options.maxAttempts ?? 3,
+        ...(options.sequence === undefined ? {} : { sequence: options.sequence }),
+        ...(options.tentative === undefined ? {} : { tentative: options.tentative }),
+        ...(options.parentTaskId === undefined ? {} : { parentTaskId: options.parentTaskId }),
+        reason: options.reason,
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedActiveRevision: options.expectedRevision }),
+        now: this.now(),
+      };
+      const result = this.options.repository.insertRoadmapTask(input);
       this.completeCommand(reservation.command, asJsonObject(result));
       return result;
     } catch (error) {
