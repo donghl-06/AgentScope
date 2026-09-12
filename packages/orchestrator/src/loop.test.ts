@@ -185,4 +185,33 @@ describe('OrchestratorEngine', () => {
       expect(repository.listTasks('goal-uncertain')).toMatchObject([{ status: 'NEEDS_HUMAN' }]);
     });
   });
+
+  it('supports a persisted pause and explicit resume at a safe boundary', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-pause',
+        workspace: projectState.workspace,
+        prompt: 'Pause before running.',
+        provider: 'claude',
+      });
+      expect(engine.requestPause('goal-pause').status).toBe('PAUSED');
+      const result = await engine.resumeGoal('goal-pause');
+      expect(result.status).toBe('COMPLETED');
+      expect(repository.getGoal('goal-pause').status).toBe('COMPLETED');
+    });
+  });
+
+  it('does not resume an explicitly aborted Goal', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-abort',
+        workspace: projectState.workspace,
+        prompt: 'Abort before running.',
+        provider: 'claude',
+      });
+      expect(engine.requestAbort('goal-abort').status).toBe('ABORTED');
+      await expect(engine.resumeGoal('goal-abort')).rejects.toThrow('Only a PAUSED Goal');
+      expect(repository.getGoal('goal-abort').status).toBe('ABORTED');
+    });
+  });
 });

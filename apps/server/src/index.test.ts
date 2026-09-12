@@ -74,6 +74,7 @@ describe('server HTTP API', () => {
     expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
       goal: { id: goal.id },
       tasks: [{ id: task.id, title: 'Inspect files' }],
+      taskDetails: [{ task: { id: task.id }, attempts: [], verifications: [] }],
       events: [{ id: 'goal-api-1:event:1', taskId: task.id }],
     });
     expect((await app.inject(`/api/goals/${goal.id}/tasks`)).json()).toMatchObject([
@@ -180,6 +181,54 @@ describe('server HTTP API', () => {
       goal: { id: 'submitted-goal' },
     });
     expect((await app.inject('/api/goals')).json()).toMatchObject([{ id: 'submitted-goal' }]);
+  });
+
+  it('exposes safe Goal pause, abort, and continue controls', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    orchestratorRepository.createGoal({
+      id: 'control-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Control this goal',
+      provider: 'mock',
+    });
+    const engine = {
+      requestPause: (id: string) => orchestratorRepository.transitionGoal(id, 'PAUSED'),
+      requestAbort: (id: string) => orchestratorRepository.transitionGoal(id, 'ABORTED'),
+      resumeGoal: async (id: string) => {
+        const goal = orchestratorRepository.transitionGoal(id, 'PLANNING');
+        return {
+          goal,
+          tasks: [],
+          status: goal.status,
+        };
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/goals/control-goal/pause' })).statusCode,
+    ).toBe(200);
+    expect(orchestratorRepository.getGoal('control-goal').status).toBe('PAUSED');
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/goals/control-goal/continue' })).statusCode,
+    ).toBe(202);
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/goals/control-goal/abort' })).statusCode,
+    ).toBe(200);
+    expect(orchestratorRepository.getGoal('control-goal').status).toBe('ABORTED');
   });
 
   it('serves health, sessions, events, and project overview', async () => {

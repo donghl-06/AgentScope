@@ -39,6 +39,42 @@ describe('DashboardApi', () => {
     });
   });
 
+  it('loads Goal details and uses server-side control endpoints', async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ goal: { id: 'goal-1' }, tasks: [], events: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ goal: { id: 'goal-1' }, requested: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.getGoal('goal/1');
+    await api.pauseGoal('goal/1');
+    await api.abortGoal('goal/1');
+    await api.continueGoal('goal/1');
+
+    expect(request).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8787/api/goals/goal%2F1');
+    expect(request).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8787/api/goals/goal%2F1/pause', {
+      method: 'POST',
+    });
+    expect(request).toHaveBeenNthCalledWith(3, 'http://127.0.0.1:8787/api/goals/goal%2F1/abort', {
+      method: 'POST',
+    });
+    expect(request).toHaveBeenNthCalledWith(
+      4,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/continue',
+      { method: 'POST' },
+    );
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {

@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 
 import type { SessionStatus } from '@agentscope/protocol';
 import { reduceSessionState } from '@agentscope/core';
-import type { OrchestratorEngine } from '@agentscope/orchestrator';
+import { OrchestratorBusyError, type OrchestratorEngine } from '@agentscope/orchestrator';
 import {
   type ProjectionVerification,
   type RepositoryNotification,
@@ -438,6 +438,11 @@ export function createServer(options: ServerOptions): FastifyInstance {
         return reply.send({
           goal: options.orchestratorRepository.getGoal(id),
           tasks: options.orchestratorRepository.listTasks(id),
+          taskDetails: options.orchestratorRepository.listTasks(id).map((task) => ({
+            task,
+            attempts: options.orchestratorRepository!.listAttempts(task.id),
+            verifications: options.orchestratorRepository!.listVerificationRuns(task.id),
+          })),
           events: options.orchestratorRepository.listEvents(id),
         });
       } catch (error) {
@@ -547,6 +552,126 @@ export function createServer(options: ServerOptions): FastifyInstance {
           .code(202)
           .send({ goalId: id, goal: options.orchestratorRepository.getGoal(id) });
       } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/pause',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          200: Type.Unknown(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send({ goal: options.orchestratorEngine.requestPause(id), requested: true });
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/abort',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          200: Type.Unknown(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send({ goal: options.orchestratorEngine.requestAbort(id), requested: true });
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/continue',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          202: Type.Unknown(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        void options.orchestratorEngine.resumeGoal(id).catch(() => undefined);
+        return reply
+          .code(202)
+          .send({ goalId: id, goal: options.orchestratorRepository.getGoal(id) });
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
         return sendError(reply, error);
       }
     },

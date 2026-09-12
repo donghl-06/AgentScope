@@ -13,6 +13,7 @@ import {
   DashboardApiError,
   type CreateGoalRequest,
   type DashboardLiveNotification,
+  type GoalDetail,
 } from './api.js';
 import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
@@ -529,12 +530,45 @@ function GoalPanel({
   const [workspace, setWorkspace] = useState('.');
   const [provider, setProvider] = useState<'claude' | 'codex' | 'codex-app-server'>('claude');
   const [prompt, setPrompt] = useState('');
+  const [selectedGoalId, setSelectedGoalId] = useState<string>();
+  const [selectedGoal, setSelectedGoal] = useState<GoalDetail>();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [goalError, setGoalError] = useState<string>();
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (prompt.trim().length === 0 || workspace.trim().length === 0) return;
     void onCreate({ workspace: workspace.trim(), prompt: prompt.trim(), provider });
     setPrompt('');
+  };
+
+  const inspectGoal = async (goalId: string) => {
+    setSelectedGoalId(goalId);
+    setDetailLoading(true);
+    try {
+      setSelectedGoal(await api.getGoal(goalId));
+      setGoalError(undefined);
+    } catch (cause) {
+      setGoalError(cause instanceof Error ? cause.message : 'Unable to load Goal details.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const controlGoal = async (action: 'pause' | 'abort' | 'continue') => {
+    if (selectedGoalId === undefined) return;
+    setDetailLoading(true);
+    try {
+      if (action === 'pause') await api.pauseGoal(selectedGoalId);
+      else if (action === 'abort') await api.abortGoal(selectedGoalId);
+      else await api.continueGoal(selectedGoalId);
+      await onRefresh();
+      await inspectGoal(selectedGoalId);
+    } catch (cause) {
+      setGoalError(cause instanceof Error ? cause.message : 'Unable to control Goal.');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   return (
@@ -591,7 +625,12 @@ function GoalPanel({
       ) : (
         <div className="goal-list">
           {goals.map((goal) => (
-            <article className="goal-row" key={goal.id}>
+            <button
+              className={`goal-row ${selectedGoalId === goal.id ? 'goal-row-selected' : ''}`}
+              key={goal.id}
+              type="button"
+              onClick={() => void inspectGoal(goal.id)}
+            >
               <div className="goal-row-copy">
                 <strong>{goal.prompt}</strong>
                 <small>
@@ -601,8 +640,87 @@ function GoalPanel({
               <span className={`goal-status goal-status-${goal.status.toLowerCase()}`}>
                 {statusLabel(goal.status)}
               </span>
-            </article>
+            </button>
           ))}
+        </div>
+      )}
+      {goalError !== undefined && <p className="goal-error">{goalError}</p>}
+      {selectedGoalId !== undefined && (
+        <div className="goal-detail">
+          {detailLoading && selectedGoal === undefined ? (
+            <p className="empty-state">Loading Goal details…</p>
+          ) : selectedGoal === undefined ? null : (
+            <>
+              <div className="goal-detail-heading">
+                <div>
+                  <span className="eyebrow">GOAL DETAIL</span>
+                  <strong>{statusLabel(selectedGoal.goal.status)}</strong>
+                </div>
+                <div className="goal-detail-actions">
+                  {['CREATED', 'PLANNING', 'RUNNING', 'VERIFYING'].includes(
+                    selectedGoal.goal.status,
+                  ) && (
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => void controlGoal('pause')}
+                      disabled={detailLoading}
+                    >
+                      Pause
+                    </button>
+                  )}
+                  {selectedGoal.goal.status === 'PAUSED' && (
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => void controlGoal('continue')}
+                      disabled={detailLoading}
+                    >
+                      Continue
+                    </button>
+                  )}
+                  {!['COMPLETED', 'FAILED', 'ABORTED'].includes(selectedGoal.goal.status) && (
+                    <button
+                      className="quiet-button quiet-button-small quiet-button-danger"
+                      type="button"
+                      onClick={() => void controlGoal('abort')}
+                      disabled={detailLoading}
+                    >
+                      Abort
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="goal-detail-grid">
+                <span>
+                  <b>Tasks</b>
+                  {selectedGoal.tasks.length}
+                </span>
+                <span>
+                  <b>Events</b>
+                  {selectedGoal.events.length}
+                </span>
+                <span>
+                  <b>Attempts</b>
+                  {selectedGoal.taskDetails?.reduce(
+                    (total, item) => total + item.attempts.length,
+                    0,
+                  ) ?? 0}
+                </span>
+              </div>
+              <ol className="goal-task-list">
+                {selectedGoal.tasks.map((task) => (
+                  <li key={task.id}>
+                    <span>{task.sequence}</span>
+                    <div>
+                      <strong>{task.title}</strong>
+                      <small>{statusLabel(task.status)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </div>
       )}
     </section>

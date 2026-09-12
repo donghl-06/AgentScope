@@ -66,6 +66,7 @@ export class OrchestratorEngine {
   private readonly maxSteps: number;
   private readonly now: () => number;
   private activeGoalId: string | undefined;
+  private readonly controlRequests = new Map<string, 'PAUSE' | 'ABORT'>();
 
   constructor(private readonly options: OrchestratorEngineOptions) {
     this.planner = options.planner ?? new ConservativePlanner();
@@ -78,6 +79,56 @@ export class OrchestratorEngine {
 
   get active(): boolean {
     return this.activeGoalId !== undefined;
+  }
+
+  requestPause(goalId: string): StoredGoal {
+    const goal = this.options.repository.getGoal(goalId);
+    if (goal.status === 'PAUSED') return goal;
+    if (goal.status === 'COMPLETED' || goal.status === 'FAILED' || goal.status === 'ABORTED') {
+      throw new OrchestratorBusyError(`Goal ${goalId} is already terminal.`);
+    }
+    if (this.activeGoalId === goalId) {
+      this.controlRequests.set(goalId, 'PAUSE');
+      this.options.repository.appendEvent({
+        id: `${goalId}:control:pause:${this.now()}`,
+        goalId,
+        type: 'goal.pause_requested',
+        payload: { reason: 'Pause requested; the active Attempt will finish first.' },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      return goal;
+    }
+    return this.options.repository.transitionGoal(goalId, 'PAUSED', this.now());
+  }
+
+  requestAbort(goalId: string): StoredGoal {
+    const goal = this.options.repository.getGoal(goalId);
+    if (goal.status === 'ABORTED') return goal;
+    if (goal.status === 'COMPLETED' || goal.status === 'FAILED') {
+      throw new OrchestratorBusyError(`Goal ${goalId} is already terminal.`);
+    }
+    if (this.activeGoalId === goalId) {
+      this.controlRequests.set(goalId, 'ABORT');
+      this.options.repository.appendEvent({
+        id: `${goalId}:control:abort:${this.now()}`,
+        goalId,
+        type: 'goal.abort_requested',
+        payload: { reason: 'Abort requested; the active Attempt will finish first.' },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      return goal;
+    }
+    return this.options.repository.transitionGoal(goalId, 'ABORTED', this.now());
+  }
+
+  async resumeGoal(goalId: string): Promise<GoalRunResult> {
+    const goal = this.options.repository.getGoal(goalId);
+    if (goal.status !== 'PAUSED') {
+      throw new OrchestratorBusyError(`Only a PAUSED Goal can be resumed: ${goalId}.`);
+    }
+    return this.runGoal(goalId);
   }
 
   async createGoalAndRun(input: CreateGoalInput): Promise<GoalRunResult> {
@@ -175,6 +226,11 @@ export class OrchestratorEngine {
             result.reason,
           );
         }
+        const control = this.controlRequests.get(goal.id);
+        if (control !== undefined) {
+          this.controlRequests.delete(goal.id);
+          return this.applyControl(goal.id, control);
+        }
         continue;
       }
       const pending = tasks
@@ -227,6 +283,24 @@ export class OrchestratorEngine {
       repository.listTasks(goal.id),
       `The Orchestrator reached its ${this.maxSteps}-step safety bound.`,
     );
+  }
+
+  private applyControl(goalId: string, control: 'PAUSE' | 'ABORT'): GoalRunResult {
+    const repository = this.options.repository;
+    const tasks = repository.listTasks(goalId);
+    const status = control === 'PAUSE' ? 'PAUSED' : 'ABORTED';
+    const updatedGoal = repository.transitionGoal(goalId, status, this.now());
+    repository.appendEvent({
+      id: `${goalId}:control:${control.toLowerCase()}:${this.now()}:applied`,
+      goalId,
+      type: control === 'PAUSE' ? 'goal.paused' : 'goal.aborted',
+      payload: {
+        reason: control === 'PAUSE' ? 'Pause request applied.' : 'Abort request applied.',
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
+    return { goal: updatedGoal, tasks, status: updatedGoal.status };
   }
 
   private async executeTask(

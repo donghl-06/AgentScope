@@ -297,6 +297,14 @@ h3 {
   border: 1px solid #263c59;
   border-radius: 10px;
   background: rgba(10, 22, 39, 0.62);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.goal-row:hover,
+.goal-row-selected {
+  border-color: #4d729d;
+  background: rgba(18, 39, 66, 0.8);
 }
 .goal-row-copy {
   display: grid;
@@ -346,6 +354,94 @@ h3 {
 .goal-status-aborted {
   background: #552b39;
   color: #ff9eae;
+}
+.goal-error {
+  margin: 10px 0 0;
+  color: #ffacb9;
+  font-size: 12px;
+}
+.goal-detail {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #2b4565;
+  border-radius: 10px;
+  background: rgba(8, 19, 34, 0.38);
+}
+.goal-detail-heading,
+.goal-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.goal-detail-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.goal-detail-heading strong {
+  color: #dbe8f7;
+  font-size: 14px;
+}
+.goal-detail-grid {
+  display: flex;
+  gap: 22px;
+  margin-top: 12px;
+}
+.goal-detail-grid span {
+  display: grid;
+  gap: 3px;
+  color: #c5d7eb;
+  font-size: 12px;
+}
+.goal-detail-grid b {
+  color: #7f9dc4;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.goal-task-list {
+  display: grid;
+  gap: 5px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.goal-task-list li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid #223752;
+}
+.goal-task-list li > span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  background: #233a59;
+  color: #9bb7d6;
+  font-size: 10px;
+}
+.goal-task-list li div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.goal-task-list li strong,
+.goal-task-list li small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goal-task-list li strong {
+  color: #cbdcf0;
+  font-size: 11px;
+}
+.goal-task-list li small {
+  color: #8299b7;
+  font-size: 10px;
 }
 .panel {
   min-height: 520px;

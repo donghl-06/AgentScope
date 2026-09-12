@@ -5,7 +5,11 @@ import type {
   SessionListFilter,
   StoredObserverEvidence,
   StoredGoal,
+  StoredOrchestratorEvent,
   StoredSession,
+  StoredTask,
+  StoredAttempt,
+  StoredVerificationRun,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -21,6 +25,17 @@ export interface CreateGoalRequest {
   readonly workspace: string;
   readonly prompt: string;
   readonly provider: string;
+}
+
+export interface GoalDetail {
+  readonly goal: StoredGoal;
+  readonly tasks: readonly StoredTask[];
+  readonly taskDetails?: readonly {
+    readonly task: StoredTask;
+    readonly attempts: readonly StoredAttempt[];
+    readonly verifications: readonly StoredVerificationRun[];
+  }[];
+  readonly events: readonly StoredOrchestratorEvent[];
 }
 
 export interface DashboardLiveNotification {
@@ -95,6 +110,28 @@ export class DashboardApi {
 
   createGoal(input: CreateGoalRequest): Promise<{ goalId: string; goal: StoredGoal }> {
     return this.requestJson('/api/goals', 'POST', undefined, input);
+  }
+
+  getGoal(goalId: string): Promise<GoalDetail> {
+    return this.get<GoalDetail>(`/api/goals/${encodeURIComponent(goalId)}`);
+  }
+
+  pauseGoal(goalId: string): Promise<{ goal: StoredGoal; requested: boolean }> {
+    return this.mutate<{ goal: StoredGoal; requested: boolean }>(
+      `/api/goals/${encodeURIComponent(goalId)}/pause`,
+    );
+  }
+
+  abortGoal(goalId: string): Promise<{ goal: StoredGoal; requested: boolean }> {
+    return this.mutate<{ goal: StoredGoal; requested: boolean }>(
+      `/api/goals/${encodeURIComponent(goalId)}/abort`,
+    );
+  }
+
+  continueGoal(goalId: string): Promise<{ goalId: string; goal: StoredGoal }> {
+    return this.mutate<{ goalId: string; goal: StoredGoal }>(
+      `/api/goals/${encodeURIComponent(goalId)}/continue`,
+    );
   }
 
   getSession(sessionId: string): Promise<StoredSession> {
