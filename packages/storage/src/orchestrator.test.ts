@@ -965,6 +965,110 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('reorders exactly the future tentative Tasks and preserves the boundary', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'reorder-roadmap-goal',
+        workspace: 'D:/workspace/reorder-roadmap',
+        prompt: 'Reorder future tasks safely.',
+        provider: 'mock',
+        now: 740,
+      });
+      const locked = repository.createTask({
+        id: 'reorder-locked',
+        goalId: 'reorder-roadmap-goal',
+        title: 'Locked first',
+        objective: 'The executed boundary remains first.',
+        acceptanceCriteria: ['The locked task stays first.'],
+        sequence: 1,
+        tentative: false,
+        now: 741,
+      });
+      const first = repository.createTask({
+        id: 'reorder-future-a',
+        goalId: 'reorder-roadmap-goal',
+        title: 'Future A',
+        objective: 'Run A.',
+        acceptanceCriteria: ['A is verified.'],
+        sequence: 2,
+        tentative: true,
+        now: 742,
+      });
+      const second = repository.createTask({
+        id: 'reorder-future-b',
+        goalId: 'reorder-roadmap-goal',
+        title: 'Future B',
+        objective: 'Run B.',
+        acceptanceCriteria: ['B is verified.'],
+        sequence: 3,
+        tentative: true,
+        now: 743,
+      });
+      repository.createRoadmapRevision({
+        id: 'reorder-roadmap-revision-1',
+        goalId: 'reorder-roadmap-goal',
+        source: 'planner',
+        reason: 'Initial roadmap.',
+        roadmap: [
+          { id: locked.id, title: locked.title, objective: locked.objective, status: 'LOCKED' },
+          { id: first.id, title: first.title, objective: first.objective, status: 'TENTATIVE' },
+          { id: second.id, title: second.title, objective: second.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          { taskId: locked.id, sequence: 1, operation: 'added', tentative: false, snapshot: {} },
+          { taskId: first.id, sequence: 2, operation: 'added', tentative: true, snapshot: {} },
+          { taskId: second.id, sequence: 3, operation: 'added', tentative: true, snapshot: {} },
+        ],
+        now: 744,
+      });
+
+      const reordered = repository.reorderRoadmapTasks({
+        id: 'reorder-roadmap-revision-2',
+        goalId: 'reorder-roadmap-goal',
+        taskIds: [second.id, first.id],
+        reason: 'Run the second validation before the first.',
+        expectedActiveRevision: 1,
+        now: 745,
+      });
+      expect(reordered.tasks).toMatchObject([
+        { id: locked.id, sequence: 1 },
+        { id: second.id, sequence: 2 },
+        { id: first.id, sequence: 3 },
+      ]);
+      expect(reordered.goal.roadmap.map((item) => item.id)).toEqual([
+        locked.id,
+        second.id,
+        first.id,
+      ]);
+      expect(reordered.revision.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ taskId: second.id, operation: 'updated', sequence: 2 }),
+          expect.objectContaining({ taskId: first.id, operation: 'updated', sequence: 3 }),
+        ]),
+      );
+      expect(reordered.event.type).toBe('goal.roadmap.reordered');
+
+      expect(() =>
+        repository.reorderRoadmapTasks({
+          id: 'reorder-roadmap-invalid',
+          goalId: 'reorder-roadmap-goal',
+          taskIds: [second.id, second.id],
+          reason: 'Duplicate task.',
+          now: 746,
+        }),
+      ).toThrow('duplicate Task IDs');
+      expect(() =>
+        repository.reorderRoadmapTasks({
+          id: 'reorder-roadmap-missing',
+          goalId: 'reorder-roadmap-goal',
+          taskIds: [second.id],
+          reason: 'Omit a future task.',
+          now: 747,
+        }),
+      ).toThrow('exactly every');
+    });
+  });
+
   it('lists Goal history with stable cursor pagination and filters', () => {
     withRepository((repository) => {
       repository.createGoal({

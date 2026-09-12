@@ -14,6 +14,8 @@ import {
   type RoadmapTaskMutationResult,
   type InsertRoadmapTaskInput,
   type SkipRoadmapTaskInput,
+  type ReorderRoadmapTasksInput,
+  type RoadmapReorderResult,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
@@ -103,6 +105,11 @@ export interface InsertFutureTaskOptions extends ControlCommandOptions {
 }
 
 export interface SkipFutureTaskOptions extends ControlCommandOptions {
+  readonly reason: string;
+}
+
+export interface ReorderFutureTasksOptions extends ControlCommandOptions {
+  readonly taskIds: readonly string[];
   readonly reason: string;
 }
 
@@ -493,6 +500,30 @@ export class OrchestratorEngine {
     }
   }
 
+  reorderFutureTasks(goalId: string, options: ReorderFutureTasksOptions): RoadmapReorderResult {
+    const payload: JsonObject = { taskIds: options.taskIds, reason: options.reason };
+    const reservation = this.reserveControlCommand(goalId, 'reorder-roadmap', payload, options);
+    if (reservation.replayed) return this.replayRoadmapReorder(reservation.command);
+    try {
+      const input: ReorderRoadmapTasksInput = {
+        id: `${goalId}:roadmap:${randomUUID()}`,
+        goalId,
+        taskIds: options.taskIds,
+        reason: options.reason,
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedActiveRevision: options.expectedRevision }),
+        now: this.now(),
+      };
+      const result = this.options.repository.reorderRoadmapTasks(input);
+      this.completeCommand(reservation.command, asJsonObject(result));
+      return result;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
+  }
+
   private reserveControlCommand(
     goalId: string,
     commandKind: string,
@@ -588,6 +619,10 @@ export class OrchestratorEngine {
 
   private replayTaskMutation(command: StoredOrchestratorCommand): RoadmapTaskMutationResult {
     return this.replayCommand(command) as unknown as RoadmapTaskMutationResult;
+  }
+
+  private replayRoadmapReorder(command: StoredOrchestratorCommand): RoadmapReorderResult {
+    return this.replayCommand(command) as unknown as RoadmapReorderResult;
   }
 
   submitInstruction(

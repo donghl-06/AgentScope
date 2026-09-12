@@ -397,6 +397,23 @@ export interface SkipRoadmapTaskInput {
   readonly now?: number;
 }
 
+export interface ReorderRoadmapTasksInput {
+  readonly id: string;
+  readonly goalId: string;
+  readonly taskIds: readonly string[];
+  readonly reason: string;
+  readonly source?: string;
+  readonly expectedActiveRevision?: number;
+  readonly now?: number;
+}
+
+export interface RoadmapReorderResult {
+  readonly goal: StoredGoal;
+  readonly tasks: readonly StoredTask[];
+  readonly revision: StoredRoadmapRevision;
+  readonly event: StoredOrchestratorEvent;
+}
+
 export interface CreateMemorySnapshotInput {
   readonly id: string;
   readonly goalId: string;
@@ -1375,7 +1392,14 @@ export class OrchestratorRepository {
           task.status === 'PENDING' && task.startedAt === undefined && task.sequence >= sequence,
       )
       .map((task) => task.id);
+    const temporarySequenceBase =
+      Math.max(0, ...existingTasks.map((task) => task.sequence)) + existingTasks.length + 1;
     const run = this.client.transaction(() => {
+      shiftedTaskIds.forEach((taskId, index) => {
+        this.client
+          .prepare('UPDATE tasks SET sequence = ?, updated_at = ? WHERE id = ?')
+          .run(temporarySequenceBase + index, now, taskId);
+      });
       for (const task of nextTasks) {
         if (!shiftedTaskIds.includes(task.id)) continue;
         this.client
@@ -1528,6 +1552,142 @@ export class OrchestratorRepository {
     this.notify({ type: 'goal.updated', goal: updatedGoal });
     this.notify({ type: 'event.appended', event });
     return { goal: updatedGoal, task: updatedTask, revision: storedRevision, event };
+  }
+
+  reorderRoadmapTasks(input: ReorderRoadmapTasksInput): RoadmapReorderResult {
+    const goal = this.getGoal(input.goalId);
+    if (['COMPLETED', 'FAILED', 'ABORTED'].includes(goal.status)) {
+      throw new OrchestratorStateError(
+        `The roadmap cannot be reordered after Goal ${goal.id} is ${goal.status}.`,
+      );
+    }
+    const expectedActiveRevision = input.expectedActiveRevision ?? goal.activeRevision;
+    assertNonNegativeInteger(expectedActiveRevision, 'Expected active revision');
+    if (expectedActiveRevision !== goal.activeRevision) {
+      throw new StorageConflictError(
+        `Roadmap reorder revision conflict: expected ${expectedActiveRevision}, found ${goal.activeRevision}.`,
+        'revision_conflict',
+      );
+    }
+    assertMutationReason(input.reason);
+    if (input.taskIds.length === 0) {
+      throw new StorageError(
+        'Roadmap reorder requires at least one future Task.',
+        'invalid_request',
+      );
+    }
+    const tasks = this.listTasks(goal.id);
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    const reorderable = tasks.filter(
+      (task) =>
+        task.status === 'PENDING' &&
+        task.startedAt === undefined &&
+        task.tentative === true &&
+        goal.roadmap.find((item) => item.id === task.id)?.status !== 'LOCKED',
+    );
+    const reorderableIds = new Set(reorderable.map((task) => task.id));
+    const requestedIds = new Set(input.taskIds);
+    if (requestedIds.size !== input.taskIds.length) {
+      throw new StorageError(
+        'Roadmap reorder cannot contain duplicate Task IDs.',
+        'invalid_request',
+      );
+    }
+    if (
+      requestedIds.size !== reorderableIds.size ||
+      [...requestedIds].some((taskId) => !reorderableIds.has(taskId))
+    ) {
+      throw new StorageError(
+        'Roadmap reorder must include exactly every unstarted tentative Task and no other Task.',
+        'invalid_request',
+      );
+    }
+    for (const taskId of input.taskIds) {
+      if (!taskById.has(taskId)) {
+        throw new StorageNotFoundError(`Task not found: ${taskId}`);
+      }
+    }
+    const immutableBoundary = Math.max(
+      0,
+      ...tasks.filter((task) => !reorderableIds.has(task.id)).map((task) => task.sequence),
+    );
+    const nextSequenceById = new Map(
+      input.taskIds.map((taskId, index) => [taskId, immutableBoundary + index + 1]),
+    );
+    const nextTasks = tasks
+      .map((task) => {
+        const sequence = nextSequenceById.get(task.id);
+        return sequence === undefined
+          ? task
+          : { ...task, sequence, updatedAt: input.now ?? Date.now() };
+      })
+      .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
+    const unchanged = tasks.every(
+      (task) => task.sequence === nextSequenceById.get(task.id) || !reorderableIds.has(task.id),
+    );
+    if (unchanged) {
+      throw new StorageError(
+        'Roadmap reorder did not change the future Task order.',
+        'invalid_request',
+      );
+    }
+    const nextRoadmap = roadmapFromStoredTasks(goal.roadmap, nextTasks);
+    const revision = goal.activeRevision + 1;
+    const now = input.now ?? Date.now();
+    const revisionInput: CreateRoadmapRevisionInput = {
+      id: input.id,
+      goalId: goal.id,
+      parentRevision: goal.activeRevision,
+      source: input.source ?? 'user',
+      reason: input.reason,
+      items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks, tasks),
+      roadmap: nextRoadmap,
+      expectedActiveRevision: goal.activeRevision,
+      now,
+    };
+    const eventId = `${input.id}:tasks-reordered`;
+    const eventInput: AppendOrchestratorEventInput = {
+      id: eventId,
+      goalId: goal.id,
+      type: 'goal.roadmap.reordered',
+      payload: { taskIds: input.taskIds, revision, reason: input.reason },
+      confidence: 1,
+      timestamp: now,
+    };
+    const temporarySequenceBase =
+      Math.max(0, ...tasks.map((task) => task.sequence)) + tasks.length + 1;
+    const run = this.client.transaction(() => {
+      input.taskIds.forEach((taskId, index) => {
+        this.client
+          .prepare('UPDATE tasks SET sequence = ?, updated_at = ? WHERE id = ?')
+          .run(temporarySequenceBase + index, now, taskId);
+      });
+      for (const taskId of input.taskIds) {
+        this.client
+          .prepare('UPDATE tasks SET sequence = ?, updated_at = ? WHERE id = ?')
+          .run(nextSequenceById.get(taskId), now, taskId);
+      }
+      this.insertRoadmapRevisionRows(
+        revisionInput,
+        goal,
+        revision,
+        goal.activeRevision,
+        nextRoadmap,
+        now,
+      );
+      this.insertEvent(eventInput, now);
+    });
+    run();
+    const storedTasks = this.listTasks(goal.id);
+    const storedRevision = this.getRoadmapRevision(input.id);
+    const updatedGoal = this.getGoal(goal.id);
+    const event = this.getEvent(eventId);
+    for (const taskId of input.taskIds)
+      this.notify({ type: 'task.updated', task: this.getTask(taskId) });
+    this.notify({ type: 'roadmap.revised', revision: storedRevision });
+    this.notify({ type: 'goal.updated', goal: updatedGoal });
+    this.notify({ type: 'event.appended', event });
+    return { goal: updatedGoal, tasks: storedTasks, revision: storedRevision, event };
   }
 
   private insertRoadmapRevisionRows(
