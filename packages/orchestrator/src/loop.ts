@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-  OrchestratorRepository,
-  CreateGoalInput,
-  JsonObject,
-  StoredGoal,
-  StoredTask,
-  StoredVerificationRun,
+import {
+  StorageConflictError,
+  type OrchestratorRepository,
+  type CreateGoalInput,
+  type JsonObject,
+  type StoredGoal,
+  type StoredTask,
+  type StoredVerificationRun,
 } from '@agentscope/storage';
-
 import {
   bootstrapProjectContext,
   type BootstrapContext,
@@ -19,6 +19,8 @@ import { ConservativePlanner, type Planner } from './planner.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
 import type { SerialWorkerRuntime, WorkerExecutionResult } from './worker.js';
+import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
+import { classifyGoalRecovery } from './recovery.js';
 
 export type GoalVerification = (input: {
   readonly goal: StoredGoal;
@@ -41,6 +43,16 @@ export interface OrchestratorEngineOptions {
   readonly verifyGoal?: GoalVerification;
   readonly maxSteps?: number;
   readonly now?: () => number;
+  /** Optional durable lease manager. A process-scoped manager is created by default. */
+  readonly leaseManager?: GoalRunLeaseManager;
+  readonly leaseOwnerId?: string;
+  readonly leaseTtlMs?: number;
+  readonly leaseHeartbeatMs?: number;
+}
+
+export interface ResumeGoalOptions {
+  /** Required for NEEDS_HUMAN recovery so a stale Provider cannot be duplicated. */
+  readonly confirmExternalProcessStopped?: boolean;
 }
 
 export interface GoalRunResult {
@@ -51,8 +63,8 @@ export interface GoalRunResult {
 }
 
 export class OrchestratorBusyError extends Error {
-  constructor(readonly activeGoalId: string) {
-    super(`An Orchestrator Goal is already running: ${activeGoalId}.`);
+  constructor(readonly activeGoalId: string, message?: string) {
+    super(message ?? `An Orchestrator Goal is already running: ${activeGoalId}.`);
     this.name = 'OrchestratorBusyError';
   }
 }
@@ -68,6 +80,8 @@ export class OrchestratorEngine {
   private readonly verifyGoal: GoalVerification;
   private readonly maxSteps: number;
   private readonly now: () => number;
+  private readonly leaseManager: GoalRunLeaseManager;
+  private readonly leaseHeartbeatMs: number;
   private activeGoalId: string | undefined;
   private readonly controlRequests = new Map<string, 'PAUSE' | 'ABORT'>();
 
@@ -78,6 +92,18 @@ export class OrchestratorEngine {
     this.verifyGoal = options.verifyGoal ?? defaultGoalVerifier;
     this.maxSteps = validateMaxSteps(options.maxSteps ?? 100);
     this.now = options.now ?? Date.now;
+    this.leaseManager =
+      options.leaseManager ??
+      new GoalRunLeaseManager({
+        repository: options.repository,
+        ownerId: options.leaseOwnerId ?? `orchestrator:${process.pid}:${randomUUID()}`,
+        ttlMs: options.leaseTtlMs ?? 30_000,
+        clock: { now: this.now },
+      });
+    this.leaseHeartbeatMs = validateLeaseHeartbeat(
+      options.leaseHeartbeatMs ?? Math.max(1_000, Math.floor((options.leaseTtlMs ?? 30_000) / 3)),
+      options.leaseTtlMs ?? 30_000,
+    );
   }
 
   get active(): boolean {
@@ -126,10 +152,21 @@ export class OrchestratorEngine {
     return this.options.repository.transitionGoal(goalId, 'ABORTED', this.now());
   }
 
-  async resumeGoal(goalId: string): Promise<GoalRunResult> {
+  async resumeGoal(goalId: string, options: ResumeGoalOptions = {}): Promise<GoalRunResult> {
     const goal = this.options.repository.getGoal(goalId);
-    if (goal.status !== 'PAUSED') {
-      throw new OrchestratorBusyError(`Only a PAUSED Goal can be resumed: ${goalId}.`);
+    if (goal.status === 'NEEDS_HUMAN') {
+      if (options.confirmExternalProcessStopped !== true) {
+        throw new OrchestratorBusyError(
+          goalId,
+          `Goal ${goalId} requires confirmation that its external Provider process is stopped before resuming.`,
+        );
+      }
+      this.prepareHumanRecovery(goalId);
+    } else if (goal.status !== 'PAUSED') {
+      throw new OrchestratorBusyError(
+        goalId,
+        `Only a PAUSED Goal can be resumed without confirmation; NEEDS_HUMAN requires explicit confirmation: ${goalId}.`,
+      );
     }
     return this.runGoal(goalId);
   }
@@ -142,19 +179,55 @@ export class OrchestratorEngine {
 
   async runGoal(goalId: string): Promise<GoalRunResult> {
     if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
-    this.activeGoalId = goalId;
+    let lease: GoalRunLeaseHandle;
     try {
-      return await this.runGoalInternal(goalId);
+      lease = this.leaseManager.acquire(goalId);
+    } catch (error) {
+      if (error instanceof StorageConflictError) {
+        throw new OrchestratorBusyError(
+          goalId,
+          `Goal ${goalId} is already being run by another owner.`,
+        );
+      }
+      throw error;
+    }
+    this.activeGoalId = goalId;
+    let leaseLost: Error | undefined;
+    const assertLease = (): void => {
+      if (leaseLost !== undefined) throw leaseLost;
+      this.leaseManager.assertHeld(lease);
+    };
+    const heartbeat = setInterval(() => {
+      if (leaseLost !== undefined) return;
+      try {
+        lease = this.leaseManager.heartbeat(lease);
+      } catch (error) {
+        leaseLost = error instanceof Error ? error : new Error(String(error));
+      }
+    }, this.leaseHeartbeatMs);
+    try {
+      assertLease();
+      return await this.runGoalInternal(goalId, assertLease);
     } catch (error) {
       this.markRunFailed(goalId, error);
       throw error;
     } finally {
+      clearInterval(heartbeat);
+      try {
+        this.leaseManager.release(lease);
+      } catch {
+        // A lost lease is already fenced; never mask the original run result or error.
+      }
       this.activeGoalId = undefined;
     }
   }
 
-  private async runGoalInternal(goalId: string): Promise<GoalRunResult> {
+  private async runGoalInternal(
+    goalId: string,
+    assertLease: () => void,
+  ): Promise<GoalRunResult> {
     const repository = this.options.repository;
+    assertLease();
     let goal = repository.getGoal(goalId);
     if (goal.status === 'COMPLETED' || goal.status === 'FAILED' || goal.status === 'ABORTED') {
       return { goal, tasks: repository.listTasks(goal.id), status: goal.status };
@@ -172,6 +245,7 @@ export class OrchestratorEngine {
     let tasks = repository.listTasks(goal.id);
     let lastVerificationTaskId: string | undefined;
     if (tasks.length === 0) {
+      assertLease();
       const plan = this.planner.planInitial({ goal, projectState, executionMemory, workingSet });
       repository.updateGoalDocuments(
         goal.id,
@@ -202,6 +276,7 @@ export class OrchestratorEngine {
       goal = repository.transitionGoal(goal.id, 'RUNNING', this.now());
     let lastVerification: VerificationResult | undefined;
     for (let step = 0; step < this.maxSteps; step += 1) {
+      assertLease();
       goal = repository.getGoal(goal.id);
       tasks = repository.listTasks(goal.id);
       const activeTask = tasks.find(
@@ -223,9 +298,16 @@ export class OrchestratorEngine {
           );
         }
         if (activeTask.status === 'REPAIRING') {
+          assertLease();
           repository.transitionTask(activeTask.id, 'RUNNING', this.now());
         }
-        const result = await this.executeTask(goal, activeTask, projectState, workingSet);
+        const result = await this.executeTask(
+          goal,
+          activeTask,
+          projectState,
+          workingSet,
+          assertLease,
+        );
         lastVerification = result.verification;
         lastVerificationTaskId = activeTask.id;
         if (result.next === 'HUMAN') {
@@ -284,6 +366,7 @@ export class OrchestratorEngine {
         .filter((task) => task.status === 'PENDING')
         .sort((left, right) => left.sequence - right.sequence)[0];
       if (pending !== undefined) {
+        assertLease();
         repository.updateGoalDocuments(goal.id, { currentTaskId: pending.id }, this.now());
         repository.transitionTask(pending.id, 'RUNNING', this.now());
         continue;
@@ -294,8 +377,10 @@ export class OrchestratorEngine {
       ) {
         return this.pauseForHuman(goal, tasks, 'No safe next Task is available.');
       }
+      assertLease();
       goal = repository.transitionGoal(goal.id, 'VERIFYING', this.now());
       const final = await this.verifyGoal({ goal, tasks, projectState, workingSet });
+      assertLease();
       lastVerification = final;
       const finalTask = tasks.at(-1);
       if (finalTask !== undefined) {
@@ -457,12 +542,14 @@ export class OrchestratorEngine {
     task: StoredTask,
     projectState: ProjectState,
     workingSet: WorkingSet,
+    assertLease: () => void,
   ): Promise<{
     readonly next: 'CONTINUE' | 'HUMAN';
     readonly verification: VerificationResult;
     readonly reason: string;
   }> {
     const repository = this.options.repository;
+    assertLease();
     const attempts = repository.listAttempts(task.id);
     const attemptNumber = attempts.length + 1;
     const attempt = repository.createAttempt({
@@ -494,6 +581,7 @@ export class OrchestratorEngine {
         workingSet,
       });
     } catch (error) {
+      assertLease();
       const reason = error instanceof Error ? error.message : String(error);
       repository.updateAttempt(
         attempt.id,
@@ -514,8 +602,10 @@ export class OrchestratorEngine {
         attempt.id,
         attemptNumber,
         failedWorkerVerification(reason),
+        assertLease,
       );
     }
+    assertLease();
     const attemptStatus =
       workerResult.status === 'completed'
         ? 'COMPLETED'
@@ -538,6 +628,7 @@ export class OrchestratorEngine {
         reason: 'Worker was interrupted; human review is required before continuing.',
       };
     }
+    assertLease();
     repository.transitionTask(task.id, 'VERIFYING', this.now());
     const verification = await this.verifyTask({
       workspace: goal.workspace,
@@ -545,7 +636,8 @@ export class OrchestratorEngine {
       projectState,
       workerResult,
     });
-    return this.handleVerification(goal, task, attempt.id, attemptNumber, verification);
+    assertLease();
+    return this.handleVerification(goal, task, attempt.id, attemptNumber, verification, assertLease);
   }
 
   private handleVerification(
@@ -554,12 +646,14 @@ export class OrchestratorEngine {
     attemptId: string,
     attemptNumber: number,
     verification: VerificationResult,
+    assertLease: () => void,
   ): {
     readonly next: 'CONTINUE' | 'HUMAN';
     readonly verification: VerificationResult;
     readonly reason: string;
   } {
     const repository = this.options.repository;
+    assertLease();
     repository.createVerificationRun({
       id: `${task.id}:verification:${attemptNumber}`,
       taskId: task.id,
@@ -626,6 +720,67 @@ export class OrchestratorEngine {
       timestamp: this.now(),
     });
     return { goal, tasks, status: goal.status };
+  }
+
+  private prepareHumanRecovery(goalId: string): void {
+    const repository = this.options.repository;
+    const goal = repository.getGoal(goalId);
+    const tasks = repository.listTasks(goalId);
+    const attempts = tasks.flatMap((task) => repository.listAttempts(task.id));
+    const decision = classifyGoalRecovery({
+      goal,
+      tasks,
+      attempts,
+      evidence: {
+        now: this.now(),
+        providerProcess: 'stopped',
+        sessionStatus: 'unknown',
+      },
+    });
+    if (decision.classification !== 'SAFE_TO_RESUME' && decision.classification !== 'RETRYABLE') {
+      throw new OrchestratorBusyError(
+        goalId,
+        `Goal ${goalId} cannot be resumed safely (${decision.reason}).`,
+      );
+    }
+    for (const task of tasks) {
+      if (task.status !== 'NEEDS_HUMAN') continue;
+      const taskAttempts = repository.listAttempts(task.id);
+      const activeAttempt = taskAttempts.find((attempt) =>
+        ['CREATED', 'RUNNING'].includes(attempt.status),
+      );
+      if (activeAttempt !== undefined) {
+        throw new OrchestratorBusyError(
+          goalId,
+          `Task ${task.id} still has an active Attempt; inspect it before resuming.`,
+        );
+      }
+      const latestAttempt = [...taskAttempts].sort(
+        (left, right) => right.attemptNumber - left.attemptNumber,
+      )[0];
+      if (
+        latestAttempt !== undefined &&
+        latestAttempt.attemptNumber >= task.maxAttempts &&
+        ['FAILED', 'INTERRUPTED', 'NEEDS_HUMAN'].includes(latestAttempt.status)
+      ) {
+        throw new OrchestratorBusyError(
+          goalId,
+          `Task ${task.id} reached its bounded Attempt limit and cannot be resumed automatically.`,
+        );
+      }
+      repository.transitionTask(task.id, 'RUNNING', this.now());
+    }
+    repository.appendEvent({
+      id: `${goalId}:resume:accepted:${randomUUID()}`,
+      goalId,
+      type: 'goal.recovery.resumed',
+      payload: {
+        classification: decision.classification,
+        reason: 'External Provider process was explicitly confirmed stopped.',
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
   }
 }
 
@@ -720,6 +875,13 @@ function combineVerificationStatuses(
 function validateMaxSteps(value: number): number {
   if (!Number.isInteger(value) || value < 1 || value > 1_000) {
     throw new RangeError('maxSteps must be an integer between 1 and 1000.');
+  }
+  return value;
+}
+
+function validateLeaseHeartbeat(value: number, ttlMs: number): number {
+  if (!Number.isInteger(value) || value < 1 || value >= ttlMs) {
+    throw new RangeError('leaseHeartbeatMs must be a positive integer smaller than leaseTtlMs.');
   }
   return value;
 }

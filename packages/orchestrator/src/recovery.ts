@@ -79,6 +79,8 @@ export function classifyGoalRecovery(input: RecoveryInput): RecoveryDecision {
   const activeTask = input.tasks.find((task) =>
     ['RUNNING', 'VERIFYING', 'REPAIRING'].includes(task.status),
   );
+  const resumableTask =
+    activeTask ?? input.tasks.find((task) => task.status === 'NEEDS_HUMAN');
   const activeAttempt = input.attempts.find((attempt) =>
     ['CREATED', 'RUNNING'].includes(attempt.status),
   );
@@ -124,6 +126,19 @@ export function classifyGoalRecovery(input: RecoveryInput): RecoveryDecision {
       reason: `Attempt ${latestFailedAttempt.attemptNumber} failed and another bounded attempt is available.`,
       taskId: activeTask.id,
       attemptId: latestFailedAttempt.id,
+    };
+  }
+  if (
+    input.evidence.providerProcess === 'stopped' &&
+    input.evidence.sessionStatus !== 'starting' &&
+    input.evidence.sessionStatus !== 'running' &&
+    (resumableTask !== undefined || input.goal.status === 'NEEDS_HUMAN')
+  ) {
+    return {
+      classification: 'SAFE_TO_RESUME',
+      reasonCode: 'state_complete_boundary',
+      reason: 'The external process is explicitly stopped and the next persisted boundary is resumable.',
+      ...(resumableTask === undefined ? {} : { taskId: resumableTask.id }),
     };
   }
   if (activeTask !== undefined || input.goal.status === 'PLANNING') {

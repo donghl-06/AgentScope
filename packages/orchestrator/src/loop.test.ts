@@ -227,6 +227,30 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('requires stopped-process confirmation before resuming NEEDS_HUMAN recovery', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-recovery-resume',
+        workspace: projectState.workspace,
+        prompt: 'Resume after a host restart.',
+        provider: 'claude',
+      });
+      repository.transitionGoal('goal-recovery-resume', 'PLANNING', 10);
+      repository.transitionGoal('goal-recovery-resume', 'NEEDS_HUMAN', 11);
+
+      await expect(engine.resumeGoal('goal-recovery-resume')).rejects.toThrow(
+        'requires confirmation that its external Provider process is stopped',
+      );
+      const result = await engine.resumeGoal('goal-recovery-resume', {
+        confirmExternalProcessStopped: true,
+      });
+      expect(result.status).toBe('COMPLETED');
+      expect(repository.listEvents('goal-recovery-resume').map((event) => event.type)).toContain(
+        'goal.recovery.resumed',
+      );
+    });
+  });
+
   it('does not resume an explicitly aborted Goal', async () => {
     await withEngine('PASS', async (engine, repository) => {
       repository.createGoal({
