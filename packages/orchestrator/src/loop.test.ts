@@ -109,6 +109,7 @@ async function withEngine(
   verify: ((attempt: number) => 'PASS' | 'FAIL' | 'UNCERTAIN') | 'PASS' | 'FAIL' | 'UNCERTAIN',
   test: (engine: OrchestratorEngine, repository: OrchestratorRepository) => Promise<void>,
   finalStatus: 'PASS' | 'FAIL' = 'PASS',
+  contextProvider: () => Promise<BootstrapContext> = async () => context,
 ): Promise<void> {
   const filename = path.join(os.tmpdir(), `agentscope-engine-${Date.now()}-${Math.random()}.db`);
   const { client } = openStorage({ filename, migrate: true });
@@ -129,7 +130,7 @@ async function withEngine(
       repository,
       planner: new SingleTaskPlanner(),
       worker,
-      contextProvider: async () => context,
+      contextProvider,
       verifyTask: async () => {
         attemptCount += 1;
         const status = typeof verify === 'function' ? verify(attemptCount) : verify;
@@ -260,6 +261,30 @@ describe('OrchestratorEngine', () => {
         );
       },
       'FAIL',
+    );
+  });
+
+  it('persists an intervention state when runtime setup fails', async () => {
+    await withEngine(
+      'PASS',
+      async (engine, repository) => {
+        await expect(
+          engine.createGoalAndRun({
+            id: 'goal-runtime-failure',
+            workspace: projectState.workspace,
+            prompt: 'The context provider will fail.',
+            provider: 'claude',
+          }),
+        ).rejects.toThrow('context unavailable');
+        expect(repository.getGoal('goal-runtime-failure').status).toBe('NEEDS_HUMAN');
+        expect(repository.listEvents('goal-runtime-failure').map((event) => event.type)).toContain(
+          'goal.run_failed',
+        );
+      },
+      'PASS',
+      async () => {
+        throw new Error('context unavailable');
+      },
     );
   });
 });

@@ -133,6 +133,7 @@ export class OrchestratorEngine {
   }
 
   async createGoalAndRun(input: CreateGoalInput): Promise<GoalRunResult> {
+    if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
     const goal = this.options.repository.createGoal(input);
     return this.runGoal(goal.id);
   }
@@ -142,6 +143,9 @@ export class OrchestratorEngine {
     this.activeGoalId = goalId;
     try {
       return await this.runGoalInternal(goalId);
+    } catch (error) {
+      this.markRunFailed(goalId, error);
+      throw error;
     } finally {
       this.activeGoalId = undefined;
     }
@@ -425,6 +429,27 @@ export class OrchestratorEngine {
       timestamp: this.now(),
     });
     return { goal: updatedGoal, tasks, status: updatedGoal.status };
+  }
+
+  private markRunFailed(goalId: string, error: unknown): void {
+    const repository = this.options.repository;
+    const reason = error instanceof Error ? error.message : String(error);
+    try {
+      const goal = repository.getGoal(goalId);
+      if (['CREATED', 'PLANNING', 'RUNNING', 'VERIFYING'].includes(goal.status)) {
+        repository.transitionGoal(goalId, 'NEEDS_HUMAN', this.now());
+      }
+      repository.appendEvent({
+        id: `${goalId}:run-failed:${this.now()}`,
+        goalId,
+        type: 'goal.run_failed',
+        payload: { reason },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+    } catch {
+      // Preserve the original failure. A secondary persistence failure must not mask it.
+    }
   }
 
   private async executeTask(

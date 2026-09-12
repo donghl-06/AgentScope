@@ -244,7 +244,7 @@ export function assertVerificationStatus(value: string): asserts value is Verifi
 }
 
 const GOAL_TRANSITIONS: Readonly<Record<GoalStatus, readonly GoalStatus[]>> = {
-  CREATED: ['PLANNING', 'PAUSED', 'ABORTED'],
+  CREATED: ['PLANNING', 'PAUSED', 'NEEDS_HUMAN', 'ABORTED'],
   PLANNING: ['RUNNING', 'PAUSED', 'NEEDS_HUMAN', 'ABORTED'],
   RUNNING: ['VERIFYING', 'PAUSED', 'NEEDS_HUMAN', 'FAILED', 'ABORTED'],
   VERIFYING: ['RUNNING', 'COMPLETED', 'FAILED', 'NEEDS_HUMAN', 'PAUSED', 'ABORTED'],
