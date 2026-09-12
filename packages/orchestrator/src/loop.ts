@@ -257,6 +257,7 @@ export class OrchestratorEngine {
       }
       const result = await this.runGoal(
         goalId,
+        undefined,
         goal.status === 'NEEDS_HUMAN' ? () => this.prepareHumanRecovery(goalId) : undefined,
       );
       this.completeCommand(reservation.command, asJsonObject(result));
@@ -495,7 +496,11 @@ export class OrchestratorEngine {
     }
   }
 
-  async runGoal(goalId: string, prepare?: () => void): Promise<GoalRunResult> {
+  async runGoal(
+    goalId: string,
+    prepare?: () => void,
+    prepareAfterBoundary?: () => void,
+  ): Promise<GoalRunResult> {
     if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
     let lease: GoalRunLeaseHandle;
     try {
@@ -527,7 +532,7 @@ export class OrchestratorEngine {
       assertLease();
       prepare?.();
       assertLease();
-      return await this.runGoalInternal(goalId, assertLease);
+      return await this.runGoalInternal(goalId, assertLease, prepareAfterBoundary);
     } catch (error) {
       this.failPendingControl(goalId, error);
       this.markRunFailed(goalId, error);
@@ -543,7 +548,11 @@ export class OrchestratorEngine {
     }
   }
 
-  private async runGoalInternal(goalId: string, assertLease: () => void): Promise<GoalRunResult> {
+  private async runGoalInternal(
+    goalId: string,
+    assertLease: () => void,
+    prepareAfterBoundary?: () => void,
+  ): Promise<GoalRunResult> {
     const repository = this.options.repository;
     assertLease();
     let goal = repository.getGoal(goalId);
@@ -579,6 +588,21 @@ export class OrchestratorEngine {
         instructionApplication.blockedReason,
       );
     }
+    const unresolvedInstruction = repository
+      .listInstructions(goal.id)
+      .find(
+        (instruction) =>
+          instruction.status === 'NEEDS_APPROVAL' || instruction.status === 'NEEDS_CLARIFICATION',
+      );
+    if (unresolvedInstruction !== undefined) {
+      return this.pauseForHuman(
+        repository.getGoal(goal.id),
+        repository.listTasks(goal.id),
+        `Instruction ${unresolvedInstruction.id} is ${unresolvedInstruction.status}; resolve it before continuing.`,
+      );
+    }
+    prepareAfterBoundary?.();
+    assertLease();
     if (tasks.length === 0) {
       assertLease();
       const plan = this.planner.planInitial({ goal, projectState, executionMemory, workingSet });

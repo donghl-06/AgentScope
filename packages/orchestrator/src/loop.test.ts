@@ -234,6 +234,74 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('applies pending instructions before Continue resumes a paused Goal', async () => {
+    let workerPrompt = '';
+    await withEngine(
+      'PASS',
+      async (engine, repository) => {
+        repository.createGoal({
+          id: 'goal-continue-instruction',
+          workspace: projectState.workspace,
+          prompt: 'Resume with boundary context.',
+          provider: 'claude',
+        });
+        engine.requestPause('goal-continue-instruction');
+        engine.submitInstruction(
+          'goal-continue-instruction',
+          { kind: 'priority', content: 'Keep deterministic checks first.' },
+          { idempotencyKey: 'continue-instruction-1' },
+        );
+        const result = await engine.resumeGoal('goal-continue-instruction');
+        expect(result.status).toBe('COMPLETED');
+        expect(workerPrompt).toContain('Keep deterministic checks first.');
+        expect(repository.listInstructions('goal-continue-instruction')).toMatchObject([
+          { status: 'APPLIED' },
+        ]);
+      },
+      'PASS',
+      async () => context,
+      undefined,
+      (request) => {
+        workerPrompt = request.prompt;
+      },
+    );
+  });
+
+  it('does not resume a NEEDS_HUMAN Goal while an instruction still needs approval', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-continue-approval',
+        workspace: projectState.workspace,
+        prompt: 'Require approval before continuing.',
+        provider: 'claude',
+      });
+      const task = repository.createTask({
+        id: 'goal-continue-approval:task:1',
+        goalId: 'goal-continue-approval',
+        title: 'Human review task',
+        objective: 'Wait for approval.',
+        acceptanceCriteria: ['Approval is recorded.'],
+        sequence: 1,
+      });
+      repository.transitionTask(task.id, 'NEEDS_HUMAN');
+      repository.transitionGoal('goal-continue-approval', 'NEEDS_HUMAN');
+      engine.submitInstruction(
+        'goal-continue-approval',
+        { kind: 'general', content: 'Deploy this change to production.' },
+        { idempotencyKey: 'continue-approval-1' },
+      );
+      const result = await engine.resumeGoal('goal-continue-approval', {
+        confirmExternalProcessStopped: true,
+      });
+      expect(result.status).toBe('NEEDS_HUMAN');
+      expect(repository.getTask(task.id).status).toBe('NEEDS_HUMAN');
+      expect(repository.listAttempts(task.id)).toHaveLength(0);
+      expect(repository.listInstructions('goal-continue-approval')).toMatchObject([
+        { status: 'NEEDS_APPROVAL' },
+      ]);
+    });
+  });
+
   it('replays idempotent control commands without repeating their side effects', async () => {
     await withEngine('PASS', async (engine, repository) => {
       repository.createGoal({
