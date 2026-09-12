@@ -14,9 +14,19 @@ export interface LiveNotification {
     | 'turn.updated'
     | 'turn.finished'
     | 'event.appended'
-    | 'project.updated';
+    | 'project.updated'
+    | 'goal.created'
+    | 'goal.updated'
+    | 'task.created'
+    | 'task.updated'
+    | 'attempt.created'
+    | 'attempt.updated'
+    | 'verification.created';
   readonly sessionId?: string;
   readonly projectId?: string;
+  readonly goalId?: string;
+  readonly taskId?: string;
+  readonly attemptId?: string;
   readonly seq?: number;
   readonly cursor?: string;
   readonly payload?: Record<string, unknown>;

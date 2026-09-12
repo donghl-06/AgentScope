@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { openStorage, StorageRepository, type OpenStorageResult } from '@agentscope/storage';
+import {
+  openStorage,
+  OrchestratorRepository,
+  StorageRepository,
+  type OpenStorageResult,
+} from '@agentscope/storage';
 
 import { createServer, type ServerOptions } from './index.js';
 
@@ -20,7 +25,9 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   ensureStorageDirectory(options.filename);
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
-  const app = createServer({ ...options, repository });
+  const orchestratorRepository =
+    options.orchestratorRepository ?? new OrchestratorRepository(storage.client);
+  const app = createServer({ ...options, repository, orchestratorRepository });
   let closed = false;
   try {
     const address = await app.listen({ host: options.host, port: options.port });

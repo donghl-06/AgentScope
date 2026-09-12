@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import websocket from '@fastify/websocket';
 import { Type } from '@sinclair/typebox';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 import type { SessionStatus } from '@agentscope/protocol';
 import { reduceSessionState } from '@agentscope/core';
+import type { OrchestratorEngine } from '@agentscope/orchestrator';
 import {
   type ProjectionVerification,
   type RepositoryNotification,
@@ -14,6 +17,8 @@ import {
   type StoredTurn,
   type TurnListFilter,
   type StorageRepository,
+  type OrchestratorRepository,
+  type OrchestratorRepositoryNotification,
 } from '@agentscope/storage';
 
 import { LiveHub } from './live-hub.js';
@@ -101,6 +106,21 @@ const DiagnosticsSchema = Type.Object({
     }),
   }),
 });
+const GoalListQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+const GoalParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
+const GoalEventQuerySchema = Type.Object({
+  after: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const GoalCreateSchema = Type.Object({
+  id: Type.Optional(Type.String({ minLength: 1 })),
+  workspace: Type.String({ minLength: 1 }),
+  prompt: Type.String({ minLength: 1 }),
+  provider: Type.String({ minLength: 1 }),
+  constraints: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -112,6 +132,8 @@ export interface ServerOptions {
   readonly maxWebSocketBufferedBytes?: number;
   readonly maxWebSocketPayloadBytes?: number;
   readonly onProjectionMismatch?: (diagnostic: ProjectionVerification) => void;
+  readonly orchestratorRepository?: OrchestratorRepository;
+  readonly orchestratorEngine?: OrchestratorEngine;
 }
 
 export function createServer(options: ServerOptions): FastifyInstance {
@@ -200,6 +222,9 @@ export function createServer(options: ServerOptions): FastifyInstance {
       payload: { status: notification.session.status },
     });
   });
+  const unsubscribeOrchestrator = options.orchestratorRepository?.subscribe((notification) => {
+    publishOrchestratorNotification(liveHub, notification);
+  });
   let externalPollInFlight = false;
   const pollExternalChanges = () => {
     if (externalPollInFlight) return;
@@ -284,6 +309,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   externalPollTimer?.unref?.();
   app.addHook('onClose', () => {
     unsubscribeRepository();
+    unsubscribeOrchestrator?.();
     stopHeartbeat();
     if (externalPollTimer !== undefined) clearInterval(externalPollTimer);
     liveHub.close();
@@ -329,6 +355,167 @@ export function createServer(options: ServerOptions): FastifyInstance {
     websocket: liveHub.diagnostics(),
     storage: options.repository.diagnostics(),
   }));
+
+  app.get(
+    '/api/goals',
+    {
+      schema: {
+        querystring: GoalListQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      const query = request.query as Record<string, unknown>;
+      try {
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.orchestratorRepository.listGoals(limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: { 200: Type.Unknown(), 404: ErrorResponseSchema, 503: ErrorResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send({
+          goal: options.orchestratorRepository.getGoal(id),
+          tasks: options.orchestratorRepository.listTasks(id),
+          events: options.orchestratorRepository.listEvents(id),
+        });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/tasks',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.orchestratorRepository.listTasks(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/events',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: GoalEventQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.orchestratorRepository.listEvents(id, after, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals',
+    {
+      schema: {
+        body: GoalCreateSchema,
+        response: { 202: Type.Unknown(), 400: ErrorResponseSchema, 503: ErrorResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const body = request.body as {
+          readonly id?: string;
+          readonly workspace: string;
+          readonly prompt: string;
+          readonly provider: string;
+          readonly constraints?: Record<string, unknown>;
+        };
+        const id = body.id ?? randomUUID();
+        void options.orchestratorEngine
+          .createGoalAndRun({
+            id,
+            workspace: body.workspace,
+            prompt: body.prompt,
+            provider: body.provider,
+            ...(body.constraints === undefined ? {} : { constraints: body.constraints }),
+          })
+          .catch(() => undefined);
+        return reply
+          .code(202)
+          .send({ goalId: id, goal: options.orchestratorRepository.getGoal(id) });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
 
   app.get(
     '/api/sessions',
@@ -779,6 +966,57 @@ interface ObservedTurn {
   readonly sessionId: string;
   readonly updatedAt: number;
   readonly status: StoredTurn['status'];
+}
+
+function publishOrchestratorNotification(
+  liveHub: LiveHub,
+  notification: OrchestratorRepositoryNotification,
+): void {
+  if (notification.type === 'goal.created' || notification.type === 'goal.updated') {
+    liveHub.publish({
+      type: notification.type,
+      goalId: notification.goal.id,
+      payload: { status: notification.goal.status },
+    });
+    return;
+  }
+  if (notification.type === 'task.created' || notification.type === 'task.updated') {
+    liveHub.publish({
+      type: notification.type,
+      goalId: notification.task.goalId,
+      taskId: notification.task.id,
+      payload: { status: notification.task.status, sequence: notification.task.sequence },
+    });
+    return;
+  }
+  if (notification.type === 'attempt.created' || notification.type === 'attempt.updated') {
+    liveHub.publish({
+      type: notification.type,
+      attemptId: notification.attempt.id,
+      payload: { status: notification.attempt.status, taskId: notification.attempt.taskId },
+    });
+    return;
+  }
+  if (notification.type === 'verification.created') {
+    liveHub.publish({
+      type: notification.type,
+      taskId: notification.verification.taskId,
+      payload: { status: notification.verification.status },
+    });
+    return;
+  }
+  if (notification.type !== 'event.appended') return;
+  liveHub.publish({
+    type: notification.type,
+    goalId: notification.event.goalId,
+    ...(notification.event.taskId === undefined ? {} : { taskId: notification.event.taskId }),
+    ...(notification.event.attemptId === undefined
+      ? {}
+      : { attemptId: notification.event.attemptId }),
+    seq: notification.event.seq,
+    cursor: String(notification.event.seq),
+    payload: { eventType: notification.event.type },
+  });
 }
 
 function publishTurnNotification(

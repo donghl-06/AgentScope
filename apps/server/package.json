@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@agentscope/core": "workspace:*",
+    "@agentscope/orchestrator": "workspace:*",
     "@agentscope/protocol": "workspace:*",
     "@agentscope/storage": "workspace:*",
     "@fastify/websocket": "11.3.0",

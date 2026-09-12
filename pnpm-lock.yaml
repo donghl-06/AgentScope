@@ -111,6 +111,9 @@ importers:
       '@agentscope/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentscope/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@agentscope/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

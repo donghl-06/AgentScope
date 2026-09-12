@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createInitialSessionState, createInitialTurnState } from '@agentscope/protocol';
-import { openStorage, StorageRepository } from '@agentscope/storage';
+import { openStorage, OrchestratorRepository, StorageRepository } from '@agentscope/storage';
 
 import { createServer } from './index.js';
 import { LiveHub, type LiveSocket } from './live-hub.js';
@@ -26,6 +26,65 @@ afterEach(async () => {
 });
 
 describe('server HTTP API', () => {
+  it('serves orchestrator goals, tasks, and event history', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'goal-api-1',
+      workspace: 'D:/workspace',
+      prompt: 'Inspect the workspace',
+      provider: 'mock',
+      now: 1_700_000_000_000,
+    });
+    const task = orchestratorRepository.createTask({
+      id: 'goal-api-1:task:1',
+      goalId: goal.id,
+      title: 'Inspect files',
+      objective: 'Read the project metadata.',
+      acceptanceCriteria: ['Metadata is captured.'],
+      sequence: 1,
+      now: 1_700_000_000_001,
+    });
+    orchestratorRepository.appendEvent({
+      id: 'goal-api-1:event:1',
+      goalId: goal.id,
+      taskId: task.id,
+      type: 'task.created',
+      payload: { title: task.title },
+      confidence: 1,
+      timestamp: 1_700_000_000_002,
+    });
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect((await app.inject('/api/goals')).json()).toMatchObject([
+      { id: goal.id, status: 'CREATED', provider: 'mock' },
+    ]);
+    expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
+      goal: { id: goal.id },
+      tasks: [{ id: task.id, title: 'Inspect files' }],
+      events: [{ id: 'goal-api-1:event:1', taskId: task.id }],
+    });
+    expect((await app.inject(`/api/goals/${goal.id}/tasks`)).json()).toMatchObject([
+      { id: task.id, sequence: 1 },
+    ]);
+    expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
+      expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
+    ]);
+    expect((await app.inject('/api/goals/missing')).statusCode).toBe(404);
+    expect((await app.inject('/api/goals?limit=0')).statusCode).toBe(400);
+  });
+
   it('serves health, sessions, events, and project overview', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
