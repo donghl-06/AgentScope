@@ -195,6 +195,11 @@ const TaskInsertSchema = Type.Object({
   parentTaskId: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   reason: Type.String({ minLength: 1, maxLength: 4_000 }),
 });
+const TaskSkipSchema = Type.Object({
+  idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  reason: Type.String({ minLength: 1, maxLength: 4_000 }),
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -1116,6 +1121,59 @@ export function createServer(options: ServerOptions): FastifyInstance {
           ...(body?.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
         });
       } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/tasks/:taskId/skip',
+    {
+      schema: {
+        params: GoalTaskParamsSchema,
+        body: TaskSkipSchema,
+        response: {
+          200: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id, taskId } = request.params as { id: string; taskId: string };
+        const body = request.body as {
+          readonly idempotencyKey?: string;
+          readonly expectedRevision?: number;
+          readonly reason: string;
+        };
+        const result = options.orchestratorEngine.skipFutureTask(id, taskId, {
+          reason: body.reason,
+          ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+          ...(body.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: body.expectedRevision }),
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
         return sendError(reply, error);
       }
     },

@@ -895,6 +895,76 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('skips a future tentative Task with an auditable reason', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'skip-roadmap-goal',
+        workspace: 'D:/workspace/skip-roadmap',
+        prompt: 'Skip an optional task safely.',
+        provider: 'mock',
+        now: 730,
+      });
+      const task = repository.createTask({
+        id: 'skip-roadmap-task',
+        goalId: 'skip-roadmap-goal',
+        title: 'Optional task',
+        objective: 'This optional check can be deferred.',
+        acceptanceCriteria: ['The task is optional.'],
+        sequence: 1,
+        tentative: true,
+        now: 731,
+      });
+      repository.createRoadmapRevision({
+        id: 'skip-roadmap-revision-1',
+        goalId: 'skip-roadmap-goal',
+        source: 'planner',
+        reason: 'Initial roadmap.',
+        roadmap: [
+          { id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: true,
+            snapshot: { title: task.title },
+          },
+        ],
+        now: 732,
+      });
+
+      const skipped = repository.skipRoadmapTask({
+        id: 'skip-roadmap-revision-2',
+        goalId: 'skip-roadmap-goal',
+        taskId: task.id,
+        reason: 'The optional check is not needed for this run.',
+        expectedActiveRevision: 1,
+        now: 733,
+      });
+      expect(skipped.task).toMatchObject({ status: 'SKIPPED', endedAt: 733 });
+      expect(skipped.goal.roadmap).toEqual([
+        { id: task.id, title: task.title, objective: task.objective, status: 'SKIPPED' },
+      ]);
+      expect(skipped.revision.items).toEqual([
+        expect.objectContaining({ taskId: task.id, operation: 'skipped', sequence: 1 }),
+      ]);
+      expect(skipped.event).toMatchObject({
+        type: 'goal.roadmap.task_skipped',
+        payload: expect.objectContaining({ requirementImpact: 'requires-final-verification' }),
+      });
+      expect(() =>
+        repository.skipRoadmapTask({
+          id: 'skip-roadmap-revision-3',
+          goalId: 'skip-roadmap-goal',
+          taskId: task.id,
+          reason: 'Skip it twice.',
+          now: 734,
+        }),
+      ).toThrow('not a future Task');
+    });
+  });
+
   it('lists Goal history with stable cursor pagination and filters', () => {
     withRepository((repository) => {
       repository.createGoal({

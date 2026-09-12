@@ -387,6 +387,16 @@ export interface InsertRoadmapTaskInput {
   readonly now?: number;
 }
 
+export interface SkipRoadmapTaskInput {
+  readonly id: string;
+  readonly goalId: string;
+  readonly taskId: string;
+  readonly reason: string;
+  readonly source?: string;
+  readonly expectedActiveRevision?: number;
+  readonly now?: number;
+}
+
 export interface CreateMemorySnapshotInput {
   readonly id: string;
   readonly goalId: string;
@@ -1413,6 +1423,107 @@ export class OrchestratorRepository {
     this.notify({ type: 'task.created', task: updatedTask });
     for (const taskId of shiftedTaskIds)
       this.notify({ type: 'task.updated', task: this.getTask(taskId) });
+    this.notify({ type: 'roadmap.revised', revision: storedRevision });
+    this.notify({ type: 'goal.updated', goal: updatedGoal });
+    this.notify({ type: 'event.appended', event });
+    return { goal: updatedGoal, task: updatedTask, revision: storedRevision, event };
+  }
+
+  skipRoadmapTask(input: SkipRoadmapTaskInput): RoadmapTaskMutationResult {
+    const goal = this.getGoal(input.goalId);
+    if (['COMPLETED', 'FAILED', 'ABORTED'].includes(goal.status)) {
+      throw new OrchestratorStateError(
+        `A roadmap Task cannot be skipped after Goal ${goal.id} is ${goal.status}.`,
+      );
+    }
+    const task = this.getTask(input.taskId);
+    if (task.goalId !== goal.id) {
+      throw new StorageError(`Task ${input.taskId} belongs to another Goal.`, 'invalid_request');
+    }
+    if (task.status !== 'PENDING' || task.startedAt !== undefined) {
+      throw new OrchestratorStateError(
+        `Task ${task.id} is not a future Task and cannot be skipped while ${task.status}.`,
+      );
+    }
+    const roadmapItem = goal.roadmap.find((item) => item.id === task.id);
+    if (roadmapItem?.status === 'LOCKED' || task.tentative !== true) {
+      throw new OrchestratorStateError(
+        `Task ${task.id} is part of the locked execution boundary and cannot be skipped.`,
+      );
+    }
+    const expectedActiveRevision = input.expectedActiveRevision ?? goal.activeRevision;
+    assertNonNegativeInteger(expectedActiveRevision, 'Expected active revision');
+    if (expectedActiveRevision !== goal.activeRevision) {
+      throw new StorageConflictError(
+        `Task skip revision conflict: expected ${expectedActiveRevision}, found ${goal.activeRevision}.`,
+        'revision_conflict',
+      );
+    }
+    assertMutationReason(input.reason);
+    const now = input.now ?? Date.now();
+    const nextTask: StoredTask = {
+      ...task,
+      status: 'SKIPPED',
+      endedAt: now,
+      updatedAt: now,
+    };
+    const existingTasks = this.listTasks(goal.id);
+    const nextTasks = existingTasks.map((candidate) =>
+      candidate.id === task.id ? nextTask : candidate,
+    );
+    const nextRoadmap = roadmapFromStoredTasks(goal.roadmap, nextTasks);
+    const revision = goal.activeRevision + 1;
+    const revisionInput: CreateRoadmapRevisionInput = {
+      id: input.id,
+      goalId: goal.id,
+      parentRevision: goal.activeRevision,
+      source: input.source ?? 'user',
+      reason: input.reason,
+      items: roadmapRevisionItemsFromStoredTasks(
+        goal.roadmap,
+        nextTasks,
+        existingTasks,
+        (candidate) => (candidate.id === task.id ? 'skipped' : undefined),
+      ),
+      roadmap: nextRoadmap,
+      expectedActiveRevision: goal.activeRevision,
+      now,
+    };
+    const eventId = `${input.id}:task-skipped`;
+    const eventInput: AppendOrchestratorEventInput = {
+      id: eventId,
+      goalId: goal.id,
+      taskId: task.id,
+      type: 'goal.roadmap.task_skipped',
+      payload: {
+        taskId: task.id,
+        revision,
+        reason: input.reason,
+        requirementImpact: 'requires-final-verification',
+      },
+      confidence: 1,
+      timestamp: now,
+    };
+    const run = this.client.transaction(() => {
+      this.client
+        .prepare('UPDATE tasks SET status = ?, ended_at = ?, updated_at = ? WHERE id = ?')
+        .run('SKIPPED', now, now, task.id);
+      this.insertRoadmapRevisionRows(
+        revisionInput,
+        goal,
+        revision,
+        goal.activeRevision,
+        nextRoadmap,
+        now,
+      );
+      this.insertEvent(eventInput, now);
+    });
+    run();
+    const updatedTask = this.getTask(task.id);
+    const storedRevision = this.getRoadmapRevision(input.id);
+    const updatedGoal = this.getGoal(goal.id);
+    const event = this.getEvent(eventId);
+    this.notify({ type: 'task.updated', task: updatedTask });
     this.notify({ type: 'roadmap.revised', revision: storedRevision });
     this.notify({ type: 'goal.updated', goal: updatedGoal });
     this.notify({ type: 'event.appended', event });
@@ -2908,6 +3019,7 @@ function roadmapRevisionItemsFromStoredTasks(
   previous: readonly RoadmapItem[],
   tasks: readonly StoredTask[],
   previousTasks: readonly StoredTask[] = tasks,
+  operationOverride?: (task: StoredTask) => string | undefined,
 ): readonly RoadmapRevisionItemInput[] {
   const previousById = new Map(previous.map((item) => [item.id, item]));
   const previousTasksById = new Map(previousTasks.map((task) => [task.id, task]));
@@ -2936,7 +3048,8 @@ function roadmapRevisionItemsFromStoredTasks(
         taskId: task.id,
         sequence: task.sequence,
         operation:
-          previousItem === undefined
+          operationOverride?.(task) ??
+          (previousItem === undefined
             ? 'added'
             : previousTask !== undefined &&
                 previousTask.sequence === task.sequence &&
@@ -2945,7 +3058,7 @@ function roadmapRevisionItemsFromStoredTasks(
                 previousTask.tentative === task.tentative &&
                 JSON.stringify(previousItem) === JSON.stringify(nextItem)
               ? 'retained'
-              : 'updated',
+              : 'updated'),
         tentative: task.tentative,
         snapshot,
       };

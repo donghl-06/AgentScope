@@ -13,6 +13,7 @@ import {
   type RoadmapRevisionItemInput,
   type RoadmapTaskMutationResult,
   type InsertRoadmapTaskInput,
+  type SkipRoadmapTaskInput,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
@@ -98,6 +99,10 @@ export interface InsertFutureTaskOptions extends ControlCommandOptions {
   readonly sequence?: number;
   readonly tentative?: boolean;
   readonly parentTaskId?: string;
+  readonly reason: string;
+}
+
+export interface SkipFutureTaskOptions extends ControlCommandOptions {
   readonly reason: string;
 }
 
@@ -452,6 +457,34 @@ export class OrchestratorEngine {
         now: this.now(),
       };
       const result = this.options.repository.insertRoadmapTask(input);
+      this.completeCommand(reservation.command, asJsonObject(result));
+      return result;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
+  }
+
+  skipFutureTask(
+    goalId: string,
+    taskId: string,
+    options: SkipFutureTaskOptions,
+  ): RoadmapTaskMutationResult {
+    const payload: JsonObject = { taskId, reason: options.reason };
+    const reservation = this.reserveControlCommand(goalId, 'skip-task', payload, options);
+    if (reservation.replayed) return this.replayTaskMutation(reservation.command);
+    try {
+      const input: SkipRoadmapTaskInput = {
+        id: `${goalId}:roadmap:${randomUUID()}`,
+        goalId,
+        taskId,
+        reason: options.reason,
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedActiveRevision: options.expectedRevision }),
+        now: this.now(),
+      };
+      const result = this.options.repository.skipRoadmapTask(input);
       this.completeCommand(reservation.command, asJsonObject(result));
       return result;
     } catch (error) {
@@ -919,7 +952,15 @@ export class OrchestratorEngine {
       }
       assertLease();
       goal = repository.transitionGoal(goal.id, 'VERIFYING', this.now());
-      const final = await this.verifyGoal({ goal, tasks, projectState, workingSet });
+      let final = await this.verifyGoal({ goal, tasks, projectState, workingSet });
+      if (final.status === 'PASS' && tasks.some((task) => task.status === 'SKIPPED')) {
+        final = {
+          ...final,
+          status: 'UNCERTAIN',
+          reason:
+            'At least one Task was skipped; a human must confirm that the original Goal requirement remains covered.',
+        };
+      }
       assertLease();
       lastVerification = final;
       const finalTask = tasks.at(-1);

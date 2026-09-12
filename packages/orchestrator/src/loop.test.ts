@@ -282,6 +282,56 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('keeps a Goal in NEEDS_HUMAN when a skipped Task leaves final coverage uncertain', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'engine-skip-guard',
+        workspace: projectState.workspace,
+        prompt: 'Require explicit review after a skip.',
+        provider: 'claude',
+        now: 410,
+      });
+      const task = repository.createTask({
+        id: 'engine-skip-guard:task:1',
+        goalId: 'engine-skip-guard',
+        title: 'Optional task',
+        objective: 'Optional coverage.',
+        acceptanceCriteria: ['The optional task is reviewed.'],
+        sequence: 1,
+        tentative: true,
+        now: 411,
+      });
+      repository.createRoadmapRevision({
+        id: 'engine-skip-guard:roadmap:1',
+        goalId: 'engine-skip-guard',
+        source: 'planner',
+        reason: 'Initial roadmap.',
+        roadmap: [
+          { id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: true,
+            snapshot: { title: task.title },
+          },
+        ],
+        now: 412,
+      });
+      const skipped = engine.skipFutureTask('engine-skip-guard', task.id, {
+        reason: 'Defer optional coverage for human review.',
+        expectedRevision: 1,
+        idempotencyKey: 'engine-skip-guard-skip',
+      });
+      expect(skipped.task.status).toBe('SKIPPED');
+      const result = await engine.runGoal('engine-skip-guard');
+      expect(result.status).toBe('NEEDS_HUMAN');
+      expect(result.lastVerification?.status).toBe('UNCERTAIN');
+    });
+  });
+
   it('pauses at NEEDS_HUMAN when verification is uncertain', async () => {
     await withEngine('UNCERTAIN', async (engine, repository) => {
       const result = await engine.createGoalAndRun({
