@@ -4,6 +4,7 @@ import type {
   Page,
   SessionListFilter,
   StoredObserverEvidence,
+  StoredGoal,
   StoredSession,
   StoredTurn,
   TurnListFilter,
@@ -28,11 +29,21 @@ export interface DashboardLiveNotification {
     | 'turn.finished'
     | 'event.appended'
     | 'project.updated'
+    | 'goal.created'
+    | 'goal.updated'
+    | 'task.created'
+    | 'task.updated'
+    | 'attempt.created'
+    | 'attempt.updated'
+    | 'verification.created'
     | 'ping'
     | 'pong'
     | 'error';
   readonly sessionId?: string;
   readonly projectId?: string;
+  readonly goalId?: string;
+  readonly taskId?: string;
+  readonly attemptId?: string;
   readonly seq?: number;
   readonly cursor?: string;
   readonly payload?: Record<string, unknown>;
@@ -69,6 +80,11 @@ export class DashboardApi {
     if (filter.limit !== undefined) query.set('limit', String(filter.limit));
     if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
     return this.get<Page<StoredSession>>('/api/sessions', query);
+  }
+
+  listGoals(limit = 100): Promise<readonly StoredGoal[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return this.get<readonly StoredGoal[]>('/api/goals', query);
   }
 
   getSession(sessionId: string): Promise<StoredSession> {

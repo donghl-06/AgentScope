@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  StoredGoal,
   StoredEvent,
   StoredObserverEvidence,
   StoredSession,
@@ -7,7 +8,7 @@ import type {
 } from '@agentscope/storage';
 import type { ProviderTelemetry } from '@agentscope/protocol';
 
-import { DashboardApi, type DashboardLiveNotification } from './api.js';
+import { DashboardApi, DashboardApiError, type DashboardLiveNotification } from './api.js';
 import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
 import { loadAllPages } from './pagination.js';
@@ -19,6 +20,8 @@ const NOTIFIABLE_SESSION_STATUSES = new Set(['blocked', 'completed', 'failed', '
 
 export function App() {
   const [sessions, setSessions] = useState<readonly StoredSession[]>([]);
+  const [goals, setGoals] = useState<readonly StoredGoal[]>([]);
+  const [goalsLoading, setGoalsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>();
   const [selected, setSelected] = useState<StoredSession>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
@@ -71,6 +74,20 @@ export function App() {
       setLoading(false);
     }
   }, [showHidden]);
+
+  const refreshGoals = useCallback(async () => {
+    try {
+      setGoals(await api.listGoals());
+    } catch (cause) {
+      // Keep the Monitor V0 dashboard usable against an older server that has
+      // not enabled the Orchestrator API yet.
+      if (!(cause instanceof DashboardApiError && cause.status === 503)) {
+        setError(cause instanceof Error ? cause.message : 'Unable to load orchestrator goals.');
+      }
+    } finally {
+      setGoalsLoading(false);
+    }
+  }, []);
 
   const changeSessionVisibility = useCallback(
     async (session: StoredSession, hidden: boolean) => {
@@ -254,6 +271,7 @@ export function App() {
           if (message.type === 'session.created' || message.type === 'session.updated') {
             void refreshSessions();
           }
+          if (isOrchestratorNotification(message)) void refreshGoals();
           if (message.type === 'session.deleted' && message.sessionId !== undefined) {
             const deletedId = message.sessionId;
             setSessions((current) => current.filter((session) => session.id !== deletedId));
@@ -316,7 +334,7 @@ export function App() {
       }
     };
 
-    void refreshSessions().finally(() => {
+    void Promise.allSettled([refreshSessions(), refreshGoals()]).finally(() => {
       if (!stopped) connect();
     });
     return () => {
@@ -324,7 +342,7 @@ export function App() {
       if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [notifyLiveStatus, refreshDetail, refreshSessions]);
+  }, [notifyLiveStatus, refreshDetail, refreshGoals, refreshSessions]);
 
   useEffect(() => {
     if (selectedId !== undefined) void refreshDetail(selectedId);
@@ -376,6 +394,8 @@ export function App() {
         <Stat label="Completed" value={counts.completed} tone="green" />
         <Stat label="Failed" value={counts.failed} tone="red" />
       </section>
+
+      <GoalPanel goals={goals} loading={goalsLoading} onRefresh={() => void refreshGoals()} />
 
       <section className="content-grid">
         <div className="panel sessions-panel">
@@ -466,6 +486,51 @@ export function App() {
   );
 }
 
+function GoalPanel({
+  goals,
+  loading,
+  onRefresh,
+}: {
+  goals: readonly StoredGoal[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="panel goals-panel" aria-label="Orchestrator goals">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">ORCHESTRATOR</p>
+          <h2>Goals and evidence-gated work</h2>
+        </div>
+        <button className="quiet-button quiet-button-small" type="button" onClick={onRefresh}>
+          Refresh
+        </button>
+      </div>
+      {loading ? (
+        <p className="empty-state">Loading goals…</p>
+      ) : goals.length === 0 ? (
+        <p className="empty-state">No orchestrator goals recorded yet.</p>
+      ) : (
+        <div className="goal-list">
+          {goals.map((goal) => (
+            <article className="goal-row" key={goal.id}>
+              <div className="goal-row-copy">
+                <strong>{goal.prompt}</strong>
+                <small>
+                  {goal.provider} · {goal.workspace} · updated {formatTimestamp(goal.updatedAt)}
+                </small>
+              </div>
+              <span className={`goal-status goal-status-${goal.status.toLowerCase()}`}>
+                {statusLabel(goal.status)}
+              </span>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NotificationControl({
   state,
   onEnable,
@@ -506,6 +571,19 @@ function NotificationControl({
     >
       {state === 'requesting' ? 'Requesting…' : 'Enable notifications'}
     </button>
+  );
+}
+
+function isOrchestratorNotification(message: DashboardLiveNotification): boolean {
+  return (
+    message.type === 'goal.created' ||
+    message.type === 'goal.updated' ||
+    message.type === 'task.created' ||
+    message.type === 'task.updated' ||
+    message.type === 'attempt.created' ||
+    message.type === 'attempt.updated' ||
+    message.type === 'verification.created' ||
+    (message.type === 'event.appended' && message.goalId !== undefined)
   );
 }
 

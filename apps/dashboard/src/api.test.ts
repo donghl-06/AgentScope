@@ -3,6 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { DashboardApi, DashboardApiError } from './api.js';
 
 describe('DashboardApi', () => {
+  it('loads orchestrator goals', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 'goal-1', status: 'RUNNING' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listGoals(20)).resolves.toMatchObject([{ id: 'goal-1', status: 'RUNNING' }]);
+    expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/goals?limit=20');
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {
