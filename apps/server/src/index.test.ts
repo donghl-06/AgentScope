@@ -83,8 +83,30 @@ describe('server HTTP API', () => {
     expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
       expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
     ]);
+    const roadmapRevision = orchestratorRepository.createRoadmapRevision({
+      id: 'goal-api-1:revision:1',
+      goalId: goal.id,
+      source: 'planner',
+      reason: 'Capture the initial roadmap.',
+      roadmap: [{ id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' }],
+      items: [
+        {
+          taskId: task.id,
+          sequence: task.sequence,
+          operation: 'added',
+          tentative: true,
+          snapshot: { title: task.title, objective: task.objective },
+        },
+      ],
+    });
+    expect((await app.inject(`/api/goals/${goal.id}/roadmap/revisions?limit=1`)).json()).toEqual([
+      expect.objectContaining({ id: roadmapRevision.id, revision: roadmapRevision.revision }),
+    ]);
     expect((await app.inject('/api/goals/missing')).statusCode).toBe(404);
     expect((await app.inject('/api/goals?limit=0')).statusCode).toBe(400);
+    expect((await app.inject(`/api/goals/${goal.id}/roadmap/revisions?limit=0`)).statusCode).toBe(
+      400,
+    );
   });
 
   it('forwards future Task Contract edits through the orchestrator engine', async () => {

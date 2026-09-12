@@ -126,6 +126,9 @@ const GoalEventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
+const GoalRoadmapRevisionQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
 const GoalCreateSchema = Type.Object({
   id: Type.Optional(Type.String({ minLength: 1 })),
   idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
@@ -725,6 +728,37 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const after = query.after === undefined ? 0 : parseNonNegativeInteger(query.after);
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.orchestratorRepository.listEvents(id, after, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/roadmap/revisions',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: GoalRoadmapRevisionQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.orchestratorRepository.listRoadmapRevisions(id, limit));
       } catch (error) {
         return sendError(reply, error);
       }
