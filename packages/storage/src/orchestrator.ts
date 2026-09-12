@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
 
-import { StorageCorruptPayloadError, StorageError, StorageNotFoundError } from './repository.js';
+import {
+  StorageConflictError,
+  StorageCorruptPayloadError,
+  StorageError,
+  StorageNotFoundError,
+} from './repository.js';
 
 export const GOAL_STATUSES = [
   'CREATED',
@@ -336,9 +341,18 @@ export class OrchestratorRepository {
     const existing = this.getGoal(id);
     assertGoalTransition(existing.status, status);
     const completedAt = status === 'COMPLETED' ? now : existing.completedAt;
-    this.client
-      .prepare('UPDATE goals SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?')
-      .run(status, now, completedAt ?? null, id);
+    try {
+      this.client
+        .prepare('UPDATE goals SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?')
+        .run(status, now, completedAt ?? null, id);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('goals_single_active_idx')) {
+        throw new StorageConflictError(
+          'Another Goal is already active. Complete, pause, or abort it before starting a new Goal.',
+        );
+      }
+      throw error;
+    }
     const goal = this.getGoal(id);
     this.notify({ type: 'goal.updated', goal });
     return goal;

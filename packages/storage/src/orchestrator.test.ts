@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { openStorage } from './database.js';
+import { StorageConflictError } from './repository.js';
 import {
   OrchestratorRepository,
   OrchestratorStateError,
@@ -164,5 +165,28 @@ describe('OrchestratorRepository', () => {
         OrchestratorStateError,
       );
     });
+  });
+
+  it('enforces one active Goal across repository instances', () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const first = new OrchestratorRepository(client);
+    const second = new OrchestratorRepository(client);
+    first.createGoal({
+      id: 'active-one',
+      workspace: 'D:/workspace',
+      prompt: 'First active goal',
+      provider: 'mock',
+    });
+    first.transitionGoal('active-one', 'PLANNING');
+    second.createGoal({
+      id: 'active-two',
+      workspace: 'D:/workspace',
+      prompt: 'Second active goal',
+      provider: 'mock',
+    });
+
+    expect(() => second.transitionGoal('active-two', 'PLANNING')).toThrow(StorageConflictError);
+    expect(first.getGoal('active-one').status).toBe('PLANNING');
+    client.close();
   });
 });
