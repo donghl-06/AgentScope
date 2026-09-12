@@ -6,7 +6,11 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 
 import type { SessionStatus } from '@agentscope/protocol';
 import { reduceSessionState } from '@agentscope/core';
-import { OrchestratorBusyError, type OrchestratorEngine } from '@agentscope/orchestrator';
+import {
+  OrchestratorBusyError,
+  type InstructionDraft,
+  type OrchestratorEngine,
+} from '@agentscope/orchestrator';
 import {
   type ProjectionVerification,
   type RepositoryNotification,
@@ -21,6 +25,7 @@ import {
   type OrchestratorRepositoryNotification,
   type StoredAttempt,
   type StoredOrchestratorEvent,
+  type InstructionStatus,
   type StoredVerificationRun,
 } from '@agentscope/storage';
 
@@ -131,6 +136,24 @@ const GoalCreateSchema = Type.Object({
   constraints: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 const GoalCommandQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const InstructionCreateSchema = Type.Object({
+  id: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  baseRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  kind: Type.Union([
+    Type.Literal('clarification'),
+    Type.Literal('constraint'),
+    Type.Literal('priority'),
+    Type.Literal('approval-context'),
+    Type.Literal('general'),
+  ]),
+  content: Type.String({ minLength: 1, maxLength: 16_000 }),
+});
+const InstructionListQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 
@@ -544,6 +567,107 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const query = request.query as Record<string, unknown>;
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.orchestratorRepository.listOrchestratorCommands(id, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/instructions',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: InstructionListQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const status =
+          query.status === undefined ? undefined : (String(query.status) as InstructionStatus);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(
+          options.orchestratorRepository.listInstructions(id, {
+            ...(status === undefined ? {} : { status }),
+            limit,
+          }),
+        );
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/instructions',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        body: InstructionCreateSchema,
+        response: {
+          201: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const body = request.body as {
+          readonly id?: string;
+          readonly idempotencyKey?: string;
+          readonly expectedRevision?: number;
+          readonly baseRevision?: number;
+          readonly kind: InstructionDraft['kind'];
+          readonly content: string;
+        };
+        const instruction = options.orchestratorEngine.submitInstruction(
+          id,
+          {
+            ...(body.id === undefined ? {} : { id: body.id }),
+            kind: body.kind,
+            content: body.content,
+            ...(body.baseRevision === undefined ? {} : { baseRevision: body.baseRevision }),
+          },
+          {
+            ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+            ...(body.expectedRevision === undefined
+              ? {}
+              : { expectedRevision: body.expectedRevision }),
+          },
+        );
+        return reply.code(201).send({
+          goalId: id,
+          instruction,
+          ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+        });
       } catch (error) {
         return sendError(reply, error);
       }

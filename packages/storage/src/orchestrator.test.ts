@@ -291,7 +291,32 @@ describe('OrchestratorRepository', () => {
         content: 'Do not push to a remote repository.',
         now: 102,
       });
-      expect(instruction).toMatchObject({ status: 'PENDING', baseRevision: 0 });
+      expect(instruction).toMatchObject({ status: 'PENDING', baseRevision: 0, source: 'user' });
+      expect(() =>
+        repository.createInstruction({
+          id: 'v1-instruction-empty',
+          goalId: 'v1-control-goal',
+          kind: 'general',
+          content: ' '.repeat(1),
+        }),
+      ).toThrow('must not be empty');
+      expect(() =>
+        repository.createInstruction({
+          id: 'v1-instruction-too-long',
+          goalId: 'v1-control-goal',
+          kind: 'general',
+          content: 'x'.repeat(16_001),
+        }),
+      ).toThrow('at most 16000');
+      expect(() =>
+        repository.createInstruction({
+          id: 'v1-instruction-invalid-source',
+          goalId: 'v1-control-goal',
+          kind: 'general',
+          content: 'Valid content',
+          source: 'operator' as never,
+        }),
+      ).toThrow('Unknown instruction source');
 
       const revision = repository.createRoadmapRevision({
         id: 'v1-roadmap-revision-1',

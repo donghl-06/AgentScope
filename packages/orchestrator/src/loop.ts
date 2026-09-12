@@ -6,11 +6,13 @@ import {
   StorageNotFoundError,
   type OrchestratorRepository,
   type CreateGoalInput,
+  type InstructionSource,
   type JsonObject,
   type OrchestratorCommandReservation,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
+  type StoredGoalInstruction,
   type StoredTask,
   type StoredVerificationRun,
 } from '@agentscope/storage';
@@ -27,6 +29,7 @@ import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } f
 import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
 import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
+import { validateInstructionDraft, type InstructionDraft } from './instructions.js';
 
 export type GoalVerification = (input: {
   readonly goal: StoredGoal;
@@ -69,6 +72,10 @@ export interface ResumeGoalOptions extends ControlCommandOptions {
 export interface RetryTaskOptions extends ControlCommandOptions {
   readonly reason?: string;
   readonly confirmExternalProcessStopped?: boolean;
+}
+
+export interface SubmitInstructionOptions extends ControlCommandOptions {
+  readonly source?: InstructionSource;
 }
 
 export interface GoalRunResult {
@@ -408,12 +415,68 @@ export class OrchestratorEngine {
     return goal as StoredGoal;
   }
 
+  private replayInstruction(command: StoredOrchestratorCommand): StoredGoalInstruction {
+    const result = this.replayCommand(command);
+    const instructionId = result.instructionId;
+    if (typeof instructionId !== 'string' || instructionId.length === 0) {
+      throw new OrchestratorCommandError('Persisted Instruction command result is invalid.');
+    }
+    return this.options.repository.getInstruction(instructionId);
+  }
+
   private replayRunResult(command: StoredOrchestratorCommand): GoalRunResult {
     return this.replayCommand(command) as unknown as GoalRunResult;
   }
 
   private replayRetryResult(command: StoredOrchestratorCommand): RetryRunResult {
     return this.replayCommand(command) as unknown as RetryRunResult;
+  }
+
+  submitInstruction(
+    goalId: string,
+    draft: InstructionDraft,
+    options: SubmitInstructionOptions = {},
+  ): StoredGoalInstruction {
+    validateInstructionDraft(draft);
+    const source = options.source ?? draft.source ?? 'user';
+    validateInstructionDraft({ ...draft, source });
+    const payload: JsonObject = {
+      kind: draft.kind,
+      content: draft.content,
+      source,
+      ...(draft.baseRevision === undefined ? {} : { baseRevision: draft.baseRevision }),
+    };
+    const reservation = this.reserveControlCommand(goalId, 'instruction', payload, options);
+    if (reservation.replayed) return this.replayInstruction(reservation.command);
+    try {
+      const instruction = this.options.repository.createInstruction({
+        id: draft.id ?? `${goalId}:instruction:${randomUUID()}`,
+        goalId,
+        kind: draft.kind,
+        content: draft.content,
+        source,
+        ...(draft.baseRevision === undefined ? {} : { baseRevision: draft.baseRevision }),
+        now: this.now(),
+      });
+      this.options.repository.appendEvent({
+        id: `${instruction.id}:received`,
+        goalId,
+        type: 'goal.instruction.received',
+        payload: {
+          instructionId: instruction.id,
+          kind: instruction.kind,
+          source: instruction.source,
+          baseRevision: instruction.baseRevision,
+        },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      this.completeCommand(reservation.command, { instructionId: instruction.id });
+      return instruction;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
   }
 
   async runGoal(goalId: string, prepare?: () => void): Promise<GoalRunResult> {

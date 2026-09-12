@@ -47,7 +47,7 @@ describe('storage database', () => {
         'verification_runs',
       ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 10,
+        count: 11,
       });
       expect(
         client
@@ -81,7 +81,7 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 10,
+        count: 11,
       });
       expect(
         client
@@ -123,6 +123,12 @@ describe('storage database', () => {
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
           .get('orchestrator_commands'),
       ).toBeDefined();
+      expect(
+        client
+          .prepare('PRAGMA table_info(goal_instructions)')
+          .all()
+          .some((column) => (column as { name?: string }).name === 'source'),
+      ).toBe(true);
     } finally {
       client.close();
     }

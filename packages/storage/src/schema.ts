@@ -256,6 +256,7 @@ export const goalInstructions = sqliteTable(
       .references(() => goals.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
     content: text('content').notNull(),
+    source: text('source').notNull(),
     status: text('status').notNull(),
     baseRevision: integer('base_revision').notNull(),
     appliedRevision: integer('applied_revision'),

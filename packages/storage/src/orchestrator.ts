@@ -56,6 +56,9 @@ export const INSTRUCTION_KINDS = [
 ] as const;
 export type InstructionKind = (typeof INSTRUCTION_KINDS)[number];
 
+export const INSTRUCTION_SOURCES = ['user', 'system', 'planner'] as const;
+export type InstructionSource = (typeof INSTRUCTION_SOURCES)[number];
+
 export const INSTRUCTION_STATUSES = [
   'PENDING',
   'APPLIED',
@@ -182,6 +185,7 @@ export interface StoredGoalInstruction {
   readonly goalId: string;
   readonly kind: InstructionKind;
   readonly content: string;
+  readonly source: InstructionSource;
   readonly status: InstructionStatus;
   readonly baseRevision: number;
   readonly appliedRevision?: number;
@@ -320,6 +324,7 @@ export interface CreateInstructionInput {
   readonly goalId: string;
   readonly kind: InstructionKind;
   readonly content: string;
+  readonly source?: InstructionSource;
   readonly baseRevision?: number;
   readonly now?: number;
 }
@@ -506,6 +511,12 @@ export function assertVerificationStatus(value: string): asserts value is Verifi
 export function assertInstructionKind(value: string): asserts value is InstructionKind {
   if (!(INSTRUCTION_KINDS as readonly string[]).includes(value)) {
     throw new OrchestratorStateError(`Unknown instruction kind: ${value}`);
+  }
+}
+
+export function assertInstructionSource(value: string): asserts value is InstructionSource {
+  if (!(INSTRUCTION_SOURCES as readonly string[]).includes(value)) {
+    throw new OrchestratorStateError(`Unknown instruction source: ${value}`);
   }
 }
 
@@ -698,8 +709,16 @@ export class OrchestratorRepository {
   createInstruction(input: CreateInstructionInput): StoredGoalInstruction {
     const goal = this.getGoal(input.goalId);
     assertInstructionKind(input.kind);
+    const source = input.source ?? 'user';
+    assertInstructionSource(source);
     if (input.content.trim().length === 0) {
       throw new StorageError('Instruction content must not be empty.', 'invalid_request');
+    }
+    if (input.content.length > 16_000) {
+      throw new StorageError(
+        'Instruction content must be at most 16000 characters.',
+        'invalid_request',
+      );
     }
     const baseRevision = input.baseRevision ?? goal.activeRevision;
     assertNonNegativeInteger(baseRevision, 'Instruction base revision');
@@ -707,10 +726,10 @@ export class OrchestratorRepository {
     this.client
       .prepare(
         `INSERT INTO goal_instructions
-          (id, goal_id, kind, content, status, base_revision, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)`,
+          (id, goal_id, kind, content, source, status, base_revision, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`,
       )
-      .run(input.id, input.goalId, input.kind, input.content, baseRevision, now, now);
+      .run(input.id, input.goalId, input.kind, input.content, source, baseRevision, now, now);
     const instruction = this.getInstruction(input.id);
     this.notify({ type: 'instruction.created', instruction });
     return instruction;
@@ -1840,6 +1859,7 @@ interface InstructionRow {
   goal_id: string;
   kind: string;
   content: string;
+  source: string;
   status: string;
   base_revision: number;
   applied_revision: number | null;
@@ -2047,12 +2067,14 @@ function decodeEvent(row: EventRow): StoredOrchestratorEvent {
 
 function decodeInstruction(row: InstructionRow): StoredGoalInstruction {
   assertInstructionKind(row.kind);
+  assertInstructionSource(row.source);
   assertInstructionStatus(row.status);
   return {
     id: row.id,
     goalId: row.goal_id,
     kind: row.kind,
     content: row.content,
+    source: row.source,
     status: row.status,
     baseRevision: row.base_revision,
     ...(row.applied_revision === null ? {} : { appliedRevision: row.applied_revision }),

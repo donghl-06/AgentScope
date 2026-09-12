@@ -55,6 +55,10 @@ const MIGRATIONS = [
     id: '0009_orchestrator_commands',
     url: new URL('./migrations/0009_orchestrator_commands.sql', import.meta.url),
   },
+  {
+    id: '0010_instruction_source',
+    url: new URL('./migrations/0010_instruction_source.sql', import.meta.url),
+  },
 ] as const;
 
 export function migrateStorage(client: Database.Database): void {

@@ -277,6 +277,39 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('persists and replays a human instruction without duplicating its audit event', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-instruction-submit',
+        workspace: projectState.workspace,
+        prompt: 'Accept a human instruction.',
+        provider: 'claude',
+      });
+      const draft = {
+        kind: 'priority' as const,
+        content: 'Prioritize the deterministic test before polishing the UI.',
+      };
+      const first = engine.submitInstruction('goal-instruction-submit', draft, {
+        idempotencyKey: 'instruction-1',
+      });
+      const replayed = engine.submitInstruction('goal-instruction-submit', draft, {
+        idempotencyKey: 'instruction-1',
+      });
+      expect(replayed).toEqual(first);
+      expect(repository.listInstructions('goal-instruction-submit')).toMatchObject([
+        { kind: 'priority', status: 'PENDING', source: 'user' },
+      ]);
+      expect(
+        repository
+          .listEvents('goal-instruction-submit')
+          .filter((event) => event.type === 'goal.instruction.received'),
+      ).toHaveLength(1);
+      expect(repository.listOrchestratorCommands('goal-instruction-submit')).toMatchObject([
+        { commandKind: 'instruction', status: 'APPLIED' },
+      ]);
+    });
+  });
+
   it('rejects a reused start key when the command payload changes', async () => {
     await withEngine('PASS', async (engine) => {
       const input = {
