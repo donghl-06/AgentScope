@@ -223,6 +223,65 @@ describe('OrchestratorEngine', () => {
     );
   });
 
+  it('edits a future Task Contract through the idempotent engine command', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'engine-future-edit',
+        workspace: projectState.workspace,
+        prompt: 'Edit a future task.',
+        provider: 'claude',
+        now: 400,
+      });
+      const task = repository.createTask({
+        id: 'engine-future-edit:task:1',
+        goalId: 'engine-future-edit',
+        title: 'Future task',
+        objective: 'Original objective',
+        acceptanceCriteria: ['The task is verified.'],
+        verification: { checks: ['test'] },
+        constraints: { noRemotePush: true },
+        sequence: 1,
+        tentative: true,
+        now: 401,
+      });
+      repository.createRoadmapRevision({
+        id: 'engine-future-edit:roadmap:1',
+        goalId: 'engine-future-edit',
+        source: 'planner',
+        reason: 'Initial roadmap.',
+        roadmap: [
+          { id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: true,
+            snapshot: { title: task.title, objective: task.objective },
+          },
+        ],
+        now: 402,
+      });
+      const result = engine.editFutureTaskContract('engine-future-edit', task.id, {
+        reason: 'Clarify the objective.',
+        patch: { objective: 'Clarified objective' },
+        expectedRevision: 1,
+        idempotencyKey: 'engine-future-edit-command',
+      });
+      expect(result.task.objective).toBe('Clarified objective');
+      expect(result.goal.activeRevision).toBe(2);
+      const replay = engine.editFutureTaskContract('engine-future-edit', task.id, {
+        reason: 'Clarify the objective.',
+        patch: { objective: 'Clarified objective' },
+        expectedRevision: 1,
+        idempotencyKey: 'engine-future-edit-command',
+      });
+      expect(replay.revision.id).toBe(result.revision.id);
+      expect(repository.listOrchestratorCommands('engine-future-edit')).toHaveLength(1);
+    });
+  });
+
   it('pauses at NEEDS_HUMAN when verification is uncertain', async () => {
     await withEngine('UNCERTAIN', async (engine, repository) => {
       const result = await engine.createGoalAndRun({

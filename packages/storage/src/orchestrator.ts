@@ -341,6 +341,33 @@ export interface CreateRoadmapRevisionInput {
   readonly now?: number;
 }
 
+export interface TaskContractPatch {
+  readonly title?: string;
+  readonly objective?: string;
+  readonly acceptanceCriteria?: readonly string[];
+  readonly verification?: JsonObject;
+  readonly constraints?: JsonObject;
+  readonly maxAttempts?: number;
+}
+
+export interface UpdateFutureTaskContractInput {
+  readonly id: string;
+  readonly goalId: string;
+  readonly taskId: string;
+  readonly patch: TaskContractPatch;
+  readonly reason: string;
+  readonly source?: string;
+  readonly expectedActiveRevision?: number;
+  readonly now?: number;
+}
+
+export interface RoadmapTaskMutationResult {
+  readonly goal: StoredGoal;
+  readonly task: StoredTask;
+  readonly revision: StoredRoadmapRevision;
+  readonly event: StoredOrchestratorEvent;
+}
+
 export interface CreateMemorySnapshotInput {
   readonly id: string;
   readonly goalId: string;
@@ -1075,41 +1102,14 @@ export class OrchestratorRepository {
     const now = input.now ?? Date.now();
     const revision = goal.activeRevision + 1;
     const createRevision = this.client.transaction(() => {
-      this.client
-        .prepare(
-          `INSERT INTO roadmap_revisions
-            (id, goal_id, revision, parent_revision, source, reason, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          input.id,
-          input.goalId,
-          revision,
-          parentRevision === 0 ? null : parentRevision,
-          input.source,
-          input.reason,
-          now,
-        );
-      const insertItem = this.client.prepare(
-        `INSERT INTO roadmap_revision_items
-          (revision_id, task_id, sequence, operation, tentative, snapshot_json)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+      this.insertRoadmapRevisionRows(
+        input,
+        goal,
+        revision,
+        parentRevision,
+        input.roadmap ?? goal.roadmap,
+        now,
       );
-      for (const item of input.items) {
-        insertItem.run(
-          input.id,
-          item.taskId,
-          item.sequence,
-          item.operation,
-          item.tentative ? 1 : 0,
-          stringifyJson(item.snapshot),
-        );
-      }
-      this.client
-        .prepare(
-          'UPDATE goals SET active_revision = ?, roadmap_json = ?, updated_at = ? WHERE id = ?',
-        )
-        .run(revision, stringifyJson(input.roadmap ?? goal.roadmap), now, input.goalId);
     });
     createRevision();
     const stored = this.getRoadmapRevision(input.id);
@@ -1117,6 +1117,155 @@ export class OrchestratorRepository {
     const updatedGoal = this.getGoal(input.goalId);
     this.notify({ type: 'goal.updated', goal: updatedGoal });
     return stored;
+  }
+
+  updateFutureTaskContract(input: UpdateFutureTaskContractInput): RoadmapTaskMutationResult {
+    const goal = this.getGoal(input.goalId);
+    const task = this.getTask(input.taskId);
+    if (task.goalId !== goal.id) {
+      throw new StorageError(`Task ${input.taskId} belongs to another Goal.`, 'invalid_request');
+    }
+    if (['COMPLETED', 'FAILED', 'ABORTED'].includes(goal.status)) {
+      throw new OrchestratorStateError(
+        `Task Contract cannot be edited after Goal ${goal.id} is ${goal.status}.`,
+      );
+    }
+    if (task.status !== 'PENDING' || task.startedAt !== undefined) {
+      throw new OrchestratorStateError(
+        `Task Contract ${task.id} is not a future Task and cannot be edited while ${task.status}.`,
+      );
+    }
+    const roadmapItem = goal.roadmap.find((item) => item.id === task.id);
+    if (roadmapItem?.status === 'LOCKED') {
+      throw new OrchestratorStateError(
+        `Task Contract ${task.id} is LOCKED and cannot be edited; add an Instruction instead.`,
+      );
+    }
+    const expectedActiveRevision = input.expectedActiveRevision ?? goal.activeRevision;
+    assertNonNegativeInteger(expectedActiveRevision, 'Expected active revision');
+    if (expectedActiveRevision !== goal.activeRevision) {
+      throw new StorageConflictError(
+        `Task Contract revision conflict: expected ${expectedActiveRevision}, found ${goal.activeRevision}.`,
+        'revision_conflict',
+      );
+    }
+    assertMutationReason(input.reason);
+    const nextTask = applyTaskContractPatch(task, input.patch);
+    if (JSON.stringify(nextTask) === JSON.stringify(task)) {
+      throw new StorageError(
+        'Task Contract patch must change at least one field.',
+        'invalid_request',
+      );
+    }
+    const nextTasks = this.listTasks(goal.id).map((candidate) =>
+      candidate.id === nextTask.id ? nextTask : candidate,
+    );
+    const nextRoadmap = roadmapFromStoredTasks(goal.roadmap, nextTasks);
+    const revision = goal.activeRevision + 1;
+    const now = input.now ?? Date.now();
+    const revisionInput: CreateRoadmapRevisionInput = {
+      id: input.id,
+      goalId: goal.id,
+      parentRevision: goal.activeRevision,
+      source: input.source ?? 'user',
+      reason: input.reason,
+      items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks),
+      roadmap: nextRoadmap,
+      expectedActiveRevision: goal.activeRevision,
+      now,
+    };
+    const eventId = `${input.id}:task-contract-updated`;
+    const eventInput: AppendOrchestratorEventInput = {
+      id: eventId,
+      goalId: goal.id,
+      taskId: task.id,
+      type: 'goal.roadmap.task_contract_updated',
+      payload: { taskId: task.id, revision, reason: input.reason },
+      confidence: 1,
+      timestamp: now,
+    };
+    const run = this.client.transaction(() => {
+      this.client
+        .prepare(
+          `UPDATE tasks SET title = ?, objective = ?, acceptance_criteria_json = ?,
+           verification_json = ?, constraints_json = ?, max_attempts = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          nextTask.title,
+          nextTask.objective,
+          stringifyJson(nextTask.acceptanceCriteria),
+          stringifyJson(nextTask.verification),
+          stringifyJson(nextTask.constraints),
+          nextTask.maxAttempts,
+          now,
+          task.id,
+        );
+      this.insertRoadmapRevisionRows(
+        revisionInput,
+        goal,
+        revision,
+        goal.activeRevision,
+        nextRoadmap,
+        now,
+      );
+      this.insertEvent(eventInput, now);
+    });
+    run();
+    const updatedTask = this.getTask(task.id);
+    const storedRevision = this.getRoadmapRevision(input.id);
+    const updatedGoal = this.getGoal(goal.id);
+    const event = this.getEvent(eventId);
+    this.notify({ type: 'task.updated', task: updatedTask });
+    this.notify({ type: 'roadmap.revised', revision: storedRevision });
+    this.notify({ type: 'goal.updated', goal: updatedGoal });
+    this.notify({ type: 'event.appended', event });
+    return { goal: updatedGoal, task: updatedTask, revision: storedRevision, event };
+  }
+
+  private insertRoadmapRevisionRows(
+    input: CreateRoadmapRevisionInput,
+    goal: StoredGoal,
+    revision: number,
+    parentRevision: number,
+    roadmap: readonly RoadmapItem[],
+    now: number,
+  ): void {
+    this.client
+      .prepare(
+        `INSERT INTO roadmap_revisions
+          (id, goal_id, revision, parent_revision, source, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.goalId,
+        revision,
+        parentRevision === 0 ? null : parentRevision,
+        input.source,
+        input.reason,
+        now,
+      );
+    const insertItem = this.client.prepare(
+      `INSERT INTO roadmap_revision_items
+        (revision_id, task_id, sequence, operation, tentative, snapshot_json)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    for (const item of input.items) {
+      insertItem.run(
+        input.id,
+        item.taskId,
+        item.sequence,
+        item.operation,
+        item.tentative ? 1 : 0,
+        stringifyJson(item.snapshot),
+      );
+    }
+    this.client
+      .prepare(
+        'UPDATE goals SET active_revision = ?, roadmap_json = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(revision, stringifyJson(roadmap), now, goal.id);
   }
 
   getRoadmapRevision(id: string): StoredRoadmapRevision {
@@ -2438,6 +2587,189 @@ function validateRevisionItems(items: readonly RoadmapRevisionItemInput[]): void
     taskIds.add(item.taskId);
     sequences.add(item.sequence);
   }
+}
+
+function assertMutationReason(reason: string): void {
+  if (reason.trim().length === 0 || reason.length > 4_000) {
+    throw new StorageError(
+      'Roadmap mutation reason must be between 1 and 4000 characters.',
+      'invalid_request',
+    );
+  }
+}
+
+function applyTaskContractPatch(task: StoredTask, patch: TaskContractPatch): StoredTask {
+  if (Object.keys(patch).length === 0) {
+    throw new StorageError(
+      'Task Contract patch must include at least one field.',
+      'invalid_request',
+    );
+  }
+  const nextTitle = patch.title === undefined ? task.title : patch.title.trim();
+  const nextObjective = patch.objective === undefined ? task.objective : patch.objective.trim();
+  assertBoundedText(nextTitle, 'Task title', 200);
+  assertBoundedText(nextObjective, 'Task objective', 16_000);
+
+  const nextAcceptanceCriteria =
+    patch.acceptanceCriteria === undefined ? task.acceptanceCriteria : patch.acceptanceCriteria;
+  assertAcceptanceCriteria(nextAcceptanceCriteria);
+
+  const nextVerification =
+    patch.verification === undefined ? task.verification : patch.verification;
+  assertJsonObject(nextVerification, 'Task verification');
+  if (
+    patch.verification !== undefined &&
+    !jsonValuePreserves(task.verification, nextVerification)
+  ) {
+    throw new StorageError(
+      'Task verification cannot remove an existing check or constraint.',
+      'invalid_request',
+    );
+  }
+
+  const nextConstraints = patch.constraints === undefined ? task.constraints : patch.constraints;
+  assertJsonObject(nextConstraints, 'Task constraints');
+  if (patch.constraints !== undefined && !jsonValuePreserves(task.constraints, nextConstraints)) {
+    throw new StorageError(
+      'Task constraints cannot be relaxed by a future Contract edit.',
+      'invalid_request',
+    );
+  }
+
+  const nextMaxAttempts = patch.maxAttempts === undefined ? task.maxAttempts : patch.maxAttempts;
+  if (!Number.isInteger(nextMaxAttempts) || nextMaxAttempts < 1 || nextMaxAttempts > 10) {
+    throw new StorageError(
+      'Task maxAttempts must be an integer between 1 and 10.',
+      'invalid_request',
+    );
+  }
+  if (nextMaxAttempts > task.maxAttempts) {
+    throw new StorageError(
+      'A future Contract edit cannot increase the retry budget.',
+      'invalid_request',
+    );
+  }
+  return {
+    ...task,
+    title: nextTitle,
+    objective: nextObjective,
+    acceptanceCriteria: nextAcceptanceCriteria,
+    verification: nextVerification,
+    constraints: nextConstraints,
+    maxAttempts: nextMaxAttempts,
+  };
+}
+
+function roadmapFromStoredTasks(
+  previous: readonly RoadmapItem[],
+  tasks: readonly StoredTask[],
+): readonly RoadmapItem[] {
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  return [...tasks]
+    .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))
+    .map((task) => {
+      const previousItem = previousById.get(task.id);
+      const status: RoadmapItem['status'] =
+        task.status === 'COMPLETED'
+          ? 'COMPLETED'
+          : task.status === 'SKIPPED'
+            ? 'SKIPPED'
+            : previousItem?.status === 'TENTATIVE' || task.tentative
+              ? 'TENTATIVE'
+              : 'LOCKED';
+      return { id: task.id, title: task.title, objective: task.objective, status };
+    });
+}
+
+function roadmapRevisionItemsFromStoredTasks(
+  previous: readonly RoadmapItem[],
+  tasks: readonly StoredTask[],
+): readonly RoadmapRevisionItemInput[] {
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  const nextRoadmap = roadmapFromStoredTasks(previous, tasks);
+  const nextById = new Map(nextRoadmap.map((item) => [item.id, item]));
+  return [...tasks]
+    .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))
+    .map((task) => {
+      const nextItem = nextById.get(task.id)!;
+      const previousItem = previousById.get(task.id);
+      const snapshot: JsonObject = {
+        id: task.id,
+        title: task.title,
+        objective: task.objective,
+        acceptanceCriteria: task.acceptanceCriteria,
+        verification: task.verification,
+        constraints: task.constraints,
+        maxAttempts: task.maxAttempts,
+        status: nextItem.status,
+        sequence: task.sequence,
+        tentative: task.tentative,
+        ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+      };
+      return {
+        taskId: task.id,
+        sequence: task.sequence,
+        operation:
+          previousItem === undefined
+            ? 'added'
+            : JSON.stringify(previousItem) === JSON.stringify(nextItem)
+              ? 'retained'
+              : 'updated',
+        tentative: task.tentative,
+        snapshot,
+      };
+    });
+}
+
+function assertBoundedText(value: string, label: string, maxLength: number): void {
+  if (value.length === 0 || value.length > maxLength) {
+    throw new StorageError(
+      `${label} must be between 1 and ${maxLength} characters.`,
+      'invalid_request',
+    );
+  }
+}
+
+function assertAcceptanceCriteria(criteria: readonly string[]): void {
+  if (!Array.isArray(criteria) || criteria.length === 0 || criteria.length > 100) {
+    throw new StorageError(
+      'Task acceptanceCriteria must contain between 1 and 100 items.',
+      'invalid_request',
+    );
+  }
+  criteria.forEach((criterion, index) => {
+    if (
+      typeof criterion !== 'string' ||
+      criterion.trim().length === 0 ||
+      criterion.length > 4_000
+    ) {
+      throw new StorageError(
+        `Task acceptanceCriteria[${index}] must be a non-empty string of at most 4000 characters.`,
+        'invalid_request',
+      );
+    }
+  });
+}
+
+function assertJsonObject(value: JsonObject, label: string): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new StorageError(`${label} must be a JSON object.`, 'invalid_request');
+  }
+}
+
+function jsonValuePreserves(previous: unknown, next: unknown): boolean {
+  if (Object.is(previous, next)) return true;
+  if (Array.isArray(previous)) {
+    if (!Array.isArray(next)) return false;
+    return previous.every((item) => next.some((candidate) => jsonValuePreserves(item, candidate)));
+  }
+  if (typeof previous === 'object' && previous !== null) {
+    if (typeof next !== 'object' || next === null || Array.isArray(next)) return false;
+    return Object.entries(previous).every(([key, value]) =>
+      jsonValuePreserves(value, (next as Record<string, unknown>)[key]),
+    );
+  }
+  return false;
 }
 
 function validateLimit(value: number, label: string, max: number): number {

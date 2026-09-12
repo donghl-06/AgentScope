@@ -11,12 +11,15 @@ import {
   type RoadmapItem,
   type OrchestratorCommandReservation,
   type RoadmapRevisionItemInput,
+  type RoadmapTaskMutationResult,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
   type StoredGoalInstruction,
   type StoredTask,
   type StoredVerificationRun,
+  type TaskContractPatch,
+  type UpdateFutureTaskContractInput,
 } from '@agentscope/storage';
 import {
   bootstrapProjectContext,
@@ -76,6 +79,11 @@ export interface ControlCommandOptions {
 export interface ResumeGoalOptions extends ControlCommandOptions {
   /** Required for NEEDS_HUMAN recovery so a stale Provider cannot be duplicated. */
   readonly confirmExternalProcessStopped?: boolean;
+}
+
+export interface EditFutureTaskOptions extends ControlCommandOptions {
+  readonly patch: TaskContractPatch;
+  readonly reason: string;
 }
 
 export interface RetryTaskOptions extends ControlCommandOptions {
@@ -358,6 +366,39 @@ export class OrchestratorEngine {
     }
   }
 
+  editFutureTaskContract(
+    goalId: string,
+    taskId: string,
+    options: EditFutureTaskOptions,
+  ): RoadmapTaskMutationResult {
+    const payload: JsonObject = {
+      taskId,
+      reason: options.reason,
+      patch: options.patch,
+    };
+    const reservation = this.reserveControlCommand(goalId, 'edit-task-contract', payload, options);
+    if (reservation.replayed) return this.replayTaskMutation(reservation.command);
+    try {
+      const mutation: UpdateFutureTaskContractInput = {
+        id: `${goalId}:task-contract:${randomUUID()}`,
+        goalId,
+        taskId,
+        patch: options.patch,
+        reason: options.reason,
+        ...(options.expectedRevision === undefined
+          ? {}
+          : { expectedActiveRevision: options.expectedRevision }),
+        now: this.now(),
+      };
+      const result = this.options.repository.updateFutureTaskContract(mutation);
+      this.completeCommand(reservation.command, asJsonObject(result));
+      return result;
+    } catch (error) {
+      this.rejectCommand(reservation.command, error);
+      throw error;
+    }
+  }
+
   private reserveControlCommand(
     goalId: string,
     commandKind: string,
@@ -449,6 +490,10 @@ export class OrchestratorEngine {
 
   private replayRetryResult(command: StoredOrchestratorCommand): RetryRunResult {
     return this.replayCommand(command) as unknown as RetryRunResult;
+  }
+
+  private replayTaskMutation(command: StoredOrchestratorCommand): RoadmapTaskMutationResult {
+    return this.replayCommand(command) as unknown as RoadmapTaskMutationResult;
   }
 
   submitInstruction(

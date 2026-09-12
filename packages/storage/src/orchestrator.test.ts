@@ -619,6 +619,177 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('edits a future Task Contract atomically with a new roadmap revision', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'future-contract-goal',
+        workspace: 'D:/workspace/future-contract',
+        prompt: 'Edit a future contract safely.',
+        provider: 'mock',
+        now: 700,
+      });
+      const task = repository.createTask({
+        id: 'future-contract-task',
+        goalId: 'future-contract-goal',
+        title: 'Original title',
+        objective: 'Original objective',
+        acceptanceCriteria: ['The original requirement remains true.'],
+        verification: { checks: ['deterministic'] },
+        constraints: { noRemotePush: true },
+        maxAttempts: 3,
+        sequence: 1,
+        tentative: true,
+        now: 701,
+      });
+      repository.createRoadmapRevision({
+        id: 'future-contract-revision-1',
+        goalId: 'future-contract-goal',
+        source: 'planner',
+        reason: 'Initial future contract.',
+        roadmap: [
+          { id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' },
+        ],
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: true,
+            snapshot: { title: task.title, objective: task.objective },
+          },
+        ],
+        now: 702,
+      });
+
+      const changed = repository.updateFutureTaskContract({
+        id: 'future-contract-revision-2',
+        goalId: 'future-contract-goal',
+        taskId: task.id,
+        reason: 'Clarify the future validation step.',
+        expectedActiveRevision: 1,
+        patch: {
+          title: 'Clarified title',
+          objective: 'Clarified objective',
+          acceptanceCriteria: [
+            'The original requirement remains true.',
+            'The clarified behavior is independently verified.',
+          ],
+          maxAttempts: 2,
+        },
+        now: 703,
+      });
+      expect(changed.task).toMatchObject({
+        title: 'Clarified title',
+        objective: 'Clarified objective',
+        maxAttempts: 2,
+        status: 'PENDING',
+      });
+      expect(changed.revision).toMatchObject({
+        revision: 2,
+        parentRevision: 1,
+        source: 'user',
+        items: [{ taskId: task.id, operation: 'updated', sequence: 1 }],
+      });
+      expect(changed.goal.activeRevision).toBe(2);
+      expect(changed.goal.roadmap).toEqual([
+        {
+          id: task.id,
+          title: 'Clarified title',
+          objective: 'Clarified objective',
+          status: 'TENTATIVE',
+        },
+      ]);
+      expect(changed.event.type).toBe('goal.roadmap.task_contract_updated');
+
+      expect(() =>
+        repository.updateFutureTaskContract({
+          id: 'future-contract-revision-stale',
+          goalId: 'future-contract-goal',
+          taskId: task.id,
+          reason: 'Stale edit.',
+          expectedActiveRevision: 1,
+          patch: { title: 'Should not persist' },
+          now: 704,
+        }),
+      ).toThrow(StorageConflictError);
+      expect(repository.getTask(task.id).title).toBe('Clarified title');
+      expect(repository.listRoadmapRevisions('future-contract-goal')).toHaveLength(2);
+    });
+  });
+
+  it('rejects edits to locked or already-started Task Contracts', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'contract-boundary-goal',
+        workspace: 'D:/workspace/contract-boundary',
+        prompt: 'Protect contract boundaries.',
+        provider: 'mock',
+        now: 710,
+      });
+      const locked = repository.createTask({
+        id: 'contract-locked-task',
+        goalId: 'contract-boundary-goal',
+        title: 'Locked task',
+        objective: 'Do not edit this task.',
+        acceptanceCriteria: ['The locked task remains unchanged.'],
+        sequence: 1,
+        tentative: false,
+        now: 711,
+      });
+      repository.createRoadmapRevision({
+        id: 'contract-boundary-revision-1',
+        goalId: 'contract-boundary-goal',
+        source: 'planner',
+        reason: 'Lock the task.',
+        roadmap: [
+          { id: locked.id, title: locked.title, objective: locked.objective, status: 'LOCKED' },
+        ],
+        items: [
+          {
+            taskId: locked.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: false,
+            snapshot: { title: locked.title, objective: locked.objective },
+          },
+        ],
+        now: 712,
+      });
+      expect(() =>
+        repository.updateFutureTaskContract({
+          id: 'contract-boundary-revision-2',
+          goalId: 'contract-boundary-goal',
+          taskId: locked.id,
+          reason: 'Attempt to rewrite a locked task.',
+          patch: { title: 'Unsafe rewrite' },
+          now: 713,
+        }),
+      ).toThrow('LOCKED');
+
+      const started = repository.createTask({
+        id: 'contract-started-task',
+        goalId: 'contract-boundary-goal',
+        title: 'Started task',
+        objective: 'Already running.',
+        acceptanceCriteria: ['The running task is not edited.'],
+        sequence: 2,
+        tentative: true,
+        now: 714,
+      });
+      repository.transitionTask(started.id, 'RUNNING', 715);
+      expect(() =>
+        repository.updateFutureTaskContract({
+          id: 'contract-boundary-revision-3',
+          goalId: 'contract-boundary-goal',
+          taskId: started.id,
+          reason: 'Attempt to edit a running task.',
+          patch: { objective: 'Unsafe running edit' },
+          now: 716,
+        }),
+      ).toThrow('not a future Task');
+    });
+  });
+
   it('lists Goal history with stable cursor pagination and filters', () => {
     withRepository((repository) => {
       repository.createGoal({

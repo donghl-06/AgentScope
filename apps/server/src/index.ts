@@ -156,6 +156,26 @@ const InstructionListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
+const TaskContractPatchSchema = Type.Partial(
+  Type.Object({
+    title: Type.String({ minLength: 1, maxLength: 200 }),
+    objective: Type.String({ minLength: 1, maxLength: 16_000 }),
+    acceptanceCriteria: Type.Array(Type.String({ minLength: 1, maxLength: 4_000 }), {
+      minItems: 1,
+      maxItems: 100,
+    }),
+    verification: Type.Record(Type.String(), Type.Unknown()),
+    constraints: Type.Record(Type.String(), Type.Unknown()),
+    maxAttempts: Type.Integer({ minimum: 1, maximum: 10 }),
+  }),
+);
+const TaskContractUpdateSchema = Type.Object({
+  id: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  idempotencyKey: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+  reason: Type.String({ minLength: 1, maxLength: 4_000 }),
+  patch: TaskContractPatchSchema,
+});
 
 export interface ServerOptions {
   readonly repository: StorageRepository;
@@ -505,6 +525,69 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const { id } = request.params as { id: string };
         return reply.send(options.orchestratorRepository.listTasks(id));
       } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.patch(
+    '/api/goals/:id/tasks/:taskId',
+    {
+      schema: {
+        params: GoalTaskParamsSchema,
+        body: TaskContractUpdateSchema,
+        response: {
+          200: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (
+        options.orchestratorRepository === undefined ||
+        options.orchestratorEngine === undefined
+      ) {
+        return reply.code(503).send({
+          error: {
+            code: 'orchestrator_unavailable',
+            message: 'Orchestrator execution is not configured.',
+          },
+        });
+      }
+      try {
+        const { id, taskId } = request.params as { id: string; taskId: string };
+        const body = request.body as {
+          readonly id?: string;
+          readonly idempotencyKey?: string;
+          readonly expectedRevision?: number;
+          readonly reason: string;
+          readonly patch: {
+            readonly title?: string;
+            readonly objective?: string;
+            readonly acceptanceCriteria?: readonly string[];
+            readonly verification?: Record<string, unknown>;
+            readonly constraints?: Record<string, unknown>;
+            readonly maxAttempts?: number;
+          };
+        };
+        const result = options.orchestratorEngine.editFutureTaskContract(id, taskId, {
+          patch: body.patch,
+          reason: body.reason,
+          ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
+          ...(body.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: body.expectedRevision }),
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        if (error instanceof OrchestratorBusyError) {
+          return reply
+            .code(409)
+            .send({ error: { code: 'goal_control_conflict', message: error.message } });
+        }
         return sendError(reply, error);
       }
     },

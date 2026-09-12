@@ -87,6 +87,84 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/goals?limit=0')).statusCode).toBe(400);
   });
 
+  it('forwards future Task Contract edits through the orchestrator engine', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'task-edit-api-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Edit a future task through HTTP.',
+      provider: 'mock',
+    });
+    const task = orchestratorRepository.createTask({
+      id: 'task-edit-api-task',
+      goalId: goal.id,
+      title: 'Future task',
+      objective: 'Original objective',
+      acceptanceCriteria: ['The task remains auditable.'],
+      sequence: 1,
+      tentative: true,
+    });
+    orchestratorRepository.createRoadmapRevision({
+      id: 'task-edit-api-revision-1',
+      goalId: goal.id,
+      source: 'planner',
+      reason: 'Initial roadmap.',
+      roadmap: [{ id: task.id, title: task.title, objective: task.objective, status: 'TENTATIVE' }],
+      items: [
+        {
+          taskId: task.id,
+          sequence: 1,
+          operation: 'added',
+          tentative: true,
+          snapshot: { title: task.title, objective: task.objective },
+        },
+      ],
+    });
+    let received: unknown;
+    const engine = {
+      editFutureTaskContract: (goalId: string, taskId: string, options: unknown) => {
+        received = { goalId, taskId, options };
+        return { goal: orchestratorRepository.getGoal(goalId), task, revision: {}, event: {} };
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/goals/${goal.id}/tasks/${task.id}`,
+      payload: {
+        idempotencyKey: 'task-edit-api-1',
+        expectedRevision: 1,
+        reason: 'Clarify the objective.',
+        patch: { objective: 'Clarified objective', maxAttempts: 2 },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(received).toEqual({
+      goalId: goal.id,
+      taskId: task.id,
+      options: {
+        patch: { objective: 'Clarified objective', maxAttempts: 2 },
+        reason: 'Clarify the objective.',
+        idempotencyKey: 'task-edit-api-1',
+        expectedRevision: 1,
+      },
+    });
+  });
+
   it('broadcasts orchestrator changes written by another process', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
