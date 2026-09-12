@@ -209,6 +209,12 @@ importers:
 
   packages/observers/tests: {}
 
+  packages/orchestrator:
+    dependencies:
+      '@agentscope/observer-git':
+        specifier: workspace:*
+        version: link:../observers/git
+
   packages/progress:
     dependencies:
       '@agentscope/protocol':
