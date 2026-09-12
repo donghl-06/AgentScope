@@ -104,4 +104,4 @@ Attempt 记录 provider、关联 Session、尝试号和 WorkerResult；Verificat
 
 尚未把外部服务凭据写入自动化测试：真实 Claude/Codex 长任务仍应由使用者在目标机器上做一次验收；这不影响本地核心、存储、API、Dashboard 和安全任务测试。
 
-最近一次本地门禁记录：`format:check`、`lint`、`typecheck`、单 worker 全量测试（305 tests）、集成测试（6 tests）和 `build` 均通过。文件系统高并发用例在并行全量运行时曾超时，单独重跑及单 worker 全量运行均通过；发布门禁采用后者以避免 Windows 文件系统资源争用。
+最近一次本地门禁记录：`format:check`、`lint`、`typecheck`、单 worker 全量测试（306 tests）、集成测试（6 tests）和 `build` 均通过。文件系统高并发用例在并行全量运行时曾超时，单独重跑及单 worker 全量运行均通过；发布门禁采用后者以避免 Windows 文件系统资源争用。
