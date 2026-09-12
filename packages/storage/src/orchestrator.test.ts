@@ -189,4 +189,188 @@ describe('OrchestratorRepository', () => {
     expect(first.getGoal('active-one').status).toBe('PLANNING');
     client.close();
   });
+
+  it('persists V1 control entities with validation and transactional revision updates', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'v1-control-goal',
+        workspace: 'D:/workspace/v1-control',
+        prompt: 'Exercise the V1 control repository.',
+        provider: 'mock',
+        now: 100,
+      });
+      const task = repository.createTask({
+        id: 'v1-control-task',
+        goalId: 'v1-control-goal',
+        title: 'Controlled task',
+        objective: 'Keep the repository state auditable.',
+        acceptanceCriteria: ['The control state is persisted.'],
+        sequence: 1,
+        now: 101,
+      });
+
+      const instruction = repository.createInstruction({
+        id: 'v1-instruction-1',
+        goalId: 'v1-control-goal',
+        kind: 'constraint',
+        content: 'Do not push to a remote repository.',
+        now: 102,
+      });
+      expect(instruction).toMatchObject({ status: 'PENDING', baseRevision: 0 });
+
+      const revision = repository.createRoadmapRevision({
+        id: 'v1-roadmap-revision-1',
+        goalId: 'v1-control-goal',
+        source: 'user',
+        reason: 'Lock the first controlled task.',
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'retain',
+            tentative: false,
+            snapshot: { title: task.title, objective: task.objective },
+          },
+        ],
+        now: 103,
+      });
+      expect(revision.revision).toBe(1);
+      expect(revision.parentRevision).toBeUndefined();
+      expect(repository.getGoal('v1-control-goal').activeRevision).toBe(1);
+      expect(repository.listRoadmapRevisions('v1-control-goal')).toHaveLength(1);
+
+      const appliedInstruction = repository.transitionInstruction(
+        instruction.id,
+        'APPLIED',
+        { appliedRevision: 1, appliedTaskId: task.id, decisionReason: 'Applied at the planning boundary.' },
+        104,
+      );
+      expect(appliedInstruction).toMatchObject({ status: 'APPLIED', appliedRevision: 1 });
+
+      const memory = repository.createMemorySnapshot({
+        id: 'v1-memory-1',
+        goalId: 'v1-control-goal',
+        revision: 1,
+        memory: { decisions: [{ id: 'no-push', status: 'LOCKED' }] },
+        sources: [{ kind: 'instruction', id: instruction.id }],
+        now: 105,
+      });
+      expect(repository.getMemorySnapshot(memory.id).sources).toEqual([
+        { kind: 'instruction', id: instruction.id },
+      ]);
+
+      const approval = repository.createApprovalRequest({
+        id: 'v1-approval-1',
+        goalId: 'v1-control-goal',
+        taskId: task.id,
+        riskLevel: 'network',
+        action: 'fetch dependency metadata',
+        scope: { host: 'registry.example.test' },
+        now: 106,
+      });
+      expect(repository.transitionApprovalRequest(approval.id, 'APPROVED', 'Approved for this scope', 107)).toMatchObject({
+        status: 'APPROVED',
+        decisionReason: 'Approved for this scope',
+      });
+
+      const firstLease = repository.acquireGoalRunLease({
+        goalId: 'v1-control-goal',
+        ownerId: 'owner-a',
+        ttlMs: 100,
+        now: 108,
+      });
+      expect(firstLease.generation).toBe(1);
+      expect(() =>
+        repository.acquireGoalRunLease({
+          goalId: 'v1-control-goal',
+          ownerId: 'owner-b',
+          ttlMs: 100,
+          now: 150,
+        }),
+      ).toThrow(StorageConflictError);
+      expect(repository.renewGoalRunLease('v1-control-goal', 'owner-a', 1, 100, 150).expiresAt).toBe(250);
+      expect(repository.releaseGoalRunLease('v1-control-goal', 'owner-a', 1, 151)).toBe(true);
+      expect(repository.getGoalRunLease('v1-control-goal')).toBeUndefined();
+
+      const metric = repository.createGoalMetricSnapshot({
+        id: 'v1-metric-1',
+        goalId: 'v1-control-goal',
+        taskId: task.id,
+        progress: 0.5,
+        eta: { minSeconds: 10, maxSeconds: 30 },
+        confidence: 0.25,
+        reasons: [{ code: 'fixture', message: 'Fixture metric.' }],
+        capturedAt: 152,
+      });
+      expect(repository.listGoalMetricSnapshots('v1-control-goal')).toMatchObject([
+        { id: metric.id, progress: 0.5, confidence: 0.25 },
+      ]);
+
+      const notification = repository.createOrchestratorNotification({
+        id: 'v1-notification-1',
+        goalId: 'v1-control-goal',
+        eventKey: 'goal.needs-human:v1-control-goal',
+        kind: 'needs-human',
+        payload: { reason: 'Fixture notification.' },
+        now: 153,
+      });
+      repository.transitionOrchestratorNotification(notification.id, 'DELIVERED', 154);
+      expect(repository.transitionOrchestratorNotification(notification.id, 'READ', 155)).toMatchObject({
+        status: 'READ',
+        deliveredAt: 154,
+        readAt: 155,
+      });
+    });
+  });
+
+  it('rejects stale roadmap revisions without partially updating the active revision', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'v1-revision-conflict-goal',
+        workspace: 'D:/workspace/v1-revision-conflict',
+        prompt: 'Exercise roadmap conflict handling.',
+        provider: 'mock',
+        now: 200,
+      });
+      repository.createTask({
+        id: 'v1-revision-conflict-task',
+        goalId: 'v1-revision-conflict-goal',
+        title: 'Conflict task',
+        objective: 'Keep the active revision consistent.',
+        acceptanceCriteria: ['The revision remains atomic.'],
+        sequence: 1,
+        now: 201,
+      });
+      repository.createRoadmapRevision({
+        id: 'v1-revision-conflict-first',
+        goalId: 'v1-revision-conflict-goal',
+        source: 'planner',
+        reason: 'Create the first revision.',
+        items: [
+          {
+            taskId: 'v1-revision-conflict-task',
+            sequence: 1,
+            operation: 'retain',
+            tentative: false,
+            snapshot: { title: 'Conflict task' },
+          },
+        ],
+        now: 202,
+      });
+
+      expect(() =>
+        repository.createRoadmapRevision({
+          id: 'v1-revision-conflict-stale',
+          goalId: 'v1-revision-conflict-goal',
+          expectedActiveRevision: 0,
+          source: 'user',
+          reason: 'Use a stale revision on purpose.',
+          items: [],
+          now: 203,
+        }),
+      ).toThrow(StorageConflictError);
+      expect(repository.getGoal('v1-revision-conflict-goal').activeRevision).toBe(1);
+      expect(repository.listRoadmapRevisions('v1-revision-conflict-goal')).toHaveLength(1);
+    });
+  });
 });

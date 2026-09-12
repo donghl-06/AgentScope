@@ -46,6 +46,7 @@ const goal: StoredGoal = {
   projectState: {},
   executionMemory: {},
   workingSet: {},
+  activeRevision: 0,
   createdAt: 100,
   updatedAt: 100,
 };
