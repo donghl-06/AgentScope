@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type {
   OrchestratorRepository,
   CreateGoalInput,
@@ -91,7 +93,7 @@ export class OrchestratorEngine {
     if (this.activeGoalId === goalId) {
       this.controlRequests.set(goalId, 'PAUSE');
       this.options.repository.appendEvent({
-        id: `${goalId}:control:pause:${this.now()}`,
+        id: `${goalId}:control:pause:${randomUUID()}`,
         goalId,
         type: 'goal.pause_requested',
         payload: { reason: 'Pause requested; the active Attempt will finish first.' },
@@ -112,7 +114,7 @@ export class OrchestratorEngine {
     if (this.activeGoalId === goalId) {
       this.controlRequests.set(goalId, 'ABORT');
       this.options.repository.appendEvent({
-        id: `${goalId}:control:abort:${this.now()}`,
+        id: `${goalId}:control:abort:${randomUUID()}`,
         goalId,
         type: 'goal.abort_requested',
         payload: { reason: 'Abort requested; the active Attempt will finish first.' },
@@ -249,7 +251,6 @@ export class OrchestratorEngine {
         projectState,
         executionMemory,
         workingSet,
-        step,
       );
       tasks = repository.listTasks(goal.id);
       if (rolling.action === 'NEEDS_HUMAN' || rolling.action === 'INSPECT') {
@@ -299,7 +300,7 @@ export class OrchestratorEngine {
       const finalTask = tasks.at(-1);
       if (finalTask !== undefined) {
         repository.createVerificationRun({
-          id: `${goal.id}:final-verification:${step}`,
+          id: `${goal.id}:final-verification:${randomUUID()}`,
           taskId: finalTask.id,
           status: final.status,
           criteria: final.criteria.map((criterion) => criterion.criterion),
@@ -310,7 +311,7 @@ export class OrchestratorEngine {
         });
       }
       repository.appendEvent({
-        id: `${goal.id}:goal-verification:${step}`,
+        id: `${goal.id}:goal-verification:${randomUUID()}`,
         goalId: goal.id,
         type: 'goal.verification.completed',
         payload: { status: final.status, reason: final.reason },
@@ -320,7 +321,7 @@ export class OrchestratorEngine {
       if (final.status === 'FAIL') {
         const nextSequence = Math.max(0, ...tasks.map((task) => task.sequence)) + 1;
         const gapTask = repository.createTask({
-          id: `${goal.id}:gap:${step}`,
+          id: `${goal.id}:gap:${nextSequence}`,
           goalId: goal.id,
           title: 'Address final verification gap',
           objective: final.reason,
@@ -345,7 +346,7 @@ export class OrchestratorEngine {
           now: this.now(),
         });
         repository.appendEvent({
-          id: `${goal.id}:gap-task:${step}`,
+          id: `${goal.id}:gap-task:${gapTask.id}`,
           goalId: goal.id,
           taskId: gapTask.id,
           type: 'goal.gap_task.created',
@@ -375,7 +376,6 @@ export class OrchestratorEngine {
     projectState: ProjectState,
     executionMemory: BootstrapContext['executionMemory'],
     workingSet: WorkingSet,
-    step: number,
   ): ReturnType<Planner['planRolling']> {
     try {
       const plan = this.planner.planRolling({
@@ -387,7 +387,7 @@ export class OrchestratorEngine {
         workingSet,
       });
       this.options.repository.appendEvent({
-        id: `${goal.id}:rolling-plan:${step}`,
+        id: `${goal.id}:rolling-plan:${randomUUID()}`,
         goalId: goal.id,
         type: 'goal.rolling_plan',
         payload: { action: plan.action, rationale: plan.rationale, nextTaskId: plan.nextTask?.id },
@@ -398,7 +398,7 @@ export class OrchestratorEngine {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.options.repository.appendEvent({
-        id: `${goal.id}:rolling-plan:${step}:error`,
+        id: `${goal.id}:rolling-plan-failed:${randomUUID()}`,
         goalId: goal.id,
         type: 'goal.rolling_plan_failed',
         payload: { reason },
@@ -419,7 +419,7 @@ export class OrchestratorEngine {
     const status = control === 'PAUSE' ? 'PAUSED' : 'ABORTED';
     const updatedGoal = repository.transitionGoal(goalId, status, this.now());
     repository.appendEvent({
-      id: `${goalId}:control:${control.toLowerCase()}:${this.now()}:applied`,
+      id: `${goalId}:control:${control.toLowerCase()}:${randomUUID()}:applied`,
       goalId,
       type: control === 'PAUSE' ? 'goal.paused' : 'goal.aborted',
       payload: {
@@ -440,7 +440,7 @@ export class OrchestratorEngine {
         repository.transitionGoal(goalId, 'NEEDS_HUMAN', this.now());
       }
       repository.appendEvent({
-        id: `${goalId}:run-failed:${this.now()}`,
+        id: `${goalId}:run-failed:${randomUUID()}`,
         goalId,
         type: 'goal.run_failed',
         payload: { reason },
@@ -618,7 +618,7 @@ export class OrchestratorEngine {
       }
     }
     repository.appendEvent({
-      id: `${goal.id}:needs-human:${this.now()}`,
+      id: `${goal.id}:needs-human:${randomUUID()}`,
       goalId: goal.id,
       type: 'goal.needs_human',
       payload: { reason },
