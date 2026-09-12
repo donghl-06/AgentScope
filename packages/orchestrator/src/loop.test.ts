@@ -187,6 +187,23 @@ describe('OrchestratorEngine', () => {
       expect(result.tasks).toMatchObject([{ status: 'COMPLETED' }]);
       expect(repository.listAttempts('goal-pass:task:1')).toHaveLength(1);
       expect(repository.listEvents('goal-pass')).not.toHaveLength(0);
+      const revisions = repository.listRoadmapRevisions('goal-pass');
+      expect(revisions).toHaveLength(2);
+      expect(revisions[0]).toMatchObject({
+        revision: 1,
+        source: 'planner',
+        items: [{ taskId: 'goal-pass:task:1', operation: 'added', sequence: 1 }],
+      });
+      expect(revisions[1]).toMatchObject({
+        revision: 2,
+        parentRevision: 1,
+        source: 'planner',
+        reason: 'test final',
+        items: [{ taskId: 'goal-pass:task:1', operation: 'updated', sequence: 1 }],
+      });
+      expect(repository.getGoal('goal-pass').roadmap).toMatchObject([
+        { id: 'goal-pass:task:1', status: 'COMPLETED' },
+      ]);
     });
   });
 

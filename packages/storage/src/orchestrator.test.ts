@@ -323,6 +323,14 @@ describe('OrchestratorRepository', () => {
         goalId: 'v1-control-goal',
         source: 'user',
         reason: 'Lock the first controlled task.',
+        roadmap: [
+          {
+            id: task.id,
+            title: task.title,
+            objective: task.objective,
+            status: 'LOCKED',
+          },
+        ],
         items: [
           {
             taskId: task.id,
@@ -337,6 +345,14 @@ describe('OrchestratorRepository', () => {
       expect(revision.revision).toBe(1);
       expect(revision.parentRevision).toBeUndefined();
       expect(repository.getGoal('v1-control-goal').activeRevision).toBe(1);
+      expect(repository.getGoal('v1-control-goal').roadmap).toEqual([
+        {
+          id: task.id,
+          title: task.title,
+          objective: task.objective,
+          status: 'LOCKED',
+        },
+      ]);
       expect(repository.listRoadmapRevisions('v1-control-goal')).toHaveLength(1);
 
       const appliedInstruction = repository.transitionInstruction(

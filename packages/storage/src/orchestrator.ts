@@ -336,6 +336,7 @@ export interface CreateRoadmapRevisionInput {
   readonly source: string;
   readonly reason: string;
   readonly items: readonly RoadmapRevisionItemInput[];
+  readonly roadmap?: readonly RoadmapItem[];
   readonly expectedActiveRevision?: number;
   readonly now?: number;
 }
@@ -1105,8 +1106,10 @@ export class OrchestratorRepository {
         );
       }
       this.client
-        .prepare('UPDATE goals SET active_revision = ?, updated_at = ? WHERE id = ?')
-        .run(revision, now, input.goalId);
+        .prepare(
+          'UPDATE goals SET active_revision = ?, roadmap_json = ?, updated_at = ? WHERE id = ?',
+        )
+        .run(revision, stringifyJson(input.roadmap ?? goal.roadmap), now, input.goalId);
     });
     createRevision();
     const stored = this.getRoadmapRevision(input.id);

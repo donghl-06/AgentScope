@@ -8,7 +8,9 @@ import {
   type CreateGoalInput,
   type InstructionSource,
   type JsonObject,
+  type RoadmapItem,
   type OrchestratorCommandReservation,
+  type RoadmapRevisionItemInput,
   type StoredAttempt,
   type StoredGoal,
   type StoredOrchestratorCommand,
@@ -609,7 +611,6 @@ export class OrchestratorEngine {
       repository.updateGoalDocuments(
         goal.id,
         {
-          roadmap: plan.roadmap,
           projectState: asJsonObject(projectState),
           executionMemory: asJsonObject(executionMemory),
           workingSet: asJsonObject(workingSet),
@@ -621,6 +622,19 @@ export class OrchestratorEngine {
       for (const draft of plan.tentativeTasks) {
         repository.createTask({ ...draft, goalId: goal.id, now: this.now() });
       }
+      const initialTasks = repository.listTasks(goal.id);
+      repository.createRoadmapRevision({
+        id: `${goal.id}:roadmap:${goal.activeRevision + 1}`,
+        goalId: goal.id,
+        parentRevision: goal.activeRevision,
+        source: 'planner',
+        reason: plan.rationale,
+        roadmap: plan.roadmap,
+        items: roadmapRevisionItems([], initialTasks),
+        expectedActiveRevision: goal.activeRevision,
+        now: this.now(),
+      });
+      goal = repository.getGoal(goal.id);
       repository.appendEvent({
         id: `${goal.id}:planning:initial`,
         goalId: goal.id,
@@ -781,6 +795,7 @@ export class OrchestratorEngine {
           'Rolling Planner marked the Goal ready while non-terminal Tasks remain.',
         );
       }
+      goal = this.persistRoadmapRevisionIfChanged(goal, tasks, rolling.rationale);
       const pending = tasks
         .filter((task) => task.status === 'PENDING')
         .sort((left, right) => left.sequence - right.sequence)[0];
@@ -938,6 +953,27 @@ export class OrchestratorEngine {
       executionMemory: nextExecutionMemory,
       workingSet: nextWorkingSet,
     };
+  }
+
+  private persistRoadmapRevisionIfChanged(
+    goal: StoredGoal,
+    tasks: readonly StoredTask[],
+    reason: string,
+  ): StoredGoal {
+    const nextRoadmap = roadmapFromTasks(goal.roadmap, tasks);
+    if (JSON.stringify(nextRoadmap) === JSON.stringify(goal.roadmap)) return goal;
+    this.options.repository.createRoadmapRevision({
+      id: `${goal.id}:roadmap:${goal.activeRevision + 1}`,
+      goalId: goal.id,
+      parentRevision: goal.activeRevision,
+      source: 'planner',
+      reason,
+      roadmap: nextRoadmap,
+      items: roadmapRevisionItems(goal.roadmap, tasks),
+      expectedActiveRevision: goal.activeRevision,
+      now: this.now(),
+    });
+    return this.options.repository.getGoal(goal.id);
   }
 
   private planRolling(
@@ -1589,6 +1625,86 @@ async function defaultGoalVerifier(input: {
 
 function asJsonObject(value: unknown): JsonObject {
   return value as JsonObject;
+}
+
+/**
+ * Derive the durable roadmap projection from the current Task Contracts.
+ *
+ * Tasks are the execution source of truth; the roadmap is an auditable
+ * projection.  A non-terminal Task keeps its tentative/locked intent, while
+ * terminal Task states are reflected explicitly so the UI can explain why a
+ * roadmap item is no longer actionable.
+ */
+function roadmapFromTasks(
+  previous: readonly RoadmapItem[],
+  tasks: readonly StoredTask[],
+): readonly RoadmapItem[] {
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  return [...tasks]
+    .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))
+    .map((task) => {
+      const previousItem = previousById.get(task.id);
+      const status: RoadmapItem['status'] =
+        task.status === 'COMPLETED'
+          ? 'COMPLETED'
+          : task.status === 'SKIPPED'
+            ? 'SKIPPED'
+            : previousItem?.status === 'TENTATIVE' || task.tentative
+              ? 'TENTATIVE'
+              : 'LOCKED';
+      return {
+        id: task.id,
+        title: task.title,
+        objective: task.objective,
+        status,
+      };
+    });
+}
+
+/** Build a revision item for every Task Contract in the new projection. */
+function roadmapRevisionItems(
+  previous: readonly RoadmapItem[],
+  tasks: readonly StoredTask[],
+): readonly RoadmapRevisionItemInput[] {
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  return [...tasks]
+    .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))
+    .map((task) => {
+      const previousItem = previousById.get(task.id);
+      const status = roadmapFromTasks(previous, [task])[0]?.status ?? 'LOCKED';
+      const snapshot: JsonObject = {
+        id: task.id,
+        title: task.title,
+        objective: task.objective,
+        acceptanceCriteria: task.acceptanceCriteria,
+        verification: task.verification,
+        constraints: task.constraints,
+        maxAttempts: task.maxAttempts,
+        status,
+        sequence: task.sequence,
+        tentative: task.tentative,
+        ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+      };
+      const operation =
+        previousItem === undefined
+          ? 'added'
+          : JSON.stringify(previousItem) ===
+              JSON.stringify({
+                id: task.id,
+                title: task.title,
+                objective: task.objective,
+                status,
+              })
+            ? 'retained'
+            : 'updated';
+      return {
+        taskId: task.id,
+        sequence: task.sequence,
+        operation,
+        tentative: task.tentative,
+        snapshot,
+      };
+    });
 }
 
 function combineVerificationStatuses(
