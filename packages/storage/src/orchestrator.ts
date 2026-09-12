@@ -1150,10 +1150,17 @@ export class OrchestratorRepository {
     }
     const result = this.client
       .prepare(
-        'DELETE FROM goal_run_leases WHERE goal_id = ? AND owner_id = ? AND generation = ?',
+        `UPDATE goal_run_leases
+         SET heartbeat_at = ?, expires_at = ?, updated_at = ?
+         WHERE goal_id = ? AND owner_id = ? AND generation = ?`,
       )
-      .run(goalId, ownerId, generation);
-    if (result.changes > 0) this.notify({ type: 'lease.updated', lease: { ...existing, updatedAt: now, expiresAt: now } });
+      .run(now, now, now, goalId, ownerId, generation);
+    if (result.changes > 0) {
+      this.notify({
+        type: 'lease.updated',
+        lease: { ...existing, heartbeatAt: now, updatedAt: now, expiresAt: now },
+      });
+    }
     return result.changes > 0;
   }
 
