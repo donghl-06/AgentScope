@@ -19,6 +19,9 @@ import {
   type StorageRepository,
   type OrchestratorRepository,
   type OrchestratorRepositoryNotification,
+  type StoredAttempt,
+  type StoredOrchestratorEvent,
+  type StoredVerificationRun,
 } from '@agentscope/storage';
 
 import { LiveHub } from './live-hub.js';
@@ -160,8 +163,23 @@ export function createServer(options: ServerOptions): FastifyInstance {
   if (options.recoverOnStart !== false) options.repository.recoverInFlightSessions();
   const observedSessions = new Map<string, ObservedSession>();
   const observedTurns = new Map<string, ObservedTurn>();
+  const observedGoals = new Map<string, ObservedGoal>();
+  const observedTasks = new Map<string, ObservedTask>();
+  const observedAttempts = new Map<string, ObservedAttempt>();
+  const observedVerifications = new Map<string, ObservedVerification>();
+  const observedGoalEvents = new Map<string, number>();
   hydrateObservedSessions(options.repository, observedSessions);
   hydrateObservedTurns(options.repository, observedTurns);
+  if (options.orchestratorRepository !== undefined) {
+    hydrateObservedOrchestrator(
+      options.orchestratorRepository,
+      observedGoals,
+      observedTasks,
+      observedAttempts,
+      observedVerifications,
+      observedGoalEvents,
+    );
+  }
   const unsubscribeRepository = options.repository.subscribe((notification) => {
     if (notification.type === 'session.deleted') {
       observedSessions.delete(notification.session.id);
@@ -223,7 +241,15 @@ export function createServer(options: ServerOptions): FastifyInstance {
     });
   });
   const unsubscribeOrchestrator = options.orchestratorRepository?.subscribe((notification) => {
-    publishOrchestratorNotification(liveHub, notification);
+    rememberOrchestratorNotification(
+      notification,
+      observedGoals,
+      observedTasks,
+      observedAttempts,
+      observedVerifications,
+      observedGoalEvents,
+    );
+    publishOrchestratorNotification(liveHub, notification, options.orchestratorRepository);
   });
   let externalPollInFlight = false;
   const pollExternalChanges = () => {
@@ -296,6 +322,15 @@ export function createServer(options: ServerOptions): FastifyInstance {
           updatedAt: session.updatedAt,
           status: session.status,
           lastEventSeq: Math.max(observed?.lastEventSeq ?? 0, ...events.map((event) => event.seq)),
+        });
+      }
+      if (options.orchestratorRepository !== undefined) {
+        pollExternalOrchestratorChanges(options.orchestratorRepository, liveHub, {
+          observedGoals,
+          observedTasks,
+          observedAttempts,
+          observedVerifications,
+          observedGoalEvents,
         });
       }
     } finally {
@@ -968,9 +1003,41 @@ interface ObservedTurn {
   readonly status: StoredTurn['status'];
 }
 
+interface ObservedGoal {
+  readonly updatedAt: number;
+  readonly status: string;
+}
+
+interface ObservedTask {
+  readonly goalId: string;
+  readonly updatedAt: number;
+  readonly status: string;
+}
+
+interface ObservedAttempt {
+  readonly taskId: string;
+  readonly updatedAt: number;
+  readonly status: string;
+}
+
+interface ObservedVerification {
+  readonly taskId: string;
+  readonly updatedAt: number;
+  readonly status: string;
+}
+
+interface OrchestratorObservations {
+  readonly observedGoals: Map<string, ObservedGoal>;
+  readonly observedTasks: Map<string, ObservedTask>;
+  readonly observedAttempts: Map<string, ObservedAttempt>;
+  readonly observedVerifications: Map<string, ObservedVerification>;
+  readonly observedGoalEvents: Map<string, number>;
+}
+
 function publishOrchestratorNotification(
   liveHub: LiveHub,
   notification: OrchestratorRepositoryNotification,
+  repository?: OrchestratorRepository,
 ): void {
   if (notification.type === 'goal.created' || notification.type === 'goal.updated') {
     liveHub.publish({
@@ -990,32 +1057,57 @@ function publishOrchestratorNotification(
     return;
   }
   if (notification.type === 'attempt.created' || notification.type === 'attempt.updated') {
-    liveHub.publish({
-      type: notification.type,
-      attemptId: notification.attempt.id,
-      payload: { status: notification.attempt.status, taskId: notification.attempt.taskId },
-    });
+    publishOrchestratorAttempt(liveHub, repository, notification.attempt, notification.type);
     return;
   }
   if (notification.type === 'verification.created') {
-    liveHub.publish({
-      type: notification.type,
-      taskId: notification.verification.taskId,
-      payload: { status: notification.verification.status },
-    });
+    publishOrchestratorVerification(liveHub, repository, notification.verification);
     return;
   }
   if (notification.type !== 'event.appended') return;
+  publishOrchestratorEvent(liveHub, notification.event);
+}
+
+function publishOrchestratorEvent(liveHub: LiveHub, event: StoredOrchestratorEvent): void {
   liveHub.publish({
-    type: notification.type,
-    goalId: notification.event.goalId,
-    ...(notification.event.taskId === undefined ? {} : { taskId: notification.event.taskId }),
-    ...(notification.event.attemptId === undefined
-      ? {}
-      : { attemptId: notification.event.attemptId }),
-    seq: notification.event.seq,
-    cursor: String(notification.event.seq),
-    payload: { eventType: notification.event.type },
+    type: 'event.appended',
+    goalId: event.goalId,
+    ...(event.taskId === undefined ? {} : { taskId: event.taskId }),
+    ...(event.attemptId === undefined ? {} : { attemptId: event.attemptId }),
+    seq: event.seq,
+    cursor: String(event.seq),
+    payload: { eventType: event.type },
+  });
+}
+
+function publishOrchestratorAttempt(
+  liveHub: LiveHub,
+  repository: OrchestratorRepository | undefined,
+  attempt: StoredAttempt,
+  type: 'attempt.created' | 'attempt.updated' = 'attempt.updated',
+): void {
+  const goalId = repository === undefined ? undefined : repository.getTask(attempt.taskId).goalId;
+  liveHub.publish({
+    type,
+    ...(goalId === undefined ? {} : { goalId }),
+    attemptId: attempt.id,
+    taskId: attempt.taskId,
+    payload: { status: attempt.status, taskId: attempt.taskId },
+  });
+}
+
+function publishOrchestratorVerification(
+  liveHub: LiveHub,
+  repository: OrchestratorRepository | undefined,
+  verification: StoredVerificationRun,
+): void {
+  const goalId =
+    repository === undefined ? undefined : repository.getTask(verification.taskId).goalId;
+  liveHub.publish({
+    type: 'verification.created',
+    ...(goalId === undefined ? {} : { goalId }),
+    taskId: verification.taskId,
+    payload: { status: verification.status, verificationId: verification.id },
   });
 }
 
@@ -1067,6 +1159,187 @@ function hydrateObservedTurns(
         updatedAt: turn.updatedAt,
         status: turn.status,
       });
+    }
+  }
+}
+
+function hydrateObservedOrchestrator(
+  repository: OrchestratorRepository,
+  observedGoals: Map<string, ObservedGoal>,
+  observedTasks: Map<string, ObservedTask>,
+  observedAttempts: Map<string, ObservedAttempt>,
+  observedVerifications: Map<string, ObservedVerification>,
+  observedGoalEvents: Map<string, number>,
+): void {
+  for (const goal of repository.listGoals()) {
+    observedGoals.set(goal.id, { updatedAt: goal.updatedAt, status: goal.status });
+    observedGoalEvents.set(goal.id, findLastOrchestratorEventSeq(repository, goal.id));
+    for (const task of repository.listTasks(goal.id)) {
+      observedTasks.set(task.id, {
+        goalId: task.goalId,
+        updatedAt: task.updatedAt,
+        status: task.status,
+      });
+      for (const attempt of repository.listAttempts(task.id)) {
+        observedAttempts.set(attempt.id, {
+          taskId: attempt.taskId,
+          updatedAt: attempt.updatedAt,
+          status: attempt.status,
+        });
+      }
+      for (const verification of repository.listVerificationRuns(task.id)) {
+        observedVerifications.set(verification.id, {
+          taskId: verification.taskId,
+          updatedAt: verification.updatedAt,
+          status: verification.status,
+        });
+      }
+    }
+  }
+}
+
+function findLastOrchestratorEventSeq(repository: OrchestratorRepository, goalId: string): number {
+  let after = 0;
+  while (true) {
+    const page = repository.listEvents(goalId, after, 500);
+    const last = page.at(-1);
+    if (last === undefined) return after;
+    after = last.seq;
+    if (page.length < 500) return after;
+  }
+}
+
+function rememberOrchestratorNotification(
+  notification: OrchestratorRepositoryNotification,
+  observedGoals: Map<string, ObservedGoal>,
+  observedTasks: Map<string, ObservedTask>,
+  observedAttempts: Map<string, ObservedAttempt>,
+  observedVerifications: Map<string, ObservedVerification>,
+  observedGoalEvents: Map<string, number>,
+): void {
+  if (notification.type === 'goal.created' || notification.type === 'goal.updated') {
+    observedGoals.set(notification.goal.id, {
+      updatedAt: notification.goal.updatedAt,
+      status: notification.goal.status,
+    });
+    return;
+  }
+  if (notification.type === 'task.created' || notification.type === 'task.updated') {
+    observedTasks.set(notification.task.id, {
+      goalId: notification.task.goalId,
+      updatedAt: notification.task.updatedAt,
+      status: notification.task.status,
+    });
+    return;
+  }
+  if (notification.type === 'attempt.created' || notification.type === 'attempt.updated') {
+    observedAttempts.set(notification.attempt.id, {
+      taskId: notification.attempt.taskId,
+      updatedAt: notification.attempt.updatedAt,
+      status: notification.attempt.status,
+    });
+    return;
+  }
+  if (notification.type === 'verification.created') {
+    observedVerifications.set(notification.verification.id, {
+      taskId: notification.verification.taskId,
+      updatedAt: notification.verification.updatedAt,
+      status: notification.verification.status,
+    });
+    return;
+  }
+  if (notification.type !== 'event.appended') return;
+  observedGoalEvents.set(
+    notification.event.goalId,
+    Math.max(observedGoalEvents.get(notification.event.goalId) ?? 0, notification.event.seq),
+  );
+}
+
+function pollExternalOrchestratorChanges(
+  repository: OrchestratorRepository,
+  liveHub: LiveHub,
+  observations: OrchestratorObservations,
+): void {
+  for (const goal of repository.listGoals()) {
+    const observedGoal = observations.observedGoals.get(goal.id);
+    if (observedGoal === undefined) {
+      liveHub.publish({
+        type: 'goal.created',
+        goalId: goal.id,
+        payload: { status: goal.status },
+      });
+    } else if (observedGoal.updatedAt !== goal.updatedAt || observedGoal.status !== goal.status) {
+      liveHub.publish({
+        type: 'goal.updated',
+        goalId: goal.id,
+        payload: { status: goal.status },
+      });
+    }
+    observations.observedGoals.set(goal.id, { updatedAt: goal.updatedAt, status: goal.status });
+
+    const afterSeq = observations.observedGoalEvents.get(goal.id) ?? 0;
+    const events = repository.listEvents(goal.id, afterSeq, 500);
+    for (const event of events) publishOrchestratorEvent(liveHub, event);
+    const lastEvent = events.at(-1);
+    if (lastEvent !== undefined) observations.observedGoalEvents.set(goal.id, lastEvent.seq);
+
+    for (const task of repository.listTasks(goal.id)) {
+      const observedTask = observations.observedTasks.get(task.id);
+      if (observedTask === undefined) {
+        liveHub.publish({
+          type: 'task.created',
+          goalId: task.goalId,
+          taskId: task.id,
+          payload: { status: task.status, sequence: task.sequence },
+        });
+      } else if (observedTask.updatedAt !== task.updatedAt || observedTask.status !== task.status) {
+        liveHub.publish({
+          type: 'task.updated',
+          goalId: task.goalId,
+          taskId: task.id,
+          payload: { status: task.status, sequence: task.sequence },
+        });
+      }
+      observations.observedTasks.set(task.id, {
+        goalId: task.goalId,
+        updatedAt: task.updatedAt,
+        status: task.status,
+      });
+      for (const attempt of repository.listAttempts(task.id)) {
+        const observedAttempt = observations.observedAttempts.get(attempt.id);
+        if (
+          observedAttempt === undefined ||
+          observedAttempt.updatedAt !== attempt.updatedAt ||
+          observedAttempt.status !== attempt.status
+        ) {
+          publishOrchestratorAttempt(
+            liveHub,
+            repository,
+            attempt,
+            observedAttempt === undefined ? 'attempt.created' : 'attempt.updated',
+          );
+        }
+        observations.observedAttempts.set(attempt.id, {
+          taskId: attempt.taskId,
+          updatedAt: attempt.updatedAt,
+          status: attempt.status,
+        });
+      }
+      for (const verification of repository.listVerificationRuns(task.id)) {
+        const observedVerification = observations.observedVerifications.get(verification.id);
+        if (
+          observedVerification === undefined ||
+          observedVerification.updatedAt !== verification.updatedAt ||
+          observedVerification.status !== verification.status
+        ) {
+          publishOrchestratorVerification(liveHub, repository, verification);
+        }
+        observations.observedVerifications.set(verification.id, {
+          taskId: verification.taskId,
+          updatedAt: verification.updatedAt,
+          status: verification.status,
+        });
+      }
     }
   }
 }

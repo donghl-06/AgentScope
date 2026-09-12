@@ -85,6 +85,61 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/goals?limit=0')).statusCode).toBe(400);
   });
 
+  it('broadcasts orchestrator changes written by another process', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const writer = new OrchestratorRepository(client);
+    const liveHub = new LiveHub();
+    const socket = new TestSocket();
+    liveHub.attach(socket);
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      liveHub,
+      recoverOnStart: false,
+      externalPollIntervalMs: 10,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    writer.createGoal({
+      id: 'external-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Observe external writes',
+      provider: 'mock',
+    });
+    const task = writer.createTask({
+      id: 'external-goal:task:1',
+      goalId: 'external-goal',
+      title: 'External task',
+      objective: 'Verify polling.',
+      acceptanceCriteria: ['The event is broadcast.'],
+      sequence: 1,
+    });
+    writer.appendEvent({
+      id: 'external-goal:event:1',
+      goalId: 'external-goal',
+      taskId: task.id,
+      type: 'external.event',
+      confidence: 1,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const notifications = socket.messages.slice(1).map((message) => JSON.parse(message));
+    expect(notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'goal.created', goalId: 'external-goal' }),
+        expect.objectContaining({ type: 'task.created', taskId: task.id }),
+        expect.objectContaining({ type: 'event.appended', goalId: 'external-goal', seq: 1 }),
+      ]),
+    );
+  });
+
   it('serves health, sessions, events, and project overview', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
