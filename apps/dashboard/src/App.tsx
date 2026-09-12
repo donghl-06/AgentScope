@@ -714,11 +714,40 @@ function GoalPanel({
                     <span>{task.sequence}</span>
                     <div>
                       <strong>{task.title}</strong>
-                      <small>{statusLabel(task.status)}</small>
+                      <small>
+                        {statusLabel(task.status)} ·{' '}
+                        {selectedGoal.taskDetails?.find((item) => item.task.id === task.id)
+                          ?.attempts.length ?? 0}{' '}
+                        attempt(s) · verification{' '}
+                        {statusLabel(
+                          selectedGoal.taskDetails
+                            ?.find((item) => item.task.id === task.id)
+                            ?.verifications.at(-1)?.status ?? 'UNKNOWN',
+                        )}
+                      </small>
                     </div>
                   </li>
                 ))}
               </ol>
+              <div className="goal-event-list" aria-label="Goal event timeline">
+                <span className="eyebrow">EVENT TIMELINE</span>
+                {selectedGoal.events.length === 0 ? (
+                  <p className="empty-state">No orchestrator events recorded yet.</p>
+                ) : (
+                  selectedGoal.events
+                    .slice()
+                    .reverse()
+                    .map((event) => (
+                      <div className="goal-event-row" key={event.id}>
+                        <strong>{event.type}</strong>
+                        <small>
+                          {formatTimestamp(event.timestamp)} · confidence{' '}
+                          {Math.round(event.confidence * 100)}%
+                        </small>
+                      </div>
+                    ))
+                )}
+              </div>
             </>
           )}
         </div>

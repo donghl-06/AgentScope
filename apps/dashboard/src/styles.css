@@ -443,6 +443,28 @@ h3 {
   color: #8299b7;
   font-size: 10px;
 }
+.goal-event-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #223752;
+}
+.goal-event-row {
+  display: grid;
+  gap: 3px;
+  padding: 7px 9px;
+  border-left: 2px solid #365b84;
+  background: #10243c;
+}
+.goal-event-row strong {
+  color: #cbdcf0;
+  font-size: 11px;
+}
+.goal-event-row small {
+  color: #8299b7;
+  font-size: 10px;
+}
 .panel {
   min-height: 520px;
   padding: 24px;
