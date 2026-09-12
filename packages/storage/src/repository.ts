@@ -515,29 +515,33 @@ export class StorageRepository {
 
   /** Hide or restore a terminal Session without touching its evidence. */
   setSessionHidden(id: string, hidden: boolean, now = Date.now()): StoredSession {
-    const existing = this.getSession(id);
-    if (isActiveSessionStatus(existing.status)) {
-      throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
-    }
-    this.client
-      .prepare('UPDATE sessions SET hidden_at = ?, updated_at = ? WHERE id = ?')
-      .run(hidden ? now : null, now, id);
-    const session = this.getSession(id);
+    const transaction = this.client.transaction(() => {
+      const existing = this.getSession(id);
+      if (isActiveSessionStatus(existing.status)) {
+        throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
+      }
+      this.client
+        .prepare('UPDATE sessions SET hidden_at = ?, updated_at = ? WHERE id = ?')
+        .run(hidden ? now : null, now, id);
+      return this.getSession(id);
+    });
+    const session = transaction.immediate();
     this.notify({ type: 'session.updated', session });
     return session;
   }
 
   /** Permanently delete a terminal Session and all cascaded evidence. */
   deleteSession(id: string): StoredSession {
-    const existing = this.getSession(id);
-    if (isActiveSessionStatus(existing.status)) {
-      throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
-    }
     const transaction = this.client.transaction(() => {
+      const existing = this.getSession(id);
+      if (isActiveSessionStatus(existing.status)) {
+        throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
+      }
       const result = this.client.prepare('DELETE FROM sessions WHERE id = ?').run(id);
       if (result.changes !== 1) throw new StorageNotFoundError(`Session not found: ${id}`);
+      return existing;
     });
-    transaction.immediate();
+    const existing = transaction.immediate();
     this.notify({ type: 'session.deleted', session: existing });
     return existing;
   }
