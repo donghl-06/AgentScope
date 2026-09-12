@@ -280,6 +280,21 @@ export interface CreateGoalInput {
   readonly now?: number;
 }
 
+export interface GoalListFilter {
+  readonly status?: GoalStatus;
+  readonly provider?: string;
+  readonly workspace?: string;
+  readonly query?: string;
+  readonly includeArchived?: boolean;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface GoalPage {
+  readonly items: readonly StoredGoal[];
+  readonly nextCursor?: string;
+}
+
 export interface CreateInstructionInput {
   readonly id: string;
   readonly goalId: string;
@@ -557,13 +572,51 @@ export class OrchestratorRepository {
   }
 
   listGoals(limit = 100): readonly StoredGoal[] {
-    if (!Number.isInteger(limit) || limit < 1) {
-      throw new StorageError('Goal limit must be a positive integer.', 'invalid_query');
+    return this.listGoalPage({ limit, includeArchived: true }).items;
+  }
+
+  listGoalPage(filter: GoalListFilter = {}): GoalPage {
+    const clauses: string[] = [];
+    const parameters: Array<string | number> = [];
+    const limit = validateLimit(filter.limit ?? 100, 'Goal limit', 100);
+    if (filter.includeArchived !== true) clauses.push('archived_at IS NULL');
+    if (filter.status !== undefined) {
+      assertGoalStatus(filter.status);
+      clauses.push('status = ?');
+      parameters.push(filter.status);
     }
+    if (filter.provider !== undefined) {
+      clauses.push('provider = ?');
+      parameters.push(filter.provider);
+    }
+    if (filter.workspace !== undefined) {
+      clauses.push('workspace = ?');
+      parameters.push(filter.workspace);
+    }
+    if (filter.query !== undefined && filter.query.trim().length > 0) {
+      clauses.push('(INSTR(LOWER(id), LOWER(?)) > 0 OR INSTR(LOWER(prompt), LOWER(?)) > 0)');
+      const query = filter.query.trim();
+      parameters.push(query, query);
+    }
+    if (filter.cursor !== undefined) {
+      const cursor = decodeGoalCursor(filter.cursor);
+      clauses.push('(updated_at < ? OR (updated_at = ? AND id < ?))');
+      parameters.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
+    }
+    const where = clauses.length === 0 ? '' : `WHERE ${clauses.join(' AND ')}`;
     const rows = this.client
-      .prepare('SELECT * FROM goals ORDER BY updated_at DESC, id DESC LIMIT ?')
-      .all(Math.min(limit, 100)) as GoalRow[];
-    return rows.map(decodeGoal);
+      .prepare(
+        `SELECT * FROM goals ${where}
+         ORDER BY updated_at DESC, id DESC LIMIT ?`,
+      )
+      .all(...parameters, limit + 1) as GoalRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeGoal),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeGoalCursor(pageRows.at(-1)!) }
+        : {}),
+    };
   }
 
   createInstruction(input: CreateInstructionInput): StoredGoalInstruction {
@@ -1934,6 +1987,33 @@ function stringifyJson(value: unknown): string {
     return serialized;
   } catch (error) {
     throw new StorageCorruptPayloadError('Value cannot be serialized as JSON.', { cause: error });
+  }
+}
+
+function encodeGoalCursor(row: GoalRow): string {
+  return Buffer.from(JSON.stringify({ updatedAt: row.updated_at, id: row.id })).toString(
+    'base64url',
+  );
+}
+
+function decodeGoalCursor(cursor: string): { updatedAt: number; id: string } {
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      updatedAt?: unknown;
+      id?: unknown;
+    };
+    if (
+      typeof value.updatedAt !== 'number' ||
+      !Number.isFinite(value.updatedAt) ||
+      value.updatedAt < 0 ||
+      typeof value.id !== 'string' ||
+      value.id.length === 0
+    ) {
+      throw new Error('invalid');
+    }
+    return { updatedAt: value.updatedAt, id: value.id };
+  } catch (error) {
+    throw new StorageError('Invalid Goal cursor.', 'invalid_query', { cause: error });
   }
 }
 

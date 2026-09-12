@@ -373,4 +373,53 @@ describe('OrchestratorRepository', () => {
       expect(repository.listRoadmapRevisions('v1-revision-conflict-goal')).toHaveLength(1);
     });
   });
+
+  it('lists Goal history with stable cursor pagination and filters', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'history-alpha',
+        workspace: 'D:/workspace/one',
+        prompt: 'Alpha history goal',
+        provider: 'claude',
+        now: 300,
+      });
+      repository.createGoal({
+        id: 'history-beta',
+        workspace: 'D:/workspace/two',
+        prompt: 'Beta history goal',
+        provider: 'codex',
+        now: 200,
+      });
+      repository.createGoal({
+        id: 'history-gamma',
+        workspace: 'D:/workspace/one',
+        prompt: 'Gamma history goal',
+        provider: 'claude',
+        now: 100,
+      });
+      repository.transitionGoal('history-beta', 'PAUSED', 250);
+
+      const firstPage = repository.listGoalPage({ limit: 2 });
+      expect(firstPage.items.map((goal) => goal.id)).toEqual(['history-alpha', 'history-beta']);
+      expect(firstPage.nextCursor).toBeDefined();
+      const secondPage = repository.listGoalPage({
+        ...(firstPage.nextCursor === undefined ? {} : { cursor: firstPage.nextCursor }),
+        limit: 2,
+      });
+      expect(secondPage.items.map((goal) => goal.id)).toEqual(['history-gamma']);
+      expect(secondPage.nextCursor).toBeUndefined();
+      expect(repository.listGoalPage({ status: 'PAUSED' }).items.map((goal) => goal.id)).toEqual([
+        'history-beta',
+      ]);
+      expect(
+        repository.listGoalPage({ provider: 'claude', workspace: 'D:/workspace/one' }).items.map(
+          (goal) => goal.id,
+        ),
+      ).toEqual(['history-alpha', 'history-gamma']);
+      expect(repository.listGoalPage({ query: 'ALPHA' }).items.map((goal) => goal.id)).toEqual([
+        'history-alpha',
+      ]);
+      expect(() => repository.listGoalPage({ cursor: 'not-a-cursor' })).toThrow('Invalid Goal cursor');
+    });
+  });
 });
