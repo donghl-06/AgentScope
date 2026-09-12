@@ -313,6 +313,43 @@ export class OrchestratorEngine {
         confidence: final.status === 'PASS' ? 1 : 0.5,
         timestamp: this.now(),
       });
+      if (final.status === 'FAIL') {
+        const nextSequence = Math.max(0, ...tasks.map((task) => task.sequence)) + 1;
+        const gapTask = repository.createTask({
+          id: `${goal.id}:gap:${step}`,
+          goalId: goal.id,
+          title: 'Address final verification gap',
+          objective: final.reason,
+          acceptanceCriteria:
+            final.criteria.length === 0
+              ? ['The final Goal verification passes after the gap is addressed.']
+              : final.criteria.map((criterion) => criterion.criterion),
+          verification: {
+            checks: final.deterministicChecks.map((check) => ({
+              id: check.id,
+              label: check.label,
+              executable: check.executable,
+              args: check.args,
+            })),
+            deterministicFirst: true,
+          },
+          constraints: { singleWorker: true, noRemotePush: true, gapFromFinalVerification: true },
+          maxAttempts: 3,
+          sequence: nextSequence,
+          tentative: false,
+          ...(finalTask === undefined ? {} : { parentTaskId: finalTask.id }),
+          now: this.now(),
+        });
+        repository.appendEvent({
+          id: `${goal.id}:gap-task:${step}`,
+          goalId: goal.id,
+          taskId: gapTask.id,
+          type: 'goal.gap_task.created',
+          payload: { reason: final.reason, verificationStatus: final.status },
+          confidence: 1,
+          timestamp: this.now(),
+        });
+      }
       if (final.status === 'PASS') {
         goal = repository.transitionGoal(goal.id, 'COMPLETED', this.now());
       } else {
@@ -602,8 +639,8 @@ async function defaultGoalVerifier(input: {
   readonly projectState: ProjectState;
   readonly workingSet: WorkingSet;
 }): Promise<VerificationResult> {
-  const task = input.tasks.at(-1);
-  if (task === undefined) {
+  const tasks = input.tasks.filter((task) => task.status === 'COMPLETED');
+  if (tasks.length === 0) {
     return {
       status: 'UNCERTAIN',
       criteria: [],
@@ -612,15 +649,47 @@ async function defaultGoalVerifier(input: {
       reason: 'No completed Task is available for final verification.',
     };
   }
-  return verifyTask({
-    workspace: input.goal.workspace,
-    task,
-    projectState: input.projectState,
-  });
+  const results: VerificationResult[] = [];
+  for (const task of tasks) {
+    results.push(
+      await verifyTask({
+        workspace: input.goal.workspace,
+        task,
+        projectState: input.projectState,
+      }),
+    );
+  }
+  const status = combineVerificationStatuses(results.map((result) => result.status));
+  return {
+    status,
+    criteria: results.flatMap((result, index) =>
+      result.criteria.map((criterion) => ({
+        ...criterion,
+        criterion: `Task ${tasks[index]?.sequence ?? index + 1}: ${criterion.criterion}`,
+      })),
+    ),
+    deterministicChecks: results.flatMap((result) => result.deterministicChecks),
+    evidence: results.flatMap((result) => result.evidence),
+    reason:
+      status === 'PASS'
+        ? `Final Goal verification passed for ${tasks.length} completed Task(s).`
+        : status === 'FAIL'
+          ? 'At least one completed Task no longer satisfies its deterministic verification.'
+          : 'Final Goal verification evidence is incomplete or uncertain.',
+  };
 }
 
 function asJsonObject(value: unknown): JsonObject {
   return value as JsonObject;
+}
+
+function combineVerificationStatuses(
+  statuses: readonly VerificationResult['status'][],
+): VerificationResult['status'] {
+  if (statuses.length === 0 || statuses.some((status) => status === 'UNCERTAIN'))
+    return 'UNCERTAIN';
+  if (statuses.some((status) => status === 'FAIL')) return 'FAIL';
+  return 'PASS';
 }
 
 function validateMaxSteps(value: number): number {

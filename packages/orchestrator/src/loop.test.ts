@@ -108,6 +108,7 @@ class SingleTaskPlanner implements Planner {
 async function withEngine(
   verify: ((attempt: number) => 'PASS' | 'FAIL' | 'UNCERTAIN') | 'PASS' | 'FAIL' | 'UNCERTAIN',
   test: (engine: OrchestratorEngine, repository: OrchestratorRepository) => Promise<void>,
+  finalStatus: 'PASS' | 'FAIL' = 'PASS',
 ): Promise<void> {
   const filename = path.join(os.tmpdir(), `agentscope-engine-${Date.now()}-${Math.random()}.db`);
   const { client } = openStorage({ filename, migrate: true });
@@ -141,11 +142,11 @@ async function withEngine(
         };
       },
       verifyGoal: async () => ({
-        status: 'PASS',
-        criteria: [{ criterion: 'Goal verified.', status: 'PASS', reason: 'test' }],
+        status: finalStatus,
+        criteria: [{ criterion: 'Goal verified.', status: finalStatus, reason: 'test' }],
         deterministicChecks: [],
         evidence: [{ kind: 'final' }],
-        reason: 'final pass',
+        reason: finalStatus === 'PASS' ? 'final pass' : 'final gap',
       }),
       now: (() => {
         let value = 100;
@@ -237,5 +238,28 @@ describe('OrchestratorEngine', () => {
       await expect(engine.resumeGoal('goal-abort')).rejects.toThrow('Only a PAUSED Goal');
       expect(repository.getGoal('goal-abort').status).toBe('ABORTED');
     });
+  });
+
+  it('persists a Gap Task when final verification fails', async () => {
+    await withEngine(
+      'PASS',
+      async (engine, repository) => {
+        const result = await engine.createGoalAndRun({
+          id: 'goal-final-gap',
+          workspace: projectState.workspace,
+          prompt: 'Detect a final verification gap.',
+          provider: 'claude',
+        });
+        expect(result.status).toBe('NEEDS_HUMAN');
+        expect(repository.listTasks('goal-final-gap')).toMatchObject([
+          { id: 'goal-final-gap:task:1', status: 'COMPLETED' },
+          { id: 'goal-final-gap:gap:2', status: 'PENDING' },
+        ]);
+        expect(repository.listEvents('goal-final-gap').map((event) => event.type)).toContain(
+          'goal.gap_task.created',
+        );
+      },
+      'FAIL',
+    );
   });
 });
