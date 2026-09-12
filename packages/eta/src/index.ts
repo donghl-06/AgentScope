@@ -5,6 +5,13 @@ export interface EtaEngineInput {
   readonly progress: ProgressResult;
   readonly elapsedSeconds: number;
   readonly replanningDetected?: boolean;
+  /** Completed comparable-session durations used for a conservative baseline. */
+  readonly history?: EtaHistory;
+}
+
+export interface EtaHistory {
+  readonly durationsSeconds: readonly number[];
+  readonly scope?: string;
 }
 
 export interface EtaConfig {
@@ -17,6 +24,8 @@ export interface EtaConfig {
   readonly lowSignalPenalty?: number;
   readonly verificationPendingPenalty?: number;
   readonly replanningPenalty?: number;
+  /** Minimum completed comparable sessions before history can influence ETA. */
+  readonly minHistorySamples?: number;
 }
 
 export const DEFAULT_ETA_CONFIG: EtaConfig = {
@@ -29,6 +38,7 @@ export const DEFAULT_ETA_CONFIG: EtaConfig = {
   lowSignalPenalty: 1.5,
   verificationPendingPenalty: 1.2,
   replanningPenalty: 1.4,
+  minHistorySamples: 3,
 };
 
 export function estimateEta(
@@ -45,12 +55,40 @@ export function estimateEta(
       reasons: [{ code: 'terminal', message: 'Session has reached a terminal state.' }],
     };
   }
+  const history = summarizeHistory(input.history, config.minHistorySamples ?? 3);
+  const historyReasons: Array<{ code: string; message: string }> = [];
+  if (input.history !== undefined && history === undefined) {
+    historyReasons.push({
+      code: 'history_insufficient',
+      message: `ETA history needs at least ${config.minHistorySamples ?? 3} comparable completed sessions.`,
+    });
+  }
   if (input.progress.value < config.minProgress) {
+    if (history !== undefined) {
+      const historyRange = historyRemainingRange(history, elapsed);
+      return {
+        minSeconds: historyRange.minSeconds,
+        maxSeconds: historyRange.maxSeconds,
+        confidence: Math.min(0.35, historyConfidence(history.count)),
+        reasons: [
+          ...historyReasons,
+          {
+            code: 'history_baseline',
+            message: `Using ${history.count} comparable completed sessions as the ETA baseline${history.scope === undefined ? '' : ` (${history.scope})`}.`,
+          },
+          {
+            code: 'insufficient_data',
+            message: `Progress is below the ${config.minProgress} estimation threshold.`,
+          },
+        ],
+      };
+    }
     return {
       minSeconds: config.lowSignalMinSeconds,
       maxSeconds: config.lowSignalMaxSeconds,
       confidence: Math.min(0.25, input.progress.confidence),
       reasons: [
+        ...historyReasons,
         {
           code: 'insufficient_data',
           message: `Progress is below the ${config.minProgress} estimation threshold.`,
@@ -59,10 +97,25 @@ export function estimateEta(
     };
   }
 
-  const base =
+  const observedRemaining =
     (elapsed / Math.max(input.progress.value, config.minProgress)) * (1 - input.progress.value);
-  let penalty = 1;
+  let base = observedRemaining;
   const reasons = [...input.progress.reasons];
+  if (history !== undefined) {
+    const observedTotal = elapsed / Math.max(input.progress.value, config.minProgress);
+    const weight = historyWeight(history.count);
+    const blendedTotal = history.median * weight + observedTotal * (1 - weight);
+    base = Math.max(0, blendedTotal - elapsed);
+    reasons.push({
+      code: 'history_baseline',
+      message: `Using ${history.count} comparable completed sessions as the ETA baseline${history.scope === undefined ? '' : ` (${history.scope})`}.`,
+    });
+    reasons.push({
+      code: 'history_range',
+      message: `Historical total duration range is ${formatSeconds(history.p25)}–${formatSeconds(history.p75)}.`,
+    });
+  }
+  let penalty = 1;
   if (
     input.state.verification.tests === 'failed' ||
     input.state.verification.overall === 'failed'
@@ -103,19 +156,89 @@ export function estimateEta(
   }
   const center = Math.min(config.maxSeconds, Math.max(0, base * penalty));
   const uncertainty = Math.max(0.35, 1 - input.progress.confidence);
-  const minSeconds = Math.max(30, Math.floor(center * Math.max(0.25, 1 - uncertainty)));
-  const maxSeconds = Math.min(
+  let minSeconds = Math.max(30, Math.floor(center * Math.max(0.25, 1 - uncertainty)));
+  let maxSeconds = Math.min(
     config.maxSeconds,
     Math.max(minSeconds, Math.ceil(center * (1 + uncertainty * 2))),
   );
+  if (history !== undefined) {
+    const historyRange = historyRemainingRange(history, elapsed);
+    minSeconds = Math.max(0, Math.min(minSeconds, historyRange.minSeconds));
+    maxSeconds = Math.min(config.maxSeconds, Math.max(maxSeconds, historyRange.maxSeconds));
+  }
+  const historyConfidenceValue = history === undefined ? 0 : historyConfidence(history.count);
   return {
     minSeconds,
     maxSeconds,
     confidence: clamp(
-      input.progress.confidence * (input.state.verification.overall === 'passed' ? 1 : 0.8),
+      Math.max(input.progress.confidence, historyConfidenceValue) *
+        (input.state.verification.overall === 'passed' ? 1 : 0.8),
     ),
-    reasons: dedupeReasons(reasons),
+    reasons: dedupeReasons([...historyReasons, ...reasons]),
   };
+}
+
+interface HistorySummary {
+  readonly count: number;
+  readonly min: number;
+  readonly p25: number;
+  readonly median: number;
+  readonly p75: number;
+  readonly max: number;
+  readonly scope?: string;
+}
+
+function summarizeHistory(
+  history: EtaHistory | undefined,
+  minSamples: number,
+): HistorySummary | undefined {
+  if (history === undefined) return undefined;
+  const durations = history.durationsSeconds
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .map((value) => value)
+    .sort((left, right) => left - right);
+  if (durations.length < minSamples) return undefined;
+  return {
+    count: durations.length,
+    min: durations[0] ?? 0,
+    p25: percentile(durations, 0.25),
+    median: percentile(durations, 0.5),
+    p75: percentile(durations, 0.75),
+    max: durations.at(-1) ?? 0,
+    ...(history.scope === undefined ? {} : { scope: history.scope }),
+  };
+}
+
+function historyWeight(sampleCount: number): number {
+  return Math.min(0.75, sampleCount / (sampleCount + 3));
+}
+
+function historyConfidence(sampleCount: number): number {
+  return Math.min(0.8, 0.2 + sampleCount / 20);
+}
+
+function historyRemainingRange(
+  history: HistorySummary,
+  elapsedSeconds: number,
+): { minSeconds: number; maxSeconds: number } {
+  const minSeconds = Math.max(0, Math.floor(history.p25 - elapsedSeconds));
+  const maxSeconds = Math.max(minSeconds, Math.ceil(history.p75 - elapsedSeconds));
+  return { minSeconds, maxSeconds };
+}
+
+function percentile(values: readonly number[], fraction: number): number {
+  if (values.length === 0) return 0;
+  const index = (values.length - 1) * fraction;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return values[lower] ?? 0;
+  const lowerValue = values[lower] ?? 0;
+  const upperValue = values[upper] ?? lowerValue;
+  return lowerValue + (upperValue - lowerValue) * (index - lower);
+}
+
+function formatSeconds(value: number): string {
+  return `${Math.round(value)}s`;
 }
 
 function isTerminal(status: SessionState['status']): boolean {
@@ -142,6 +265,12 @@ function validateConfig(config: EtaConfig): void {
     throw new RangeError('Low-signal ETA range is invalid.');
   }
   if (config.maxSeconds <= 0) throw new RangeError('maxSeconds must be positive.');
+  if (
+    config.minHistorySamples !== undefined &&
+    (!Number.isInteger(config.minHistorySamples) || config.minHistorySamples < 1)
+  ) {
+    throw new RangeError('minHistorySamples must be a positive integer.');
+  }
   for (const [name, value] of Object.entries({
     failedVerificationPenalty: config.failedVerificationPenalty,
     blockedPenalty: config.blockedPenalty,

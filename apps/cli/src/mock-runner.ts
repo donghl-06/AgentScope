@@ -1,6 +1,6 @@
 import { reduceSessionState } from '@agentscope/core';
 import { MockAdapter, type MockFixtureName } from '@agentscope/adapter-mock';
-import { estimateEta } from '@agentscope/eta';
+import { estimateEta, type EtaHistory } from '@agentscope/eta';
 import { ObserverRuntime } from '@agentscope/observer-runtime';
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
 import { computeProgress } from '@agentscope/progress';
@@ -29,6 +29,17 @@ export async function runMockFixture(options: MockRunOptions): Promise<MockRunRe
   const startedAt = options.now?.() ?? Date.now();
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
+  const adapter = new MockAdapter({
+    fixture: options.fixture,
+    ...(options.speed === undefined ? {} : { speed: options.speed }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+  const etaHistory: EtaHistory = {
+    durationsSeconds: repository
+      .listEtaHistory({ provider: 'mock', adapter: adapter.id })
+      .map((sample) => sample.durationSeconds),
+    scope: `mock/${adapter.id}`,
+  };
   let state = createInitialSessionState(options.sessionId, startedAt);
   repository.createSession({
     id: options.sessionId,
@@ -44,11 +55,6 @@ export async function runMockFixture(options: MockRunOptions): Promise<MockRunRe
 
   let eventCount = 0;
   let lastEtaSnapshot: SessionState['eta'];
-  const adapter = new MockAdapter({
-    fixture: options.fixture,
-    ...(options.speed === undefined ? {} : { speed: options.speed }),
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
   let attached: Awaited<ReturnType<NonNullable<MockAdapter['start']>>> | undefined;
   let observerRuntime: ObserverRuntime | undefined;
   const activeCommandIds: string[] = [];
@@ -114,6 +120,7 @@ export async function runMockFixture(options: MockRunOptions): Promise<MockRunRe
           state,
           progress,
           elapsedSeconds: Math.max(0, (event.timestamp - startedAt) / 1_000),
+          history: etaHistory,
         }),
       };
       repository.appendEvent(event, state, event.timestamp);

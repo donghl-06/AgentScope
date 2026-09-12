@@ -87,6 +87,14 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
             },
           });
 
+  const providerName = options.adapter === 'claude' ? 'claude' : 'codex';
+  const etaHistory = {
+    durationsSeconds: repository
+      .listEtaHistory({ provider: providerName, adapter: adapter.id })
+      .map((sample) => sample.durationSeconds),
+    scope: `${providerName}/${adapter.id}`,
+  } as const;
+
   repository.createSession({
     id: sessionId,
     provider: options.adapter === 'claude' ? 'claude' : 'codex',
@@ -158,6 +166,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
             state,
             progress,
             elapsedSeconds: Math.max(0, (verificationEvent.timestamp - startedAt) / 1_000),
+            history: etaHistory,
           }),
         };
         repository.appendEvent(verificationEvent, state, verificationEvent.timestamp);
@@ -215,6 +224,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           state,
           progress,
           elapsedSeconds: Math.max(0, (event.timestamp - startedAt) / 1_000),
+          history: etaHistory,
         }),
       };
       repository.appendEvent(event, state, event.timestamp);

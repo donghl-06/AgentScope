@@ -22,7 +22,7 @@ import { openStorage, StorageRepository } from '@agentscope/storage';
 import { nodePtyDriver, TerminalSession, type TerminalDriver } from '@agentscope/terminal';
 import { ObserverRuntime } from '@agentscope/observer-runtime';
 import type { ObserverEvidence } from '@agentscope/observer-runtime';
-import { estimateEta } from '@agentscope/eta';
+import { estimateEta, type EtaHistory } from '@agentscope/eta';
 import { computeProgress } from '@agentscope/progress';
 import { shouldPersistEtaSnapshot } from './eta-snapshot.js';
 import { applyContinuation, detectContinuation } from './continuation.js';
@@ -109,6 +109,12 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     adapter: options.adapter === 'claude' ? 'claude-code-tty' : 'codex-cli-tty',
   };
   const ttyAdapter = source.adapter;
+  const etaHistory = {
+    durationsSeconds: repository
+      .listEtaHistory({ provider: options.adapter, adapter: ttyAdapter })
+      .map((sample) => sample.durationSeconds),
+    scope: `${options.adapter}/${ttyAdapter}`,
+  } as const;
   repository.createSession({
     id: sessionId,
     provider: options.adapter,
@@ -189,6 +195,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           source,
           turnEventPayload(update.kind, update.turn),
         ),
+        etaHistory,
       );
       persistInteractiveEta(repository, sessionId, state, turnEventType(update.kind), timestamp, {
         get: () => lastEtaSnapshot,
@@ -196,7 +203,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           lastEtaSnapshot = value;
         },
       });
-      syncTurnProjection(repository, update.turn, state, timestamp);
+      syncTurnProjection(repository, update.turn, state, timestamp, etaHistory);
       if (update.kind === 'started' || update.kind === 'finished') {
         queueTurnObserverSnapshots(
           update.turn.turnId,
@@ -336,6 +343,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
           code: 'pty_spawn_error',
           message,
         }),
+        etaHistory,
       );
       state = appendEvent(
         repository,
@@ -343,6 +351,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         createEvent('session_finished', sessionId, now(), source, {
           reason: 'failed',
         }),
+        etaHistory,
       );
       return 1;
     }
@@ -351,6 +360,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
       repository,
       state,
       createEvent('session_started', sessionId, now(), source, {}),
+      etaHistory,
     );
     const exitPromise = new Promise<{ exitCode: number; signal?: number }>((resolve) => {
       terminal?.onExit((event) => resolve(event));
@@ -386,7 +396,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         if (coordinator.current === undefined) return;
         const activityEvent = createObserverActivityEvent(sessionId, source, evidence, turnId);
         if (activityEvent === undefined) return;
-        state = appendEvent(repository, state, activityEvent);
+        state = appendEvent(repository, state, activityEvent, etaHistory);
         persistInteractiveEta(
           repository,
           sessionId,
@@ -434,10 +444,10 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
     liveProjectionTimer = setInterval(() => {
       if (terminal?.state !== 'running') return;
       const timestamp = now();
-      state = refreshInteractiveProjection(repository, state, timestamp);
+      state = refreshInteractiveProjection(repository, state, timestamp, etaHistory);
       const currentTurn = coordinator.current;
       if (currentTurn !== undefined) {
-        syncTurnProjection(repository, currentTurn, state, timestamp);
+        syncTurnProjection(repository, currentTurn, state, timestamp, etaHistory);
       }
     }, INTERACTIVE_PROJECTION_INTERVAL_MS);
     liveProjectionTimer.unref?.();
@@ -469,6 +479,7 @@ export async function runInteractiveProvider(options: InteractiveProviderOptions
         reason,
         exitCode: exit.exitCode,
       }),
+      etaHistory,
     );
     persistInteractiveEta(repository, sessionId, state, 'session_finished', now(), {
       get: () => lastEtaSnapshot,
@@ -496,6 +507,7 @@ function appendEvent(
   repository: StorageRepository,
   state: SessionState,
   event: AgentEvent,
+  history?: EtaHistory,
 ): SessionState {
   const next = reduceSessionState(state, event);
   repository.appendEvent(event, next, event.timestamp);
@@ -512,6 +524,7 @@ function appendEvent(
       state: next,
       progress,
       elapsedSeconds: Math.max(0, (event.timestamp - next.startedAt) / 1_000),
+      ...(history === undefined ? {} : { history }),
     }),
   };
   repository.updateSessionState(next.sessionId, projected, { now: event.timestamp });
@@ -522,6 +535,7 @@ function refreshInteractiveProjection(
   repository: StorageRepository,
   state: SessionState,
   timestamp: number,
+  history?: EtaHistory,
 ): SessionState {
   if (state.status === 'completed' || state.status === 'failed' || state.status === 'interrupted') {
     return state;
@@ -539,6 +553,7 @@ function refreshInteractiveProjection(
       state,
       progress,
       elapsedSeconds: Math.max(0, (timestamp - state.startedAt) / 1_000),
+      ...(history === undefined ? {} : { history }),
     }),
   };
   repository.updateSessionState(state.sessionId, projected, { now: timestamp });
@@ -550,6 +565,7 @@ function syncTurnProjection(
   turn: TurnState,
   session: SessionState,
   timestamp: number,
+  history?: EtaHistory,
 ): void {
   const turnSession: SessionState = {
     sessionId: turn.sessionId,
@@ -573,6 +589,7 @@ function syncTurnProjection(
     state: turnSession,
     progress,
     elapsedSeconds: Math.max(0, (timestamp - turnSession.startedAt) / 1_000),
+    ...(history === undefined ? {} : { history }),
   });
   repository.updateTurnState(
     turn.turnId,

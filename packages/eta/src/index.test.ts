@@ -147,4 +147,32 @@ describe('ETA engine', () => {
     expect(first).toEqual(second);
     expect(first.reasons.map((reason) => reason.code)).toContain('low_signal_penalty');
   });
+
+  it('uses a comparable-session history baseline after the cold-start threshold', () => {
+    const eta = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.6, reasons: [] },
+      elapsedSeconds: 60,
+      history: {
+        durationsSeconds: [90, 120, 150, 180, 240],
+        scope: 'claude-code-tty',
+      },
+    });
+    expect(eta.reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining(['history_baseline', 'history_range']),
+    );
+    expect(eta.maxSeconds).toBeGreaterThanOrEqual(eta.minSeconds);
+    expect(eta.confidence).toBeGreaterThan(0.4);
+  });
+
+  it('keeps sparse history conservative and explicitly reports the cold-start reason', () => {
+    const eta = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.6, reasons: [] },
+      elapsedSeconds: 60,
+      history: { durationsSeconds: [90, 120] },
+    });
+    expect(eta.reasons.map((reason) => reason.code)).toContain('history_insufficient');
+    expect(eta.reasons.map((reason) => reason.code)).not.toContain('history_baseline');
+  });
 });
