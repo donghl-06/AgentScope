@@ -80,6 +80,51 @@ describe('CLI argument parser', () => {
       kind: 'show',
       sessionId: 'session-1',
     });
+    expect(parseCliArgs(['orchestrate', 'list', '--limit', '20'])).toEqual({
+      kind: 'orchestrate-list',
+      limit: 20,
+    });
+    expect(parseCliArgs(['orchestrate', 'show', 'goal-1'])).toEqual({
+      kind: 'orchestrate-show',
+      goalId: 'goal-1',
+    });
+    expect(
+      parseCliArgs([
+        'orchestrate',
+        'instruct',
+        'goal-1',
+        '--kind',
+        'constraint',
+        '--content',
+        'Keep tests deterministic.',
+        '--base-revision',
+        '2',
+        '--idempotency-key',
+        'instruction-1',
+      ]),
+    ).toEqual({
+      kind: 'orchestrate-instruct',
+      goalId: 'goal-1',
+      instructionKind: 'constraint',
+      content: 'Keep tests deterministic.',
+      baseRevision: 2,
+      idempotencyKey: 'instruction-1',
+    });
+    expect(
+      parseCliArgs([
+        'orchestrate',
+        'continue',
+        'goal-1',
+        '--confirm-external-process-stopped',
+        '--expected-revision',
+        '2',
+      ]),
+    ).toEqual({
+      kind: 'orchestrate-continue',
+      goalId: 'goal-1',
+      confirmExternalProcessStopped: true,
+      expectedRevision: 2,
+    });
   });
 
   it('preserves every argument after the run separator', () => {
@@ -105,6 +150,9 @@ describe('CLI argument parser', () => {
       ['run', 'claude'],
       ['orchestrate', '--provider', 'claude'],
       ['orchestrate', '--provider', 'unknown', '--prompt', 'x'],
+      ['orchestrate', 'show'],
+      ['orchestrate', 'instruct', 'goal-1', '--kind', 'unknown', '--content', 'x'],
+      ['orchestrate', 'continue'],
       ['run', 'claude', '--cwd', 'workspace', '--', 'arg'],
       ['run', 'mock', '--fixture'],
     ]) {

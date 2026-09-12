@@ -1,4 +1,37 @@
-import type { EventPage, Page, SessionListFilter, StoredSession } from '@agentscope/storage';
+import type {
+  EventPage,
+  GoalListFilter,
+  InstructionKind,
+  InstructionSource,
+  InstructionStatus,
+  Page,
+  SessionListFilter,
+  StoredGoal,
+  StoredGoalInstruction,
+  StoredSession,
+} from '@agentscope/storage';
+
+export interface GoalDetailResponse {
+  readonly goal: StoredGoal;
+  readonly tasks: readonly unknown[];
+  readonly taskDetails: readonly unknown[];
+  readonly events: readonly unknown[];
+}
+
+export interface InstructionSubmitRequest {
+  readonly kind: InstructionKind;
+  readonly content: string;
+  readonly source?: InstructionSource;
+  readonly baseRevision?: number;
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+}
+
+export interface GoalContinueRequest {
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+  readonly confirmExternalProcessStopped?: boolean;
+}
 
 export interface ServerClientOptions {
   readonly baseUrl: string;
@@ -43,6 +76,43 @@ export class ServerClient {
     return this.get<EventPage>(`api/sessions/${encodeURIComponent(sessionId)}/events`, query);
   }
 
+  listGoals(filter: Pick<GoalListFilter, 'limit'> = {}): Promise<readonly StoredGoal[]> {
+    const query = new URLSearchParams();
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    return this.get<readonly StoredGoal[]>('api/goals', query);
+  }
+
+  getGoal(goalId: string): Promise<GoalDetailResponse> {
+    return this.get<GoalDetailResponse>(`api/goals/${encodeURIComponent(goalId)}`);
+  }
+
+  listInstructions(
+    goalId: string,
+    options: { readonly status?: InstructionStatus; readonly limit?: number } = {},
+  ): Promise<readonly StoredGoalInstruction[]> {
+    const query = new URLSearchParams();
+    if (options.status !== undefined) query.set('status', options.status);
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    return this.get<readonly StoredGoalInstruction[]>(
+      `api/goals/${encodeURIComponent(goalId)}/instructions`,
+      query,
+    );
+  }
+
+  submitInstruction(
+    goalId: string,
+    input: InstructionSubmitRequest,
+  ): Promise<{ readonly goalId: string; readonly instruction: StoredGoalInstruction }> {
+    return this.post<{ readonly goalId: string; readonly instruction: StoredGoalInstruction }>(
+      `api/goals/${encodeURIComponent(goalId)}/instructions`,
+      input,
+    );
+  }
+
+  continueGoal(goalId: string, input: GoalContinueRequest = {}): Promise<unknown> {
+    return this.post<unknown>(`api/goals/${encodeURIComponent(goalId)}/continue`, input);
+  }
+
   private async get<T>(pathname: string, query?: URLSearchParams): Promise<T> {
     const url = new URL(pathname, this.baseUrl);
     if (query !== undefined) url.search = query.toString();
@@ -61,6 +131,29 @@ export class ServerClient {
       );
     }
     return body as T;
+  }
+
+  private async post<T>(pathname: string, body: unknown): Promise<T> {
+    const url = new URL(pathname, this.baseUrl);
+    let response: Response;
+    try {
+      response = await this.request(url.toString(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      throw new CliServerError('AgentScope server is unavailable.', 0, error);
+    }
+    const responseBody = (await response.json()) as unknown;
+    if (!response.ok) {
+      throw new CliServerError(
+        `AgentScope server returned HTTP ${response.status}.`,
+        response.status,
+        responseBody,
+      );
+    }
+    return responseBody as T;
   }
 }
 

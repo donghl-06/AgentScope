@@ -36,6 +36,62 @@ describe('CLI command runner', () => {
     });
   });
 
+  it('executes orchestrator list/show/instruct/continue through the Server client', async () => {
+    const output: string[] = [];
+    const calls: string[] = [];
+    const client = {
+      listGoals: async (options: { readonly limit?: number }) => {
+        calls.push(`list:${options.limit ?? 'default'}`);
+        return [{ id: 'goal-1', status: 'PAUSED' }];
+      },
+      getGoal: async (goalId: string) => {
+        calls.push(`show:${goalId}`);
+        return { goal: { id: goalId }, tasks: [], taskDetails: [], events: [] };
+      },
+      submitInstruction: async (goalId: string, input: { readonly content: string }) => {
+        calls.push(`instruct:${goalId}:${input.content}`);
+        return { goalId, instruction: { id: 'instruction-1', status: 'PENDING' } };
+      },
+      continueGoal: async (
+        goalId: string,
+        input: { readonly confirmExternalProcessStopped?: boolean },
+      ) => {
+        calls.push(`continue:${goalId}:${input.confirmExternalProcessStopped === true}`);
+        return { goalId, accepted: true };
+      },
+      listSessions: async () => ({ items: [] }),
+      getSession: async () => ({}),
+      listEvents: async () => ({ items: [] }),
+    } as unknown as NonNullable<CliCommandRunnerOptions['client']>;
+
+    for (const command of [
+      parseCliArgs(['orchestrate', 'list', '--limit', '5']),
+      parseCliArgs(['orchestrate', 'show', 'goal-1']),
+      parseCliArgs([
+        'orchestrate',
+        'instruct',
+        'goal-1',
+        '--kind',
+        'general',
+        '--content',
+        'Keep it local.',
+      ]),
+      parseCliArgs(['orchestrate', 'continue', 'goal-1', '--confirm-external-process-stopped']),
+    ]) {
+      expect(await executeCliCommand(command, { client, write: (text) => output.push(text) })).toBe(
+        0,
+      );
+    }
+    expect(calls).toEqual([
+      'list:5',
+      'show:goal-1',
+      'instruct:goal-1:Keep it local.',
+      'continue:goal-1:true',
+    ]);
+    expect(output).toHaveLength(4);
+    expect(JSON.parse(output[0]!)).toEqual([{ id: 'goal-1', status: 'PAUSED' }]);
+  });
+
   it('executes mock fixtures and preserves their exit code', async () => {
     const output: string[] = [];
     const exitCode = await executeCliCommand(

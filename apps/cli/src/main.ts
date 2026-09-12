@@ -86,7 +86,12 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
               }),
           }
         : {}),
-      ...(command.kind === 'sessions' || command.kind === 'show'
+      ...(command.kind === 'sessions' ||
+      command.kind === 'show' ||
+      command.kind === 'orchestrate-list' ||
+      command.kind === 'orchestrate-show' ||
+      command.kind === 'orchestrate-instruct' ||
+      command.kind === 'orchestrate-continue'
         ? { client: new ServerClient({ baseUrl: config.serverUrl }) }
         : {}),
       ...(command.kind === 'recover'

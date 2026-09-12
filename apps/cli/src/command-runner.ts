@@ -5,7 +5,17 @@ import type { RecoverySummary } from './recover-runner.js';
 import { formatServerJson, type ServerClient } from './server-client.js';
 
 export interface CliCommandRunnerOptions {
-  readonly client?: Pick<ServerClient, 'listSessions' | 'getSession' | 'listEvents'>;
+  readonly client?: Pick<
+    ServerClient,
+    | 'listSessions'
+    | 'getSession'
+    | 'listEvents'
+    | 'listGoals'
+    | 'getGoal'
+    | 'listInstructions'
+    | 'submitInstruction'
+    | 'continueGoal'
+  >;
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
   readonly recover?: () => Promise<RecoverySummary>;
   readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
@@ -59,6 +69,58 @@ export async function executeCliCommand(
     options.write(formatServerJson({ session, events }));
     return 0;
   }
+  if (command.kind === 'orchestrate-list') {
+    const client = requireClient(options);
+    options.write(
+      formatServerJson(
+        await client.listGoals(command.limit === undefined ? {} : { limit: command.limit }),
+      ),
+    );
+    return 0;
+  }
+  if (command.kind === 'orchestrate-show') {
+    const client = requireClient(options);
+    options.write(formatServerJson(await client.getGoal(command.goalId)));
+    return 0;
+  }
+  if (command.kind === 'orchestrate-instruct') {
+    const client = requireClient(options);
+    options.write(
+      formatServerJson(
+        await client.submitInstruction(command.goalId, {
+          kind: command.instructionKind,
+          content: command.content,
+          ...(command.baseRevision === undefined ? {} : { baseRevision: command.baseRevision }),
+          ...(command.idempotencyKey === undefined
+            ? {}
+            : { idempotencyKey: command.idempotencyKey }),
+          ...(command.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: command.expectedRevision }),
+        }),
+      ),
+    );
+    return 0;
+  }
+  if (command.kind === 'orchestrate-continue') {
+    const client = requireClient(options);
+    options.write(
+      formatServerJson(
+        await client.continueGoal(command.goalId, {
+          ...(command.idempotencyKey === undefined
+            ? {}
+            : { idempotencyKey: command.idempotencyKey }),
+          ...(command.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: command.expectedRevision }),
+          ...(command.confirmExternalProcessStopped === undefined
+            ? {}
+            : { confirmExternalProcessStopped: command.confirmExternalProcessStopped }),
+        }),
+      ),
+    );
+    return 0;
+  }
   if (command.kind === 'run-mock') {
     if (options.runMock === undefined) {
       throw new CliExecutionError('Mock runner is not configured.', 'missing_runtime');
@@ -94,7 +156,7 @@ export async function executeCliCommand(
 
 function requireClient(
   options: CliCommandRunnerOptions,
-): Pick<ServerClient, 'listSessions' | 'getSession' | 'listEvents'> {
+): NonNullable<CliCommandRunnerOptions['client']> {
   if (options.client === undefined) {
     throw new CliExecutionError('Server client is not configured.', 'missing_runtime');
   }

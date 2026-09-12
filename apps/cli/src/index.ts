@@ -20,6 +20,25 @@ export type CliCommand =
       readonly id?: string;
       readonly maxSteps?: number;
     }
+  | { readonly kind: 'orchestrate-list'; readonly limit?: number }
+  | { readonly kind: 'orchestrate-show'; readonly goalId: string }
+  | {
+      readonly kind: 'orchestrate-instruct';
+      readonly goalId: string;
+      readonly instructionKind:
+        'clarification' | 'constraint' | 'priority' | 'approval-context' | 'general';
+      readonly content: string;
+      readonly baseRevision?: number;
+      readonly idempotencyKey?: string;
+      readonly expectedRevision?: number;
+    }
+  | {
+      readonly kind: 'orchestrate-continue';
+      readonly goalId: string;
+      readonly idempotencyKey?: string;
+      readonly expectedRevision?: number;
+      readonly confirmExternalProcessStopped?: boolean;
+    }
   | {
       readonly kind: 'interactive';
       readonly adapter: 'claude' | 'codex';
@@ -86,6 +105,12 @@ export function formatCliHelp(): string {
     '  run codex-app-server -- <prompt...>',
     '  orchestrate --provider <name> --prompt <text> [--workspace <path>]',
     '                                Run one serial, evidence-gated Goal.',
+    '  orchestrate list [--limit <n>] List stored Orchestrator Goals.',
+    '  orchestrate show <goal-id>    Show one Goal, Tasks, and events.',
+    '  orchestrate instruct <goal-id> --kind <kind> --content <text>',
+    '                                Queue a human Instruction for the next safe boundary.',
+    '  orchestrate continue <goal-id> [--confirm-external-process-stopped]',
+    '                                Continue a paused Goal through the Server.',
     '  claude [--agent-scope-accept-api-key] [args...]',
     '                                Run Claude Code in a monitored interactive PTY.',
     '  codex [args...]                Run Codex CLI in a monitored interactive PTY.',
@@ -140,7 +165,12 @@ function parseRun(argv: readonly string[]): CliCommand {
   return { kind: 'run', adapter, args: rest.slice(separator + 1) };
 }
 
-function parseOrchestrate(argv: readonly string[]): Extract<CliCommand, { kind: 'orchestrate' }> {
+function parseOrchestrate(argv: readonly string[]): CliCommand {
+  const subcommand = argv[0];
+  if (subcommand === 'list') return parseOrchestrateList(argv.slice(1));
+  if (subcommand === 'show') return parseOrchestrateShow(argv.slice(1));
+  if (subcommand === 'instruct') return parseOrchestrateInstruct(argv.slice(1));
+  if (subcommand === 'continue') return parseOrchestrateContinue(argv.slice(1));
   let provider: Extract<CliCommand, { kind: 'orchestrate' }>['provider'] | undefined;
   let workspace = '.';
   let prompt: string | undefined;
@@ -204,6 +234,179 @@ function parseOrchestrate(argv: readonly string[]): Extract<CliCommand, { kind: 
     ...(id === undefined ? {} : { id }),
     ...(maxSteps === undefined ? {} : { maxSteps }),
   };
+}
+
+function parseOrchestrateList(
+  argv: readonly string[],
+): Extract<CliCommand, { kind: 'orchestrate-list' }> {
+  let limit: number | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--limit') {
+      throw new CliUsageError('Usage: agent-scope orchestrate list [--limit <n>]');
+    }
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith('-')) {
+      throw new CliUsageError('Usage: agent-scope orchestrate list [--limit <n>]');
+    }
+    limit = parseCliBoundedInteger(
+      value,
+      1,
+      100,
+      'The --limit value must be an integer between 1 and 100.',
+    );
+    index += 1;
+  }
+  return { kind: 'orchestrate-list', ...(limit === undefined ? {} : { limit }) };
+}
+
+function parseOrchestrateShow(
+  argv: readonly string[],
+): Extract<CliCommand, { kind: 'orchestrate-show' }> {
+  if (argv.length !== 1 || argv[0] === undefined || argv[0].startsWith('-')) {
+    throw new CliUsageError('Usage: agent-scope orchestrate show <goal-id>');
+  }
+  return { kind: 'orchestrate-show', goalId: argv[0] };
+}
+
+function parseOrchestrateInstruct(
+  argv: readonly string[],
+): Extract<CliCommand, { kind: 'orchestrate-instruct' }> {
+  const goalId = argv[0];
+  if (goalId === undefined || goalId.startsWith('-')) {
+    throw new CliUsageError(
+      'Usage: agent-scope orchestrate instruct <goal-id> --kind <kind> --content <text> [options]',
+    );
+  }
+  let instructionKind:
+    Extract<CliCommand, { kind: 'orchestrate-instruct' }>['instructionKind'] | undefined;
+  let content: string | undefined;
+  let baseRevision: number | undefined;
+  let idempotencyKey: string | undefined;
+  let expectedRevision: number | undefined;
+  for (let index = 1; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag === '--') {
+      const rest = argv.slice(index + 1);
+      if (rest.length === 0) throw new CliUsageError(instructUsage());
+      content = rest.join(' ');
+      break;
+    }
+    const value = argv[index + 1];
+    if (
+      flag === '--kind' ||
+      flag === '--content' ||
+      flag === '--base-revision' ||
+      flag === '--idempotency-key' ||
+      flag === '--expected-revision'
+    ) {
+      if (value === undefined) throw new CliUsageError(instructUsage());
+      if (flag === '--kind') {
+        if (!isInstructionKind(value))
+          throw new CliUsageError(`Unknown instruction kind: ${value}`);
+        instructionKind = value;
+      } else if (flag === '--content') content = value;
+      else if (flag === '--base-revision') {
+        baseRevision = parseCliBoundedInteger(
+          value,
+          0,
+          Number.MAX_SAFE_INTEGER,
+          'The --base-revision value must be a non-negative integer.',
+        );
+      } else if (flag === '--idempotency-key') idempotencyKey = value;
+      else {
+        expectedRevision = parseCliBoundedInteger(
+          value,
+          0,
+          Number.MAX_SAFE_INTEGER,
+          'The --expected-revision value must be a non-negative integer.',
+        );
+      }
+      index += 1;
+      continue;
+    }
+    throw new CliUsageError(instructUsage());
+  }
+  if (instructionKind === undefined || content === undefined || content.trim().length === 0) {
+    throw new CliUsageError(instructUsage());
+  }
+  return {
+    kind: 'orchestrate-instruct',
+    goalId,
+    instructionKind,
+    content,
+    ...(baseRevision === undefined ? {} : { baseRevision }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+  };
+}
+
+function parseOrchestrateContinue(
+  argv: readonly string[],
+): Extract<CliCommand, { kind: 'orchestrate-continue' }> {
+  const goalId = argv[0];
+  if (goalId === undefined || goalId.startsWith('-')) {
+    throw new CliUsageError(continueUsage());
+  }
+  let idempotencyKey: string | undefined;
+  let expectedRevision: number | undefined;
+  let confirmExternalProcessStopped = false;
+  for (let index = 1; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag === '--confirm-external-process-stopped') {
+      confirmExternalProcessStopped = true;
+      continue;
+    }
+    const value = argv[index + 1];
+    if (flag === '--idempotency-key' || flag === '--expected-revision') {
+      if (value === undefined) throw new CliUsageError(continueUsage());
+      if (flag === '--idempotency-key') idempotencyKey = value;
+      else {
+        expectedRevision = parseCliBoundedInteger(
+          value,
+          0,
+          Number.MAX_SAFE_INTEGER,
+          'The --expected-revision value must be a non-negative integer.',
+        );
+      }
+      index += 1;
+      continue;
+    }
+    throw new CliUsageError(continueUsage());
+  }
+  return {
+    kind: 'orchestrate-continue',
+    goalId,
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    ...(confirmExternalProcessStopped ? { confirmExternalProcessStopped: true } : {}),
+  };
+}
+
+function isInstructionKind(
+  value: string,
+): value is Extract<CliCommand, { kind: 'orchestrate-instruct' }>['instructionKind'] {
+  return ['clarification', 'constraint', 'priority', 'approval-context', 'general'].includes(value);
+}
+
+function parseCliBoundedInteger(
+  value: string,
+  minimum: number,
+  maximum: number,
+  message: string,
+): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new CliUsageError(message);
+  }
+  return parsed;
+}
+
+function instructUsage(): string {
+  return 'Usage: agent-scope orchestrate instruct <goal-id> --kind <kind> --content <text> [--base-revision <n>] [--idempotency-key <key>] [--expected-revision <n>]';
+}
+
+function continueUsage(): string {
+  return 'Usage: agent-scope orchestrate continue <goal-id> [--confirm-external-process-stopped] [--idempotency-key <key>] [--expected-revision <n>]';
 }
 
 function parseStart(argv: readonly string[]): Extract<CliCommand, { kind: 'start' }> {
