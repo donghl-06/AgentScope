@@ -619,6 +619,37 @@ export class OrchestratorRepository {
     };
   }
 
+  archiveGoal(id: string, now = Date.now()): StoredGoal {
+    const existing = this.getGoal(id);
+    if (!isArchivableGoalStatus(existing.status)) {
+      throw new OrchestratorStateError(
+        `Goal ${id} cannot be archived while it is ${existing.status}.`,
+      );
+    }
+    const lease = this.getGoalRunLease(id);
+    if (lease !== undefined && lease.expiresAt > now) {
+      throw new StorageConflictError(`Goal ${id} still has an active run lease.`);
+    }
+    if (existing.archivedAt !== undefined) return existing;
+    this.client
+      .prepare('UPDATE goals SET archived_at = ?, updated_at = ? WHERE id = ?')
+      .run(now, now, id);
+    const goal = this.getGoal(id);
+    this.notify({ type: 'goal.updated', goal });
+    return goal;
+  }
+
+  unarchiveGoal(id: string, now = Date.now()): StoredGoal {
+    const existing = this.getGoal(id);
+    if (existing.archivedAt === undefined) return existing;
+    this.client
+      .prepare('UPDATE goals SET archived_at = NULL, updated_at = ? WHERE id = ?')
+      .run(now, id);
+    const goal = this.getGoal(id);
+    this.notify({ type: 'goal.updated', goal });
+    return goal;
+  }
+
   createInstruction(input: CreateInstructionInput): StoredGoalInstruction {
     const goal = this.getGoal(input.goalId);
     assertInstructionKind(input.kind);
@@ -1936,6 +1967,10 @@ function assertNotificationTransition(from: NotificationStatus, to: Notification
   if (!allowed[from].includes(to)) {
     throw new OrchestratorStateError(`Invalid Notification transition: ${from} -> ${to}`);
   }
+}
+
+function isArchivableGoalStatus(status: GoalStatus): boolean {
+  return ['PAUSED', 'NEEDS_HUMAN', 'COMPLETED', 'FAILED', 'ABORTED'].includes(status);
 }
 
 function validateRevisionItems(items: readonly RoadmapRevisionItemInput[]): void {

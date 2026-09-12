@@ -422,4 +422,41 @@ describe('OrchestratorRepository', () => {
       expect(() => repository.listGoalPage({ cursor: 'not-a-cursor' })).toThrow('Invalid Goal cursor');
     });
   });
+
+  it('archives only non-active Goals and keeps archived history recoverable', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'archive-running',
+        workspace: 'D:/workspace/archive',
+        prompt: 'The active Goal must remain visible.',
+        provider: 'mock',
+        now: 400,
+      });
+      repository.transitionGoal('archive-running', 'PLANNING', 401);
+      expect(() => repository.archiveGoal('archive-running', 402)).toThrow(
+        OrchestratorStateError,
+      );
+
+      repository.createGoal({
+        id: 'archive-paused',
+        workspace: 'D:/workspace/archive',
+        prompt: 'Archive this paused Goal safely.',
+        provider: 'mock',
+        now: 403,
+      });
+      repository.transitionGoal('archive-paused', 'PAUSED', 404);
+      const archived = repository.archiveGoal('archive-paused', 405);
+      expect(archived.archivedAt).toBe(405);
+      expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual(['archive-running']);
+      expect(repository.listGoalPage({ includeArchived: true }).items.map((goal) => goal.id)).toEqual([
+        'archive-paused',
+        'archive-running',
+      ]);
+      expect(repository.unarchiveGoal('archive-paused', 406).archivedAt).toBeUndefined();
+      expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual([
+        'archive-paused',
+        'archive-running',
+      ]);
+    });
+  });
 });
