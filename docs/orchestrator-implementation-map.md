@@ -86,3 +86,22 @@ Attempt 记录 provider、关联 Session、尝试号和 WorkerResult；Verificat
 - 任何缺少事件、退出码、文件或命令证据的完成声明都不会自动提升为 PASS。
 - 删除、覆盖、远程推送不属于 Orchestrator 自动动作；人工 Abort/删除仍沿用现有安全保护。
 
+## 当前落地状态（`orchestrator` 分支）
+
+截至本分支当前提交，以下能力已经落地并有自动测试覆盖：
+
+- [x] Goal/Task/Attempt/Verification/Event 持久化、显式状态迁移和 SQLite 迁移。
+- [x] 单活动 Goal 的数据库约束；多进程竞争会返回可识别的冲突，不会并行执行。
+- [x] 确定性 Project Context Bootstrap，过滤敏感路径，不读取 `.env` 内容。
+- [x] 保守 Initial Planner、Rolling Planner 和结构化 Task Contract。
+- [x] 串行 Worker Runtime，与现有 Claude/Codex provider runner 适配。
+- [x] Git、文件、结构化命令和测试/构建/类型检查证据的独立 Verifier。
+- [x] 有界修复重试、`NEEDS_HUMAN`、Pause/Continue/Abort 和运行时异常安全收尾。
+- [x] 最终 Goal 多 Task 复核；确定性失败会持久化 Gap Task。
+- [x] CLI `orchestrate` 命令、Server Goal API、WebSocket 广播和 Dashboard Goal 详情时间线。
+- [x] 启动恢复对活动 Attempt 加围栏，拒绝重复执行并保留人工介入路径。
+- [x] 临时工作区真实文件修改 + 确定性验证的集成验收。
+
+尚未把外部服务凭据写入自动化测试：真实 Claude/Codex 长任务仍应由使用者在目标机器上做一次验收；这不影响本地核心、存储、API、Dashboard 和安全任务测试。
+
+最近一次本地门禁记录：`format:check`、`lint`、`typecheck`、单 worker 全量测试（303 tests）、集成测试和 `build` 均通过。文件系统高并发用例在并行全量运行时曾超时，单独重跑及单 worker 全量运行均通过；发布门禁采用后者以避免 Windows 文件系统资源争用。
