@@ -145,6 +145,8 @@ export const goals = sqliteTable(
     executionMemoryJson: text('execution_memory_json').notNull(),
     workingSetJson: text('working_set_json').notNull(),
     currentTaskId: text('current_task_id'),
+    activeRevision: integer('active_revision').notNull().default(0),
+    archivedAt: integer('archived_at', { mode: 'number' }),
     createdAt: integer('created_at', { mode: 'number' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
     completedAt: integer('completed_at', { mode: 'number' }),
@@ -152,6 +154,7 @@ export const goals = sqliteTable(
   (table) => [
     index('goals_status_updated_idx').on(table.status, table.updatedAt),
     index('goals_workspace_status_idx').on(table.workspace, table.status),
+    index('goals_archived_updated_idx').on(table.archivedAt, table.updatedAt),
   ],
 );
 
@@ -244,6 +247,163 @@ export const orchestratorEvents = sqliteTable(
   ],
 );
 
+export const goalInstructions = sqliteTable(
+  'goal_instructions',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    content: text('content').notNull(),
+    status: text('status').notNull(),
+    baseRevision: integer('base_revision').notNull(),
+    appliedRevision: integer('applied_revision'),
+    appliedTaskId: text('applied_task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    appliedAttemptId: text('applied_attempt_id').references(() => taskAttempts.id, {
+      onDelete: 'set null',
+    }),
+    decisionReason: text('decision_reason'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    appliedAt: integer('applied_at', { mode: 'number' }),
+  },
+  (table) => [index('goal_instructions_goal_status_created_idx').on(table.goalId, table.status, table.createdAt)],
+);
+
+export const roadmapRevisions = sqliteTable(
+  'roadmap_revisions',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    revision: integer('revision').notNull(),
+    parentRevision: integer('parent_revision'),
+    source: text('source').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('roadmap_revisions_goal_revision_unique').on(table.goalId, table.revision),
+    index('roadmap_revisions_goal_revision_idx').on(table.goalId, table.revision),
+  ],
+);
+
+export const roadmapRevisionItems = sqliteTable(
+  'roadmap_revision_items',
+  {
+    revisionId: text('revision_id')
+      .notNull()
+      .references(() => roadmapRevisions.id, { onDelete: 'cascade' }),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    operation: text('operation').notNull(),
+    tentative: integer('tentative').notNull(),
+    snapshotJson: text('snapshot_json').notNull(),
+  },
+  (table) => [
+    uniqueIndex('roadmap_revision_items_revision_task_unique').on(table.revisionId, table.taskId),
+    index('roadmap_revision_items_task_idx').on(table.taskId, table.revisionId),
+  ],
+);
+
+export const memorySnapshots = sqliteTable(
+  'memory_snapshots',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    revision: integer('revision').notNull(),
+    memoryJson: text('memory_json').notNull(),
+    sourcesJson: text('sources_json').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('memory_snapshots_goal_revision_unique').on(table.goalId, table.revision),
+    index('memory_snapshots_goal_revision_idx').on(table.goalId, table.revision),
+  ],
+);
+
+export const approvalRequests = sqliteTable(
+  'approval_requests',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    attemptId: text('attempt_id').references(() => taskAttempts.id, { onDelete: 'set null' }),
+    riskLevel: text('risk_level').notNull(),
+    action: text('action').notNull(),
+    scopeJson: text('scope_json').notNull(),
+    status: text('status').notNull(),
+    decisionReason: text('decision_reason'),
+    expiresAt: integer('expires_at', { mode: 'number' }),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    decidedAt: integer('decided_at', { mode: 'number' }),
+  },
+  (table) => [index('approval_requests_goal_status_created_idx').on(table.goalId, table.status, table.createdAt)],
+);
+
+export const goalRunLeases = sqliteTable(
+  'goal_run_leases',
+  {
+    goalId: text('goal_id')
+      .primaryKey()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    ownerId: text('owner_id').notNull(),
+    generation: integer('generation').notNull(),
+    heartbeatAt: integer('heartbeat_at', { mode: 'number' }).notNull(),
+    expiresAt: integer('expires_at', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [index('goal_run_leases_expiry_idx').on(table.expiresAt)],
+);
+
+export const goalMetricSnapshots = sqliteTable(
+  'goal_metric_snapshots',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    progress: real('progress').notNull(),
+    etaJson: text('eta_json'),
+    confidence: real('confidence').notNull(),
+    reasonsJson: text('reasons_json').notNull(),
+    capturedAt: integer('captured_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [index('goal_metric_snapshots_goal_captured_idx').on(table.goalId, table.capturedAt)],
+);
+
+export const orchestratorNotifications = sqliteTable(
+  'orchestrator_notifications',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    eventKey: text('event_key').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    deliveredAt: integer('delivered_at', { mode: 'number' }),
+    readAt: integer('read_at', { mode: 'number' }),
+  },
+  (table) => [
+    uniqueIndex('orchestrator_notifications_goal_event_unique').on(table.goalId, table.eventKey),
+    index('orchestrator_notifications_goal_status_created_idx').on(table.goalId, table.status, table.createdAt),
+  ],
+);
+
 export const storageTables = {
   sessions,
   turns,
@@ -256,4 +416,12 @@ export const storageTables = {
   taskAttempts,
   verificationRuns,
   orchestratorEvents,
+  goalInstructions,
+  roadmapRevisions,
+  roadmapRevisionItems,
+  memorySnapshots,
+  approvalRequests,
+  goalRunLeases,
+  goalMetricSnapshots,
+  orchestratorNotifications,
 };

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { migrateStorage, openStorage } from './database.js';
+import { OrchestratorRepository } from './orchestrator.js';
 
 describe('storage database', () => {
   it('opens with SQLite safety pragmas and applies an idempotent migration', () => {
@@ -24,12 +25,20 @@ describe('storage database', () => {
         tables.map((table) => table.name).filter((name) => name !== 'sqlite_sequence'),
       ).toEqual([
         '_agentscope_migrations',
+        'approval_requests',
         'eta_snapshots',
         'events',
+        'goal_instructions',
+        'goal_metric_snapshots',
+        'goal_run_leases',
         'goals',
+        'memory_snapshots',
         'milestones',
         'observer_evidence',
         'orchestrator_events',
+        'orchestrator_notifications',
+        'roadmap_revision_items',
+        'roadmap_revisions',
         'sessions',
         'task_attempts',
         'tasks',
@@ -37,7 +46,7 @@ describe('storage database', () => {
         'verification_runs',
       ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 8,
+        count: 9,
       });
       expect(
         client
@@ -71,12 +80,42 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 8,
+        count: 9,
       });
       expect(
         client
           .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
           .get('sessions_status_updated_idx'),
+      ).toBeDefined();
+    } finally {
+      client.close();
+    }
+  });
+
+  it('adds v1 control columns and tables without changing existing Goal data', () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    try {
+      const repository = new OrchestratorRepository(client);
+      repository.createGoal({
+        id: 'legacy-goal',
+        workspace: 'D:/legacy-workspace',
+        prompt: 'Keep this V0 Goal readable after the V1 migration.',
+        provider: 'mock',
+      });
+
+      const columns = client.prepare('PRAGMA table_info(goals)').all() as Array<{ name: string }>;
+      expect(columns.map((column) => column.name)).toEqual(
+        expect.arrayContaining(['active_revision', 'archived_at']),
+      );
+      expect(
+        client
+          .prepare('SELECT active_revision, archived_at FROM goals WHERE id = ?')
+          .get('legacy-goal'),
+      ).toEqual({ active_revision: 0, archived_at: null });
+      expect(
+        client
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get('goal_run_leases'),
       ).toBeDefined();
     } finally {
       client.close();
