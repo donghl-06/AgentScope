@@ -231,6 +231,49 @@ describe('server HTTP API', () => {
     expect(orchestratorRepository.getGoal('control-goal').status).toBe('ABORTED');
   });
 
+  it('rejects a second Goal while another Goal is active', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    orchestratorRepository.createGoal({
+      id: 'active-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Already running',
+      provider: 'mock',
+    });
+    orchestratorRepository.transitionGoal('active-goal', 'PLANNING');
+    const engine = {
+      active: false,
+      createGoalAndRun: async () => {
+        throw new Error('should not be called');
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/goals',
+      payload: {
+        workspace: 'D:/workspace',
+        prompt: 'Second goal',
+        provider: 'mock',
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'goal_busy' } });
+  });
+
   it('serves health, sessions, events, and project overview', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

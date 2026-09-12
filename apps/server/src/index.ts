@@ -515,7 +515,12 @@ export function createServer(options: ServerOptions): FastifyInstance {
     {
       schema: {
         body: GoalCreateSchema,
-        response: { 202: Type.Unknown(), 400: ErrorResponseSchema, 503: ErrorResponseSchema },
+        response: {
+          202: Type.Unknown(),
+          400: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
       },
     },
     async (request, reply) => {
@@ -538,6 +543,20 @@ export function createServer(options: ServerOptions): FastifyInstance {
           readonly provider: string;
           readonly constraints?: Record<string, unknown>;
         };
+        const activeGoal = options.orchestratorRepository
+          .listGoals()
+          .find((goal) => ['PLANNING', 'RUNNING', 'VERIFYING'].includes(goal.status));
+        if (activeGoal !== undefined || options.orchestratorEngine.active === true) {
+          return reply.code(409).send({
+            error: {
+              code: 'goal_busy',
+              message:
+                activeGoal === undefined
+                  ? 'The Orchestrator is already running a Goal in this process.'
+                  : `Goal ${activeGoal.id} is already active.`,
+            },
+          });
+        }
         const id = body.id ?? randomUUID();
         void options.orchestratorEngine
           .createGoalAndRun({
