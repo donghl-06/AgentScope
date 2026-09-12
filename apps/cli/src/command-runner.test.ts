@@ -115,6 +115,25 @@ describe('CLI command runner', () => {
     expect(received).toEqual([{ adapter: 'claude', args: ['--bare'] }]);
   });
 
+  it('delegates a serial orchestrator goal to its configured runner', async () => {
+    const output: string[] = [];
+    let called = false;
+    const exitCode = await executeCliCommand(
+      parseCliArgs(['orchestrate', '--provider', 'claude', '--prompt', 'Inspect safely']),
+      {
+        orchestrate: async () => {
+          called = true;
+          return 3;
+        },
+        write: (text) => output.push(text),
+      },
+    );
+
+    expect(exitCode).toBe(3);
+    expect(called).toBe(true);
+    expect(output).toEqual([]);
+  });
+
   it('delegates interactive Claude runs without rewriting their argument list', async () => {
     const received: { adapter: 'claude' | 'codex'; args: readonly string[] }[] = [];
     const exitCode = await executeCliCommand(

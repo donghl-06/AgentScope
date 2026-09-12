@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { MOCK_FIXTURES, type MockFixtureName } from '@agentscope/adapter-mock';
@@ -14,6 +15,7 @@ import { runInteractiveProvider } from './interactive-runner.js';
 import { recoverSessions } from './recover-runner.js';
 import { ServerClient } from './server-client.js';
 import { runStartCommand } from './start-runtime.js';
+import { runOrchestrator } from './orchestrator-runner.js';
 
 export interface CliMainOptions {
   readonly argv?: readonly string[];
@@ -115,6 +117,33 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                     ? {}
                     : { executable: configuredCodexExecutable }),
               }).then((result) => result.exitCode);
+            },
+          }
+        : {}),
+      ...(command.kind === 'orchestrate'
+        ? {
+            orchestrate: async () => {
+              const result = await runOrchestrator({
+                filename: config.database,
+                workspacePath: path.resolve(config.workspacePath, command.workspace),
+                provider: command.provider,
+                prompt: command.prompt,
+                ...(command.id === undefined ? {} : { id: command.id }),
+                ...(command.maxSteps === undefined ? {} : { maxSteps: command.maxSteps }),
+                ...(command.provider === 'claude'
+                  ? configuredClaudeExecutable === undefined
+                    ? {}
+                    : { executable: configuredClaudeExecutable }
+                  : command.provider === 'codex'
+                    ? configuredCodexExecutable === undefined
+                      ? {}
+                      : { executable: configuredCodexExecutable }
+                    : configuredCodexExecutable === undefined
+                      ? {}
+                      : { executable: configuredCodexExecutable }),
+              });
+              write(`${JSON.stringify(result, null, 2)}\n`);
+              return result.status === 'COMPLETED' ? 0 : result.status === 'NEEDS_HUMAN' ? 3 : 1;
             },
           }
         : {}),

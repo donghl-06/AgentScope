@@ -29,6 +29,33 @@ describe('CLI argument parser', () => {
     });
     expect(parseCliArgs(['sessions'])).toEqual({ kind: 'sessions' });
     expect(parseCliArgs(['recover'])).toEqual({ kind: 'recover' });
+    expect(
+      parseCliArgs([
+        'orchestrate',
+        '--provider',
+        'claude',
+        '--workspace',
+        'D:/workspace',
+        '--prompt',
+        'Inspect the project',
+        '--max-steps',
+        '12',
+      ]),
+    ).toEqual({
+      kind: 'orchestrate',
+      provider: 'claude',
+      workspace: 'D:/workspace',
+      prompt: 'Inspect the project',
+      maxSteps: 12,
+    });
+    expect(
+      parseCliArgs(['orchestrate', '--provider', 'codex-app-server', '--', 'Inspect safely']),
+    ).toEqual({
+      kind: 'orchestrate',
+      provider: 'codex-app-server',
+      workspace: '.',
+      prompt: 'Inspect safely',
+    });
     expect(parseCliArgs(['claude', '--dangerously-skip-permissions', '-p', 'hello world'])).toEqual(
       {
         kind: 'interactive',
@@ -76,6 +103,8 @@ describe('CLI argument parser', () => {
       ['show'],
       ['start', '--port'],
       ['run', 'claude'],
+      ['orchestrate', '--provider', 'claude'],
+      ['orchestrate', '--provider', 'unknown', '--prompt', 'x'],
       ['run', 'claude', '--cwd', 'workspace', '--', 'arg'],
       ['run', 'mock', '--fixture'],
     ]) {

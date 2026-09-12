@@ -9,6 +9,7 @@ export interface CliCommandRunnerOptions {
   readonly runMock?: (fixture: string) => Promise<MockRunResult>;
   readonly recover?: () => Promise<RecoverySummary>;
   readonly runAdapter?: (adapter: string, args: readonly string[]) => Promise<number>;
+  readonly orchestrate?: () => Promise<number>;
   readonly runInteractive?: (
     adapter: 'claude' | 'codex',
     args: readonly string[],
@@ -71,6 +72,12 @@ export async function executeCliCommand(
       throw new CliExecutionError('Provider runner is not configured.', 'missing_runtime');
     }
     return options.runAdapter(command.adapter, command.args);
+  }
+  if (command.kind === 'orchestrate') {
+    if (options.orchestrate === undefined) {
+      throw new CliExecutionError('Orchestrator runner is not configured.', 'missing_runtime');
+    }
+    return options.orchestrate();
   }
   if (command.kind === 'interactive') {
     if (options.runInteractive === undefined) {

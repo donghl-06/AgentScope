@@ -62,6 +62,9 @@ importers:
       '@agentscope/observer-runtime':
         specifier: workspace:*
         version: link:../../packages/observers/runtime
+      '@agentscope/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@agentscope/progress':
         specifier: workspace:*
         version: link:../../packages/progress
