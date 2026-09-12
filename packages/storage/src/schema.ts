@@ -268,7 +268,13 @@ export const goalInstructions = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
     appliedAt: integer('applied_at', { mode: 'number' }),
   },
-  (table) => [index('goal_instructions_goal_status_created_idx').on(table.goalId, table.status, table.createdAt)],
+  (table) => [
+    index('goal_instructions_goal_status_created_idx').on(
+      table.goalId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
 );
 
 export const roadmapRevisions = sqliteTable(
@@ -347,7 +353,13 @@ export const approvalRequests = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
     decidedAt: integer('decided_at', { mode: 'number' }),
   },
-  (table) => [index('approval_requests_goal_status_created_idx').on(table.goalId, table.status, table.createdAt)],
+  (table) => [
+    index('approval_requests_goal_status_created_idx').on(
+      table.goalId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
 );
 
 export const goalRunLeases = sqliteTable(
@@ -400,7 +412,11 @@ export const orchestratorNotifications = sqliteTable(
   },
   (table) => [
     uniqueIndex('orchestrator_notifications_goal_event_unique').on(table.goalId, table.eventKey),
-    index('orchestrator_notifications_goal_status_created_idx').on(table.goalId, table.status, table.createdAt),
+    index('orchestrator_notifications_goal_status_created_idx').on(
+      table.goalId,
+      table.status,
+      table.createdAt,
+    ),
   ],
 );
 

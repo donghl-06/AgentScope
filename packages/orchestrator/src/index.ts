@@ -306,3 +306,4 @@ export * from './repair.js';
 export * from './loop.js';
 export * from './recovery.js';
 export * from './lease.js';
+export * from './retry.js';

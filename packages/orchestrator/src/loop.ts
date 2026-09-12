@@ -5,6 +5,7 @@ import {
   type OrchestratorRepository,
   type CreateGoalInput,
   type JsonObject,
+  type StoredAttempt,
   type StoredGoal,
   type StoredTask,
   type StoredVerificationRun,
@@ -18,9 +19,10 @@ import {
 import { ConservativePlanner, type Planner } from './planner.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
-import type { SerialWorkerRuntime, WorkerExecutionResult } from './worker.js';
+import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
 import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
+import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
 
 export type GoalVerification = (input: {
   readonly goal: StoredGoal;
@@ -55,6 +57,11 @@ export interface ResumeGoalOptions {
   readonly confirmExternalProcessStopped?: boolean;
 }
 
+export interface RetryTaskOptions {
+  readonly reason?: string;
+  readonly confirmExternalProcessStopped?: boolean;
+}
+
 export interface GoalRunResult {
   readonly goal: StoredGoal;
   readonly tasks: readonly StoredTask[];
@@ -62,8 +69,15 @@ export interface GoalRunResult {
   readonly lastVerification?: VerificationResult;
 }
 
+export interface RetryRunResult extends GoalRunResult {
+  readonly retry: RetryTaskPlan;
+}
+
 export class OrchestratorBusyError extends Error {
-  constructor(readonly activeGoalId: string, message?: string) {
+  constructor(
+    readonly activeGoalId: string,
+    message?: string,
+  ) {
     super(message ?? `An Orchestrator Goal is already running: ${activeGoalId}.`);
     this.name = 'OrchestratorBusyError';
   }
@@ -177,6 +191,25 @@ export class OrchestratorEngine {
     return this.runGoal(goal.id);
   }
 
+  async retryTask(
+    goalId: string,
+    taskId: string,
+    options: RetryTaskOptions = {},
+  ): Promise<RetryRunResult> {
+    if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
+    const retry = beginTaskRetry(this.options.repository, {
+      goalId,
+      taskId,
+      ...(options.reason === undefined ? {} : { reason: options.reason }),
+      ...(options.confirmExternalProcessStopped === true
+        ? { confirmExternalProcessStopped: true }
+        : {}),
+      now: this.now(),
+    });
+    const result = await this.runGoal(goalId);
+    return { ...result, retry };
+  }
+
   async runGoal(goalId: string): Promise<GoalRunResult> {
     if (this.activeGoalId !== undefined) throw new OrchestratorBusyError(this.activeGoalId);
     let lease: GoalRunLeaseHandle;
@@ -222,10 +255,7 @@ export class OrchestratorEngine {
     }
   }
 
-  private async runGoalInternal(
-    goalId: string,
-    assertLease: () => void,
-  ): Promise<GoalRunResult> {
+  private async runGoalInternal(goalId: string, assertLease: () => void): Promise<GoalRunResult> {
     const repository = this.options.repository;
     assertLease();
     let goal = repository.getGoal(goalId);
@@ -551,6 +581,10 @@ export class OrchestratorEngine {
     const repository = this.options.repository;
     assertLease();
     const attempts = repository.listAttempts(task.id);
+    const retryContext = createWorkerRetryContext(
+      attempts,
+      repository.listVerificationRuns(task.id),
+    );
     const attemptNumber = attempts.length + 1;
     const attempt = repository.createAttempt({
       id: `${task.id}:attempt:${attemptNumber}`,
@@ -579,6 +613,7 @@ export class OrchestratorEngine {
         task,
         projectState,
         workingSet,
+        ...(retryContext === undefined ? {} : { retryContext }),
       });
     } catch (error) {
       assertLease();
@@ -637,7 +672,14 @@ export class OrchestratorEngine {
       workerResult,
     });
     assertLease();
-    return this.handleVerification(goal, task, attempt.id, attemptNumber, verification, assertLease);
+    return this.handleVerification(
+      goal,
+      task,
+      attempt.id,
+      attemptNumber,
+      verification,
+      assertLease,
+    );
   }
 
   private handleVerification(
@@ -810,6 +852,36 @@ function failedWorkerVerification(reason: string): VerificationResult {
     deterministicChecks: [],
     evidence: [{ kind: 'worker', status: 'failed', reason }],
     reason,
+  };
+}
+
+function createWorkerRetryContext(
+  attempts: readonly StoredAttempt[],
+  verifications: readonly StoredVerificationRun[],
+): WorkerRetryContext | undefined {
+  const previousAttempt = [...attempts].sort(
+    (left, right) => right.attemptNumber - left.attemptNumber,
+  )[0];
+  if (previousAttempt === undefined) return undefined;
+  const previousVerification = [...verifications].sort(
+    (left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id),
+  )[0];
+  const repairObjective =
+    previousVerification === undefined
+      ? `Continue the Task after Attempt ${previousAttempt.attemptNumber}.`
+      : `Address the previous Verification result: ${previousVerification.reason}`;
+  return {
+    previousAttemptId: previousAttempt.id,
+    previousAttemptNumber: previousAttempt.attemptNumber,
+    previousAttemptStatus: previousAttempt.status,
+    ...(previousVerification === undefined
+      ? {}
+      : {
+          previousVerificationStatus: previousVerification.status,
+          previousVerificationReason: previousVerification.reason,
+        }),
+    previousVerificationEvidence: previousVerification?.evidence ?? [],
+    repairObjective,
   };
 }
 

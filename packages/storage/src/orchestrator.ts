@@ -672,9 +672,8 @@ export class OrchestratorRepository {
   }
 
   getInstruction(id: string): StoredGoalInstruction {
-    const row = this.client
-      .prepare('SELECT * FROM goal_instructions WHERE id = ?')
-      .get(id) as InstructionRow | undefined;
+    const row = this.client.prepare('SELECT * FROM goal_instructions WHERE id = ?').get(id) as
+      InstructionRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Instruction not found: ${id}`);
     return decodeInstruction(row);
   }
@@ -715,7 +714,11 @@ export class OrchestratorRepository {
     const existing = this.getInstruction(id);
     assertInstructionStatus(status);
     assertInstructionTransition(existing.status, status);
-    if (status === 'APPLIED' && patch.appliedRevision === undefined && existing.appliedRevision === undefined) {
+    if (
+      status === 'APPLIED' &&
+      patch.appliedRevision === undefined &&
+      existing.appliedRevision === undefined
+    ) {
       throw new StorageError(
         'Applied instructions must reference an active revision.',
         'invalid_request',
@@ -883,9 +886,8 @@ export class OrchestratorRepository {
   }
 
   getRoadmapRevision(id: string): StoredRoadmapRevision {
-    const row = this.client
-      .prepare('SELECT * FROM roadmap_revisions WHERE id = ?')
-      .get(id) as RoadmapRevisionRow | undefined;
+    const row = this.client.prepare('SELECT * FROM roadmap_revisions WHERE id = ?').get(id) as
+      RoadmapRevisionRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Roadmap revision not found: ${id}`);
     const items = this.client
       .prepare(
@@ -898,9 +900,7 @@ export class OrchestratorRepository {
   listRoadmapRevisions(goalId: string, limit = 100): readonly StoredRoadmapRevision[] {
     this.getGoal(goalId);
     const rows = this.client
-      .prepare(
-        'SELECT * FROM roadmap_revisions WHERE goal_id = ? ORDER BY revision ASC LIMIT ?',
-      )
+      .prepare('SELECT * FROM roadmap_revisions WHERE goal_id = ? ORDER BY revision ASC LIMIT ?')
       .all(goalId, validateLimit(limit, 'Roadmap revision limit', 500)) as RoadmapRevisionRow[];
     return rows.map((row) => {
       const items = this.client
@@ -936,9 +936,8 @@ export class OrchestratorRepository {
   }
 
   getMemorySnapshot(id: string): StoredMemorySnapshot {
-    const row = this.client
-      .prepare('SELECT * FROM memory_snapshots WHERE id = ?')
-      .get(id) as MemorySnapshotRow | undefined;
+    const row = this.client.prepare('SELECT * FROM memory_snapshots WHERE id = ?').get(id) as
+      MemorySnapshotRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Memory snapshot not found: ${id}`);
     return decodeMemorySnapshot(row);
   }
@@ -955,7 +954,8 @@ export class OrchestratorRepository {
     const goal = this.getGoal(input.goalId);
     if (input.taskId !== undefined) {
       const task = this.getTask(input.taskId);
-      if (task.goalId !== goal.id) throw new StorageError('Approval Task belongs to another Goal.', 'invalid_request');
+      if (task.goalId !== goal.id)
+        throw new StorageError('Approval Task belongs to another Goal.', 'invalid_request');
     }
     if (input.attemptId !== undefined) {
       const attempt = this.getAttempt(input.attemptId);
@@ -964,7 +964,10 @@ export class OrchestratorRepository {
       }
     }
     if (input.action.trim().length === 0 || input.riskLevel.trim().length === 0) {
-      throw new StorageError('Approval action and risk level must not be empty.', 'invalid_request');
+      throw new StorageError(
+        'Approval action and risk level must not be empty.',
+        'invalid_request',
+      );
     }
     const now = input.now ?? Date.now();
     this.client
@@ -992,9 +995,8 @@ export class OrchestratorRepository {
   }
 
   getApprovalRequest(id: string): StoredApprovalRequest {
-    const row = this.client
-      .prepare('SELECT * FROM approval_requests WHERE id = ?')
-      .get(id) as ApprovalRequestRow | undefined;
+    const row = this.client.prepare('SELECT * FROM approval_requests WHERE id = ?').get(id) as
+      ApprovalRequestRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Approval request not found: ${id}`);
     return decodeApprovalRequest(row);
   }
@@ -1039,9 +1041,7 @@ export class OrchestratorRepository {
       )
       .run(
         status,
-        decisionReason === undefined
-          ? (existing.decisionReason ?? null)
-          : (decisionReason ?? null),
+        decisionReason === undefined ? (existing.decisionReason ?? null) : (decisionReason ?? null),
         now,
         decidedAt ?? null,
         id,
@@ -1131,7 +1131,8 @@ export class OrchestratorRepository {
       )
       .run(now, now + ttlMs, now, goalId, ownerId, generation);
     const lease = this.getGoalRunLease(goalId);
-    if (lease === undefined) throw new StorageError('Lease disappeared during renewal.', 'storage_error');
+    if (lease === undefined)
+      throw new StorageError('Lease disappeared during renewal.', 'storage_error');
     this.notify({ type: 'lease.updated', lease });
     return lease;
   }
@@ -1197,9 +1198,8 @@ export class OrchestratorRepository {
   }
 
   getGoalMetricSnapshot(id: string): StoredGoalMetricSnapshot {
-    const row = this.client
-      .prepare('SELECT * FROM goal_metric_snapshots WHERE id = ?')
-      .get(id) as MetricSnapshotRow | undefined;
+    const row = this.client.prepare('SELECT * FROM goal_metric_snapshots WHERE id = ?').get(id) as
+      MetricSnapshotRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Goal metric snapshot not found: ${id}`);
     return decodeMetricSnapshot(row);
   }
@@ -1219,7 +1219,10 @@ export class OrchestratorRepository {
   ): StoredOrchestratorNotification {
     this.getGoal(input.goalId);
     if (input.eventKey.trim().length === 0 || input.kind.trim().length === 0) {
-      throw new StorageError('Notification event key and kind must not be empty.', 'invalid_request');
+      throw new StorageError(
+        'Notification event key and kind must not be empty.',
+        'invalid_request',
+      );
     }
     const now = input.now ?? Date.now();
     this.client
@@ -1228,7 +1231,14 @@ export class OrchestratorRepository {
           (id, goal_id, event_key, kind, status, payload_json, created_at)
          VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`,
       )
-      .run(input.id, input.goalId, input.eventKey, input.kind, stringifyJson(input.payload ?? {}), now);
+      .run(
+        input.id,
+        input.goalId,
+        input.eventKey,
+        input.kind,
+        stringifyJson(input.payload ?? {}),
+        now,
+      );
     const notification = this.getOrchestratorNotification(input.id);
     this.notify({ type: 'notification.created', notification });
     return notification;
@@ -1238,7 +1248,8 @@ export class OrchestratorRepository {
     const row = this.client
       .prepare('SELECT * FROM orchestrator_notifications WHERE id = ?')
       .get(id) as NotificationRow | undefined;
-    if (row === undefined) throw new StorageNotFoundError(`Orchestrator notification not found: ${id}`);
+    if (row === undefined)
+      throw new StorageNotFoundError(`Orchestrator notification not found: ${id}`);
     return decodeNotification(row);
   }
 
@@ -1985,7 +1996,10 @@ function validateRevisionItems(items: readonly RoadmapRevisionItemInput[]): void
   const sequences = new Set<number>();
   for (const item of items) {
     if (item.taskId.trim().length === 0 || item.operation.trim().length === 0) {
-      throw new StorageError('Roadmap revision items require taskId and operation.', 'invalid_request');
+      throw new StorageError(
+        'Roadmap revision items require taskId and operation.',
+        'invalid_request',
+      );
     }
     assertPositiveInteger(item.sequence, 'Roadmap item sequence');
     if (taskIds.has(item.taskId)) {
@@ -2000,16 +2014,19 @@ function validateRevisionItems(items: readonly RoadmapRevisionItemInput[]): void
 }
 
 function validateLimit(value: number, label: string, max: number): number {
-  if (!Number.isInteger(value) || value < 1) throw new StorageError(`${label} must be positive.`, 'invalid_query');
+  if (!Number.isInteger(value) || value < 1)
+    throw new StorageError(`${label} must be positive.`, 'invalid_query');
   return Math.min(value, max);
 }
 
 function assertNonNegativeInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 0) throw new StorageError(`${label} must be non-negative.`, 'invalid_request');
+  if (!Number.isInteger(value) || value < 0)
+    throw new StorageError(`${label} must be non-negative.`, 'invalid_request');
 }
 
 function assertPositiveInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 1) throw new StorageError(`${label} must be positive.`, 'invalid_request');
+  if (!Number.isInteger(value) || value < 1)
+    throw new StorageError(`${label} must be positive.`, 'invalid_request');
 }
 
 function validatePositiveInteger(value: number, label: string): void {

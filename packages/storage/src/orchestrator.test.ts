@@ -242,7 +242,11 @@ describe('OrchestratorRepository', () => {
       const appliedInstruction = repository.transitionInstruction(
         instruction.id,
         'APPLIED',
-        { appliedRevision: 1, appliedTaskId: task.id, decisionReason: 'Applied at the planning boundary.' },
+        {
+          appliedRevision: 1,
+          appliedTaskId: task.id,
+          decisionReason: 'Applied at the planning boundary.',
+        },
         104,
       );
       expect(appliedInstruction).toMatchObject({ status: 'APPLIED', appliedRevision: 1 });
@@ -268,7 +272,14 @@ describe('OrchestratorRepository', () => {
         scope: { host: 'registry.example.test' },
         now: 106,
       });
-      expect(repository.transitionApprovalRequest(approval.id, 'APPROVED', 'Approved for this scope', 107)).toMatchObject({
+      expect(
+        repository.transitionApprovalRequest(
+          approval.id,
+          'APPROVED',
+          'Approved for this scope',
+          107,
+        ),
+      ).toMatchObject({
         status: 'APPROVED',
         decisionReason: 'Approved for this scope',
       });
@@ -288,7 +299,9 @@ describe('OrchestratorRepository', () => {
           now: 150,
         }),
       ).toThrow(StorageConflictError);
-      expect(repository.renewGoalRunLease('v1-control-goal', 'owner-a', 1, 100, 150).expiresAt).toBe(250);
+      expect(
+        repository.renewGoalRunLease('v1-control-goal', 'owner-a', 1, 100, 150).expiresAt,
+      ).toBe(250);
       expect(repository.releaseGoalRunLease('v1-control-goal', 'owner-a', 1, 151)).toBe(true);
       expect(repository.getGoalRunLease('v1-control-goal')).toBeUndefined();
 
@@ -315,7 +328,9 @@ describe('OrchestratorRepository', () => {
         now: 153,
       });
       repository.transitionOrchestratorNotification(notification.id, 'DELIVERED', 154);
-      expect(repository.transitionOrchestratorNotification(notification.id, 'READ', 155)).toMatchObject({
+      expect(
+        repository.transitionOrchestratorNotification(notification.id, 'READ', 155),
+      ).toMatchObject({
         status: 'READ',
         deliveredAt: 154,
         readAt: 155,
@@ -412,14 +427,16 @@ describe('OrchestratorRepository', () => {
         'history-beta',
       ]);
       expect(
-        repository.listGoalPage({ provider: 'claude', workspace: 'D:/workspace/one' }).items.map(
-          (goal) => goal.id,
-        ),
+        repository
+          .listGoalPage({ provider: 'claude', workspace: 'D:/workspace/one' })
+          .items.map((goal) => goal.id),
       ).toEqual(['history-alpha', 'history-gamma']);
       expect(repository.listGoalPage({ query: 'ALPHA' }).items.map((goal) => goal.id)).toEqual([
         'history-alpha',
       ]);
-      expect(() => repository.listGoalPage({ cursor: 'not-a-cursor' })).toThrow('Invalid Goal cursor');
+      expect(() => repository.listGoalPage({ cursor: 'not-a-cursor' })).toThrow(
+        'Invalid Goal cursor',
+      );
     });
   });
 
@@ -433,9 +450,7 @@ describe('OrchestratorRepository', () => {
         now: 400,
       });
       repository.transitionGoal('archive-running', 'PLANNING', 401);
-      expect(() => repository.archiveGoal('archive-running', 402)).toThrow(
-        OrchestratorStateError,
-      );
+      expect(() => repository.archiveGoal('archive-running', 402)).toThrow(OrchestratorStateError);
 
       repository.createGoal({
         id: 'archive-paused',
@@ -448,10 +463,9 @@ describe('OrchestratorRepository', () => {
       const archived = repository.archiveGoal('archive-paused', 405);
       expect(archived.archivedAt).toBe(405);
       expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual(['archive-running']);
-      expect(repository.listGoalPage({ includeArchived: true }).items.map((goal) => goal.id)).toEqual([
-        'archive-paused',
-        'archive-running',
-      ]);
+      expect(
+        repository.listGoalPage({ includeArchived: true }).items.map((goal) => goal.id),
+      ).toEqual(['archive-paused', 'archive-running']);
       expect(repository.unarchiveGoal('archive-paused', 406).archivedAt).toBeUndefined();
       expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual([
         'archive-paused',

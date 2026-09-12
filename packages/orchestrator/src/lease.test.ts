@@ -51,7 +51,12 @@ describe('GoalRunLeaseManager', () => {
       });
 
       const firstHandle = first.acquire('lease-goal');
-      expect(firstHandle).toMatchObject({ goalId: 'lease-goal', ownerId: 'owner-a', generation: 1, expiresAt: 150 });
+      expect(firstHandle).toMatchObject({
+        goalId: 'lease-goal',
+        ownerId: 'owner-a',
+        generation: 1,
+        expiresAt: 150,
+      });
       expect(first.isHeld(firstHandle)).toBe(true);
       expect(() => second.acquire('lease-goal')).toThrow(StorageConflictError);
 
@@ -88,12 +93,12 @@ describe('GoalRunLeaseManager', () => {
 
   it('rejects invalid manager configuration', () => {
     withRepository((repository) => {
-      expect(
-        () => new GoalRunLeaseManager({ repository, ownerId: ' ', ttlMs: 10 }),
-      ).toThrow('Lease owner must not be empty');
-      expect(
-        () => new GoalRunLeaseManager({ repository, ownerId: 'owner', ttlMs: 0 }),
-      ).toThrow('Lease TTL must be a positive integer');
+      expect(() => new GoalRunLeaseManager({ repository, ownerId: ' ', ttlMs: 10 })).toThrow(
+        'Lease owner must not be empty',
+      );
+      expect(() => new GoalRunLeaseManager({ repository, ownerId: 'owner', ttlMs: 0 })).toThrow(
+        'Lease TTL must be a positive integer',
+      );
     });
   });
 });

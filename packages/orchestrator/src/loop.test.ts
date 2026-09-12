@@ -251,6 +251,31 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('runs an explicit retry as a new Attempt and preserves the prior evidence', async () => {
+    await withEngine('UNCERTAIN', async (engine, repository) => {
+      const initial = await engine.createGoalAndRun({
+        id: 'goal-explicit-retry',
+        workspace: projectState.workspace,
+        prompt: 'Retry after uncertain verification.',
+        provider: 'claude',
+      });
+      expect(initial.status).toBe('NEEDS_HUMAN');
+
+      const result = await engine.retryTask('goal-explicit-retry', 'goal-explicit-retry:task:1', {
+        confirmExternalProcessStopped: true,
+        reason: 'The external process was inspected and is stopped.',
+      });
+      expect(result.retry).toMatchObject({
+        attemptNumber: 2,
+        reasonCode: 'verification_uncertain',
+      });
+      expect(repository.listAttempts('goal-explicit-retry:task:1')).toHaveLength(2);
+      expect(repository.listEvents('goal-explicit-retry').map((event) => event.type)).toContain(
+        'task.retry.requested',
+      );
+    });
+  });
+
   it('does not resume an explicitly aborted Goal', async () => {
     await withEngine('PASS', async (engine, repository) => {
       repository.createGoal({

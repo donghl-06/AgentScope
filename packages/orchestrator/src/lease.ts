@@ -1,4 +1,8 @@
-import { StorageConflictError, type OrchestratorRepository, type StoredGoalRunLease } from '@agentscope/storage';
+import {
+  StorageConflictError,
+  type OrchestratorRepository,
+  type StoredGoalRunLease,
+} from '@agentscope/storage';
 
 export interface LeaseClock {
   readonly now: () => number;
@@ -90,6 +94,8 @@ function toHandle(lease: StoredGoalRunLease): GoalRunLeaseHandle {
 
 function assertHandleOwner(handle: GoalRunLeaseHandle, ownerId: string): void {
   if (handle.ownerId !== ownerId) {
-    throw new StorageConflictError(`Lease handle for Goal ${handle.goalId} belongs to another owner.`);
+    throw new StorageConflictError(
+      `Lease handle for Goal ${handle.goalId} belongs to another owner.`,
+    );
   }
 }

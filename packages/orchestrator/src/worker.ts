@@ -1,4 +1,4 @@
-import type { StoredTask } from '@agentscope/storage';
+import type { JsonObject, StoredTask } from '@agentscope/storage';
 
 import type { ProjectState, WorkingSet } from './index.js';
 
@@ -10,6 +10,17 @@ export interface WorkerLaunchRequest {
   readonly prompt: string;
   readonly projectState: ProjectState;
   readonly workingSet: WorkingSet;
+  readonly retryContext?: WorkerRetryContext;
+}
+
+export interface WorkerRetryContext {
+  readonly previousAttemptId?: string;
+  readonly previousAttemptNumber?: number;
+  readonly previousAttemptStatus?: string;
+  readonly previousVerificationStatus?: string;
+  readonly previousVerificationReason?: string;
+  readonly previousVerificationEvidence: readonly JsonObject[];
+  readonly repairObjective: string;
 }
 
 export interface WorkerExecutionResult {
@@ -63,13 +74,19 @@ export class SerialWorkerRuntime {
     readonly task: StoredTask;
     readonly projectState: ProjectState;
     readonly workingSet: WorkingSet;
+    readonly retryContext?: WorkerRetryContext;
   }): Promise<WorkerExecutionResult> {
     if (this.activeAttemptId !== undefined) throw new WorkerBusyError(this.activeAttemptId);
     this.activeAttemptId = input.attemptId;
     try {
       const request: WorkerLaunchRequest = {
         ...input,
-        prompt: buildWorkerPrompt(input.task, input.projectState, input.workingSet),
+        prompt: buildWorkerPrompt(
+          input.task,
+          input.projectState,
+          input.workingSet,
+          input.retryContext,
+        ),
       };
       const result = await this.options.launch(request);
       if (result.attemptId !== input.attemptId) {
@@ -88,6 +105,7 @@ export function buildWorkerPrompt(
   task: StoredTask,
   projectState: ProjectState,
   workingSet: WorkingSet,
+  retryContext?: WorkerRetryContext,
 ): string {
   const checks = Array.isArray(task.verification.checks)
     ? task.verification.checks
@@ -110,9 +128,32 @@ export function buildWorkerPrompt(
     ...(checks.length === 0
       ? []
       : ['Discoverable verification commands:', ...checks.map((check) => `- ${check}`)]),
+    ...formatRetryContext(retryContext),
     '',
     'At the end, summarize what changed, list changed files, and report verification honestly.',
   ].join('\n');
+}
+
+function formatRetryContext(context: WorkerRetryContext | undefined): readonly string[] {
+  if (context === undefined) return [];
+  const evidence = JSON.stringify(context.previousVerificationEvidence).slice(0, 16_384);
+  return [
+    '',
+    'Previous attempt context (diagnostic only; it is not new verification evidence):',
+    ...(context.previousAttemptId === undefined
+      ? []
+      : [
+          `Previous Attempt: ${context.previousAttemptId} (${context.previousAttemptStatus ?? 'unknown'})`,
+        ]),
+    ...(context.previousVerificationStatus === undefined
+      ? []
+      : [`Previous Verification: ${context.previousVerificationStatus}`]),
+    ...(context.previousVerificationReason === undefined
+      ? []
+      : [`Previous Verification reason: ${context.previousVerificationReason}`]),
+    `Repair objective: ${context.repairObjective}`,
+    `Previous Verification evidence: ${evidence}`,
+  ];
 }
 
 function isVerificationCheck(value: unknown): value is { executable: string; args: string[] } {
