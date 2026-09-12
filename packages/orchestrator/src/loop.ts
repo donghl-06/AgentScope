@@ -40,6 +40,7 @@ import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } f
 import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
 import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
+import { evaluatePlannerTaskMerge } from './roadmap.js';
 import {
   evaluateInstructionApplicability,
   validateInstructionDraft,
@@ -952,12 +953,23 @@ export class OrchestratorEngine {
           'Rolling Planner requested a replan without a safe Task Contract.',
         );
       }
-      if (
-        rolling.nextTask !== undefined &&
-        !tasks.some((task) => task.id === rolling.nextTask?.id)
-      ) {
-        repository.createTask({ ...rolling.nextTask, goalId: goal.id, now: this.now() });
-        tasks = repository.listTasks(goal.id);
+      if (rolling.nextTask !== undefined) {
+        const merge = evaluatePlannerTaskMerge({ goal, tasks, draft: rolling.nextTask });
+        repository.appendEvent({
+          id: `${goal.id}:rolling-plan-merge:${randomUUID()}`,
+          goalId: goal.id,
+          type: 'goal.rolling_plan.merge',
+          payload: { decision: merge.decision, reason: merge.reason, taskId: rolling.nextTask.id },
+          confidence: merge.decision === 'NEEDS_HUMAN' ? 1 : 0.9,
+          timestamp: this.now(),
+        });
+        if (merge.decision === 'NEEDS_HUMAN') {
+          return this.pauseForHuman(goal, tasks, merge.reason);
+        }
+        if (merge.decision === 'ACCEPT') {
+          repository.createTask({ ...rolling.nextTask, goalId: goal.id, now: this.now() });
+          tasks = repository.listTasks(goal.id);
+        }
       }
       if (
         rolling.action === 'GOAL_READY_FOR_FINAL_VERIFICATION' &&
