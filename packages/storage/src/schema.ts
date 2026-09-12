@@ -13,6 +13,7 @@ export const sessions = sqliteTable(
     stateJson: text('state_json').notNull(),
     capabilitiesJson: text('capabilities_json').notNull(),
     workspaceJson: text('workspace_json'),
+    hiddenAt: integer('hidden_at', { mode: 'number' }),
     createdAt: integer('created_at', { mode: 'number' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
   },

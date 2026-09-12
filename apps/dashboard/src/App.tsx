@@ -26,6 +26,8 @@ export function App() {
   const [evidence, setEvidence] = useState<readonly StoredObserverEvidence[]>([]);
   const [eventsNextCursor, setEventsNextCursor] = useState<string>();
   const [statusFilter, setStatusFilter] = useState<'all' | StoredSession['status']>('all');
+  const [showHidden, setShowHidden] = useState(false);
+  const [sessionActionId, setSessionActionId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -50,7 +52,10 @@ export function App() {
 
   const refreshSessions = useCallback(async () => {
     try {
-      const page = await api.listSessions({ limit: 100 });
+      const page = await api.listSessions({
+        limit: 100,
+        ...(showHidden ? { includeHidden: true } : {}),
+      });
       setSessions(page.items);
       if (!notificationBaselineReadyRef.current) {
         for (const session of page.items) {
@@ -65,7 +70,68 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showHidden]);
+
+  const changeSessionVisibility = useCallback(
+    async (session: StoredSession, hidden: boolean) => {
+      if (session.status === 'starting' || session.status === 'running') return;
+      const action = hidden ? 'hide' : 'restore';
+      if (
+        typeof globalThis.confirm === 'function' &&
+        !globalThis.confirm(
+          hidden
+            ? `Hide this ${session.provider} session from the default list?`
+            : `Restore this ${session.provider} session to the default list?`,
+        )
+      ) {
+        return;
+      }
+      setSessionActionId(session.id);
+      try {
+        if (hidden) await api.hideSession(session.id);
+        else await api.unhideSession(session.id);
+        await refreshSessions();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : `Unable to ${action} session.`);
+      } finally {
+        setSessionActionId(undefined);
+      }
+    },
+    [refreshSessions],
+  );
+
+  const permanentlyDeleteSession = useCallback(
+    async (session: StoredSession) => {
+      if (session.status === 'starting' || session.status === 'running') return;
+      if (
+        typeof globalThis.confirm === 'function' &&
+        !globalThis.confirm(
+          `Permanently delete this ${session.provider} session and its AgentScope evidence? This cannot be undone.`,
+        )
+      ) {
+        return;
+      }
+      setSessionActionId(session.id);
+      try {
+        await api.deleteSession(session.id);
+        if (selectedIdRef.current === session.id) {
+          setSelectedId(undefined);
+          setSelected(undefined);
+          setEvents([]);
+          setTurns([]);
+          setEvidence([]);
+          setEventsNextCursor(undefined);
+          lastSeqBySessionRef.current.delete(session.id);
+        }
+        await refreshSessions();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to delete session.');
+      } finally {
+        setSessionActionId(undefined);
+      }
+    },
+    [refreshSessions],
+  );
 
   const enableNotifications = useCallback(() => {
     if (typeof globalThis.Notification === 'undefined') {
@@ -187,6 +253,20 @@ export function App() {
           notifyLiveStatus(message);
           if (message.type === 'session.created' || message.type === 'session.updated') {
             void refreshSessions();
+          }
+          if (message.type === 'session.deleted' && message.sessionId !== undefined) {
+            const deletedId = message.sessionId;
+            setSessions((current) => current.filter((session) => session.id !== deletedId));
+            if (selectedIdRef.current === deletedId) {
+              setSelectedId(undefined);
+              setSelected(undefined);
+              setEvents([]);
+              setTurns([]);
+              setEvidence([]);
+              setEventsNextCursor(undefined);
+              lastSeqBySessionRef.current.delete(deletedId);
+            }
+            return;
           }
           if (message.type === 'event.appended') {
             void refreshSessions();
@@ -322,6 +402,14 @@ export function App() {
                   <option value="interrupted">Interrupted</option>
                 </select>
               </label>
+              <label className="visibility-toggle">
+                <input
+                  type="checkbox"
+                  checked={showHidden}
+                  onChange={(event) => setShowHidden(event.target.checked)}
+                />{' '}
+                Show hidden
+              </label>
               <button
                 className="quiet-button"
                 type="button"
@@ -344,6 +432,10 @@ export function App() {
                   session={session}
                   selected={selectedId === session.id}
                   onSelect={setSelectedId}
+                  actionBusy={sessionActionId === session.id}
+                  onHide={() => void changeSessionVisibility(session, true)}
+                  onUnhide={() => void changeSessionVisibility(session, false)}
+                  onDelete={() => void permanentlyDeleteSession(session)}
                 />
               ))}
             </div>
@@ -430,28 +522,61 @@ function SessionRow({
   session,
   selected,
   onSelect,
+  actionBusy,
+  onHide,
+  onUnhide,
+  onDelete,
 }: {
   session: StoredSession;
   selected: boolean;
   onSelect: (id: string) => void;
+  actionBusy: boolean;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDelete: () => void;
 }) {
+  const active = session.status === 'starting' || session.status === 'running';
   return (
-    <button
-      className={`session-row ${selected ? 'session-row-selected' : ''}`}
-      type="button"
-      onClick={() => onSelect(session.id)}
-    >
-      <span className={`status-dot status-${session.status}`} />
-      <span className="session-row-copy">
-        <strong>
-          {session.provider} · {session.adapter}
-        </strong>
-        <small>{session.id}</small>
-      </span>
-      <span className={`status-pill status-pill-${session.status}`}>
-        {statusLabel(session.status)}
-      </span>
-    </button>
+    <div className={`session-row ${selected ? 'session-row-selected' : ''}`}>
+      <button
+        className="session-row-main"
+        type="button"
+        onClick={() => onSelect(session.id)}
+        aria-label={`Inspect ${session.provider} ${session.adapter} session`}
+      >
+        <span className={`status-dot status-${session.status}`} />
+        <span className="session-row-copy">
+          <strong>
+            {session.provider} · {session.adapter}
+            {session.hiddenAt !== undefined && <em className="hidden-badge">hidden</em>}
+          </strong>
+          <small>{session.id}</small>
+        </span>
+        <span className={`status-pill status-pill-${session.status}`}>
+          {statusLabel(session.status)}
+        </span>
+      </button>
+      {!active && (
+        <div className="session-row-actions">
+          <button
+            className="quiet-button quiet-button-small"
+            type="button"
+            onClick={session.hiddenAt === undefined ? onHide : onUnhide}
+            disabled={actionBusy}
+          >
+            {session.hiddenAt === undefined ? 'Hide' : 'Show'}
+          </button>
+          <button
+            className="quiet-button quiet-button-small quiet-button-danger"
+            type="button"
+            onClick={onDelete}
+            disabled={actionBusy}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

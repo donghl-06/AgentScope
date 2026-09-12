@@ -22,6 +22,7 @@ export interface DashboardLiveNotification {
     | 'subscribed'
     | 'session.created'
     | 'session.updated'
+    | 'session.deleted'
     | 'turn.created'
     | 'turn.updated'
     | 'turn.finished'
@@ -64,6 +65,7 @@ export class DashboardApi {
     const query = new URLSearchParams();
     if (filter.projectId !== undefined) query.set('project', filter.projectId);
     if (filter.status !== undefined) query.set('status', filter.status);
+    if (filter.includeHidden === true) query.set('includeHidden', 'true');
     if (filter.limit !== undefined) query.set('limit', String(filter.limit));
     if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
     return this.get<Page<StoredSession>>('/api/sessions', query);
@@ -71,6 +73,25 @@ export class DashboardApi {
 
   getSession(sessionId: string): Promise<StoredSession> {
     return this.get<StoredSession>(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  }
+
+  hideSession(sessionId: string): Promise<{ id: string; hidden: boolean }> {
+    return this.mutate<{ id: string; hidden: boolean }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/hide`,
+    );
+  }
+
+  unhideSession(sessionId: string): Promise<{ id: string; hidden: boolean }> {
+    return this.mutate<{ id: string; hidden: boolean }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/unhide`,
+    );
+  }
+
+  deleteSession(sessionId: string): Promise<{ id: string; deleted: true }> {
+    return this.mutate<{ id: string; deleted: true }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      'DELETE',
+    );
   }
 
   listEvents(sessionId: string, after = 0, limit = 100): Promise<EventPage> {
@@ -166,11 +187,26 @@ export class DashboardApi {
   }
 
   private async get<T>(pathname: string, query?: URLSearchParams): Promise<T> {
+    return this.requestJson(pathname, 'GET', query);
+  }
+
+  private async mutate<T>(pathname: string, method: 'POST' | 'DELETE' = 'POST'): Promise<T> {
+    return this.requestJson(pathname, method);
+  }
+
+  private async requestJson<T>(
+    pathname: string,
+    method: 'GET' | 'POST' | 'DELETE',
+    query?: URLSearchParams,
+  ): Promise<T> {
     const url = new URL(pathname, this.baseUrl || globalThis.location.origin);
     if (query !== undefined) url.search = query.toString();
     let response: Response;
     try {
-      response = await this.request(url.toString());
+      response =
+        method === 'GET'
+          ? await this.request(url.toString())
+          : await this.request(url.toString(), { method });
     } catch (error) {
       throw new DashboardApiError('AgentScope server is unavailable.', 0, error);
     }

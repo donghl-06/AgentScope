@@ -165,6 +165,123 @@ describe('StorageRepository', () => {
     });
   });
 
+  it('hides terminal sessions, protects active sessions, and cascades permanent deletion', () => {
+    withRepository((repository, client) => {
+      const startedAt = 1_700_000_000_000;
+      const completedState = {
+        ...state('session-cleanup', 'completed'),
+        endedAt: startedAt + 10_000,
+      };
+      repository.createSession({
+        id: 'session-cleanup',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt,
+        capabilities: {},
+        state: completedState,
+      });
+      repository.createTurn({
+        state: {
+          ...createInitialTurnState('cleanup-turn', 'session-cleanup', 1, startedAt),
+          status: 'completed',
+          startedAt: startedAt + 1,
+          endedAt: startedAt + 9_000,
+        },
+      });
+      const { endedAt: _completedAt, ...runningProjectionBase } = completedState;
+      repository.appendEvent(event('cleanup-event', 'session-cleanup'), {
+        ...runningProjectionBase,
+        status: 'running',
+      });
+      repository.updateSessionState('session-cleanup', completedState);
+      repository.saveObserverEvidence({
+        id: 'cleanup-evidence',
+        sessionId: 'session-cleanup',
+        turnId: 'cleanup-turn',
+        key: 'cleanup:evidence',
+        timestamp: startedAt + 2,
+        source: 'process',
+        kind: 'lifecycle',
+        confidence: 1,
+        reason: 'cleanup evidence',
+        payload: {},
+      });
+      repository.upsertMilestone('session-cleanup', {
+        id: 'cleanup-milestone',
+        title: 'Cleanup',
+        status: 'completed',
+      });
+      repository.saveEtaSnapshot('session-cleanup', {
+        minSeconds: 1,
+        maxSeconds: 2,
+        confidence: 0.5,
+        reasons: [],
+      });
+
+      repository.createSession({
+        id: 'session-active',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt,
+        capabilities: {},
+        state: state('session-active', 'running'),
+      });
+
+      const hidden = repository.setSessionHidden('session-cleanup', true, startedAt + 20_000);
+      expect(hidden.hiddenAt).toBe(startedAt + 20_000);
+      expect(repository.listSessions().items.map((session) => session.id)).toEqual([
+        'session-active',
+      ]);
+      expect(
+        repository.listSessions({ includeHidden: true }).items.map((session) => session.id),
+      ).toEqual(expect.arrayContaining(['session-cleanup', 'session-active']));
+      expect(repository.listEtaHistory({ provider: 'mock', adapter: 'mock' })).toEqual([
+        expect.objectContaining({ durationSeconds: 10 }),
+      ]);
+
+      expect(() => repository.setSessionHidden('session-active', true)).toThrow(
+        'Running sessions cannot be hidden or deleted.',
+      );
+      expect(() => repository.deleteSession('session-active')).toThrow(
+        'Running sessions cannot be hidden or deleted.',
+      );
+
+      const deletedNotifications: string[] = [];
+      repository.subscribe((notification) => {
+        if (notification.type === 'session.deleted')
+          deletedNotifications.push(notification.session.id);
+      });
+      repository.deleteSession('session-cleanup');
+      expect(deletedNotifications).toEqual(['session-cleanup']);
+      expect(() => repository.getSession('session-cleanup')).toThrow('Session not found');
+      expect(
+        client
+          .prepare('SELECT count(*) AS count FROM turns WHERE session_id = ?')
+          .get('session-cleanup'),
+      ).toMatchObject({ count: 0 });
+      expect(
+        client
+          .prepare('SELECT count(*) AS count FROM events WHERE session_id = ?')
+          .get('session-cleanup'),
+      ).toMatchObject({ count: 0 });
+      expect(
+        client
+          .prepare('SELECT count(*) AS count FROM observer_evidence WHERE session_id = ?')
+          .get('session-cleanup'),
+      ).toMatchObject({ count: 0 });
+      expect(
+        client
+          .prepare('SELECT count(*) AS count FROM milestones WHERE session_id = ?')
+          .get('session-cleanup'),
+      ).toMatchObject({ count: 0 });
+      expect(
+        client
+          .prepare('SELECT count(*) AS count FROM eta_snapshots WHERE session_id = ?')
+          .get('session-cleanup'),
+      ).toMatchObject({ count: 0 });
+    });
+  });
+
   it('paginates a large timeline without gaps or duplicate sequence numbers', () => {
     withRepository((repository) => {
       repository.createSession({

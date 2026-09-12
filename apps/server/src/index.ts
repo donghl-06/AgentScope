@@ -24,6 +24,7 @@ const ErrorResponseSchema = Type.Object({
 const SessionListQuerySchema = Type.Object({
   project: Type.Optional(Type.String({ minLength: 1 })),
   status: Type.Optional(Type.String({ minLength: 1 })),
+  includeHidden: Type.Optional(Type.Boolean()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   cursor: Type.Optional(Type.String({ minLength: 1 })),
 });
@@ -51,6 +52,14 @@ const EvidencePageQuerySchema = Type.Object({
 const CursorPageSchema = Type.Object({
   items: Type.Array(Type.Unknown()),
   nextCursor: Type.Optional(Type.String()),
+});
+const SessionVisibilityResponseSchema = Type.Object({
+  id: Type.String(),
+  hidden: Type.Boolean(),
+});
+const SessionDeletedResponseSchema = Type.Object({
+  id: Type.String(),
+  deleted: Type.Literal(true),
 });
 const ProjectOverviewSchema = Type.Object({
   projectId: Type.String(),
@@ -132,6 +141,21 @@ export function createServer(options: ServerOptions): FastifyInstance {
   hydrateObservedSessions(options.repository, observedSessions);
   hydrateObservedTurns(options.repository, observedTurns);
   const unsubscribeRepository = options.repository.subscribe((notification) => {
+    if (notification.type === 'session.deleted') {
+      observedSessions.delete(notification.session.id);
+      for (const [turnId, observedTurn] of observedTurns) {
+        if (observedTurn.sessionId === notification.session.id) observedTurns.delete(turnId);
+      }
+      liveHub.publish({
+        type: 'session.deleted',
+        sessionId: notification.session.id,
+        ...(notification.session.projectId === undefined
+          ? {}
+          : { projectId: notification.session.projectId }),
+        payload: { status: notification.session.status },
+      });
+      return;
+    }
     if (
       notification.type === 'turn.created' ||
       notification.type === 'turn.updated' ||
@@ -181,7 +205,21 @@ export function createServer(options: ServerOptions): FastifyInstance {
     if (externalPollInFlight) return;
     externalPollInFlight = true;
     try {
-      for (const session of listAllSessions(options.repository)) {
+      const currentSessions = listAllSessions(options.repository, true);
+      const currentSessionIds = new Set(currentSessions.map((session) => session.id));
+      for (const [sessionId, observed] of observedSessions) {
+        if (currentSessionIds.has(sessionId)) continue;
+        observedSessions.delete(sessionId);
+        for (const [turnId, observedTurn] of observedTurns) {
+          if (observedTurn.sessionId === sessionId) observedTurns.delete(turnId);
+        }
+        liveHub.publish({
+          type: 'session.deleted',
+          sessionId,
+          payload: { status: observed.status },
+        });
+      }
+      for (const session of currentSessions) {
         const observed = observedSessions.get(session.id);
         const afterSeq = observed?.lastEventSeq ?? 0;
         const events = options.repository.listEvents(session.id, afterSeq, 100).items;
@@ -306,6 +344,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const filter: SessionListFilter = {
           ...(typeof query.project === 'string' ? { projectId: query.project } : {}),
           ...(typeof query.status === 'string' ? { status: query.status as SessionStatus } : {}),
+          ...(query.includeHidden === true ? { includeHidden: true } : {}),
           ...(query.limit === undefined ? {} : { limit: parsePositiveInteger(query.limit) }),
           ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
         };
@@ -328,6 +367,78 @@ export function createServer(options: ServerOptions): FastifyInstance {
       try {
         const { id } = request.params as { id: string };
         return reply.send(options.repository.getSession(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/sessions/:id/hide',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: {
+          200: SessionVisibilityResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const session = options.repository.setSessionHidden(id, true);
+        return reply.send({ id: session.id, hidden: true });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/sessions/:id/unhide',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: {
+          200: SessionVisibilityResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const session = options.repository.setSessionHidden(id, false);
+        return reply.send({ id: session.id, hidden: false });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.delete(
+    '/api/sessions/:id',
+    {
+      schema: {
+        params: SessionParamsSchema,
+        response: {
+          200: SessionDeletedResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const deleted = options.repository.deleteSession(id);
+        return reply.send({ id: deleted.id, deleted: true as const });
       } catch (error) {
         return sendError(reply, error);
       }
@@ -690,7 +801,7 @@ function hydrateObservedSessions(
   repository: StorageRepository,
   observedSessions: Map<string, ObservedSession>,
 ): void {
-  for (const session of listAllSessions(repository)) {
+  for (const session of listAllSessions(repository, true)) {
     let cursor = 0;
     let lastEventSeq = 0;
     while (true) {
@@ -711,7 +822,7 @@ function hydrateObservedTurns(
   repository: StorageRepository,
   observedTurns: Map<string, ObservedTurn>,
 ): void {
-  for (const session of listAllSessions(repository)) {
+  for (const session of listAllSessions(repository, true)) {
     for (const turn of repository.listTurns(session.id)) {
       observedTurns.set(turn.id, {
         sessionId: turn.sessionId,
@@ -722,12 +833,16 @@ function hydrateObservedTurns(
   }
 }
 
-function listAllSessions(repository: StorageRepository): readonly StoredSession[] {
+function listAllSessions(
+  repository: StorageRepository,
+  includeHidden = false,
+): readonly StoredSession[] {
   const sessions: StoredSession[] = [];
   let cursor: string | undefined;
   while (true) {
     const page = repository.listSessions({
       limit: 100,
+      ...(includeHidden ? { includeHidden: true } : {}),
       ...(cursor === undefined ? {} : { cursor }),
     });
     sessions.push(...page.items);
@@ -741,6 +856,13 @@ function rememberNotification(
   observedTurns: Map<string, ObservedTurn>,
   notification: RepositoryNotification,
 ): void {
+  if (notification.type === 'session.deleted') {
+    observedSessions.delete(notification.session.id);
+    for (const [turnId, observedTurn] of observedTurns) {
+      if (observedTurn.sessionId === notification.session.id) observedTurns.delete(turnId);
+    }
+    return;
+  }
   if (
     notification.type === 'turn.created' ||
     notification.type === 'turn.updated' ||

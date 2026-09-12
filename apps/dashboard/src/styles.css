@@ -92,6 +92,25 @@ button {
   padding: 5px 8px;
   font-size: 11px;
 }
+.quiet-button-danger {
+  border-color: #714052;
+  color: #ffb0bd;
+}
+.quiet-button-danger:hover {
+  border-color: #b35c73;
+  color: #fff;
+}
+.visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #9db0c8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.visibility-toggle input {
+  accent-color: #5da8ef;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -257,7 +276,7 @@ h3 {
 }
 .session-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -268,6 +287,39 @@ h3 {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+.session-row-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.session-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.hidden-badge {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #293c56;
+  color: #9db0c8;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 .session-row:hover,
 .session-row-selected {
@@ -854,9 +906,15 @@ h3 {
     font-size: 28px;
   }
   .session-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .session-row-actions {
+    justify-content: flex-start;
+  }
+  .session-row-main {
     grid-template-columns: auto minmax(0, 1fr);
   }
-  .session-row .status-pill {
+  .session-row-main .status-pill {
     grid-column: 2;
     justify-self: start;
   }

@@ -40,6 +40,7 @@ export interface StoredSession {
   readonly state: SessionState;
   readonly capabilities: SessionCapabilities;
   readonly workspace?: Record<string, unknown>;
+  readonly hiddenAt?: number;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
@@ -79,8 +80,24 @@ export interface EvidenceListFilter {
 export interface SessionListFilter {
   readonly projectId?: string;
   readonly status?: SessionState['status'];
+  /** Hidden sessions are excluded by default and can be requested explicitly. */
+  readonly includeHidden?: boolean;
   readonly limit?: number;
   readonly cursor?: string;
+}
+
+export interface EtaHistoryFilter {
+  readonly provider?: string;
+  readonly adapter?: string;
+  readonly projectId?: string;
+  readonly limit?: number;
+}
+
+export interface EtaHistorySample {
+  readonly durationSeconds: number;
+  readonly provider: string;
+  readonly adapter: string;
+  readonly projectId?: string;
 }
 
 export interface Page<T> {
@@ -192,6 +209,7 @@ export interface ProjectionVerification {
 export type RepositoryNotification =
   | { readonly type: 'session.created'; readonly session: StoredSession }
   | { readonly type: 'session.updated'; readonly session: StoredSession }
+  | { readonly type: 'session.deleted'; readonly session: StoredSession }
   | { readonly type: 'turn.created'; readonly turn: StoredTurn }
   | { readonly type: 'turn.updated'; readonly turn: StoredTurn }
   | { readonly type: 'turn.finished'; readonly turn: StoredTurn }
@@ -430,6 +448,7 @@ export class StorageRepository {
     const cursor = filter.cursor === undefined ? undefined : decodeSessionCursor(filter.cursor);
     const clauses: string[] = [];
     const parameters: Array<string | number> = [];
+    if (filter.includeHidden !== true) clauses.push('hidden_at IS NULL');
     if (filter.projectId !== undefined) {
       clauses.push('project_id = ?');
       parameters.push(filter.projectId);
@@ -458,10 +477,75 @@ export class StorageRepository {
     };
   }
 
+  /**
+   * Return completed-session durations for the conservative ETA cold-start
+   * baseline. Hidden sessions remain valid history; permanently deleted rows
+   * naturally disappear from this result.
+   */
+  listEtaHistory(filter: EtaHistoryFilter = {}): readonly EtaHistorySample[] {
+    const clauses = ["status = 'completed'", 'ended_at IS NOT NULL', 'ended_at >= started_at'];
+    const parameters: Array<string | number> = [];
+    if (filter.provider !== undefined) {
+      clauses.push('provider = ?');
+      parameters.push(filter.provider);
+    }
+    if (filter.adapter !== undefined) {
+      clauses.push('adapter = ?');
+      parameters.push(filter.adapter);
+    }
+    if (filter.projectId !== undefined) {
+      clauses.push('project_id = ?');
+      parameters.push(filter.projectId);
+    }
+    const limit = clampHistoryLimit(filter.limit);
+    const rows = this.client
+      .prepare(
+        `SELECT provider, adapter, project_id, started_at, ended_at
+         FROM sessions WHERE ${clauses.join(' AND ')}
+         ORDER BY ended_at DESC, id DESC LIMIT ?`,
+      )
+      .all(...parameters, limit) as EtaHistoryRow[];
+    return rows.map((row) => ({
+      durationSeconds: Math.max(0, (row.ended_at - row.started_at) / 1_000),
+      provider: row.provider,
+      adapter: row.adapter,
+      ...(row.project_id === null ? {} : { projectId: row.project_id }),
+    }));
+  }
+
+  /** Hide or restore a terminal Session without touching its evidence. */
+  setSessionHidden(id: string, hidden: boolean, now = Date.now()): StoredSession {
+    const existing = this.getSession(id);
+    if (isActiveSessionStatus(existing.status)) {
+      throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
+    }
+    this.client
+      .prepare('UPDATE sessions SET hidden_at = ?, updated_at = ? WHERE id = ?')
+      .run(hidden ? now : null, now, id);
+    const session = this.getSession(id);
+    this.notify({ type: 'session.updated', session });
+    return session;
+  }
+
+  /** Permanently delete a terminal Session and all cascaded evidence. */
+  deleteSession(id: string): StoredSession {
+    const existing = this.getSession(id);
+    if (isActiveSessionStatus(existing.status)) {
+      throw new StorageConflictError('Running sessions cannot be hidden or deleted.');
+    }
+    const transaction = this.client.transaction(() => {
+      const result = this.client.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+      if (result.changes !== 1) throw new StorageNotFoundError(`Session not found: ${id}`);
+    });
+    transaction.immediate();
+    this.notify({ type: 'session.deleted', session: existing });
+    return existing;
+  }
+
   getProjectOverview(projectId: string): ProjectOverview {
     const rows = this.client
       .prepare(
-        'SELECT status, count(*) AS count FROM sessions WHERE project_id = ? GROUP BY status',
+        'SELECT status, count(*) AS count FROM sessions WHERE project_id = ? AND hidden_at IS NULL GROUP BY status',
       )
       .all(projectId) as Array<{ status: string; count: number }>;
     const counts = new Map(rows.map((row) => [row.status, row.count]));
@@ -933,8 +1017,17 @@ interface SessionRow {
   state_json: string;
   capabilities_json: string;
   workspace_json: string | null;
+  hidden_at: number | null;
   created_at: number;
   updated_at: number;
+}
+
+interface EtaHistoryRow {
+  provider: string;
+  adapter: string;
+  project_id: string | null;
+  started_at: number;
+  ended_at: number;
 }
 
 interface TurnRow {
@@ -1012,6 +1105,7 @@ function decodeSession(row: SessionRow): StoredSession {
     state,
     capabilities,
     ...(workspace === undefined ? {} : { workspace }),
+    ...(row.hidden_at === null ? {} : { hiddenAt: row.hidden_at }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1113,6 +1207,18 @@ function clampLimit(limit: number | undefined): number {
   if (!Number.isInteger(limit) || limit < 1)
     throw new StorageError('Limit must be a positive integer.', 'invalid_query');
   return Math.min(limit, 100);
+}
+
+function clampHistoryLimit(limit: number | undefined): number {
+  if (limit === undefined) return 200;
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new StorageError('History limit must be a positive integer.', 'invalid_query');
+  }
+  return Math.min(limit, 1_000);
+}
+
+function isActiveSessionStatus(status: SessionState['status']): boolean {
+  return status === 'starting' || status === 'running';
 }
 
 function encodeSessionCursor(row: SessionRow): string {

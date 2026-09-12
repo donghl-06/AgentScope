@@ -23,6 +23,39 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('supports session visibility and permanent deletion mutations', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'session/1', hidden: true, deleted: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.listSessions({ includeHidden: true });
+    await api.hideSession('session/1');
+    await api.unhideSession('session/1');
+    await api.deleteSession('session/1');
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/sessions?includeHidden=true',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/sessions/session%2F1/hide',
+      { method: 'POST' },
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      'http://127.0.0.1:8787/api/sessions/session%2F1/unhide',
+      { method: 'POST' },
+    );
+    expect(request).toHaveBeenNthCalledWith(4, 'http://127.0.0.1:8787/api/sessions/session%2F1', {
+      method: 'DELETE',
+    });
+  });
+
   it('surfaces server error payloads without hiding their status', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ error: { code: 'not_found', message: 'Missing session' } }), {

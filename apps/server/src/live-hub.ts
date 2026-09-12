@@ -9,6 +9,7 @@ export interface LiveNotification {
   readonly type:
     | 'session.created'
     | 'session.updated'
+    | 'session.deleted'
     | 'turn.created'
     | 'turn.updated'
     | 'turn.finished'

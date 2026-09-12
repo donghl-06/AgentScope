@@ -237,6 +237,82 @@ describe('server HTTP API', () => {
     expect(invalid.json()).toMatchObject({ error: { code: 'invalid_request' } });
   });
 
+  it('hides and permanently deletes terminal sessions while protecting active ones', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const startedAt = 1_700_000_000_000;
+    const completedState = {
+      ...createInitialSessionState('cleanup-session', startedAt),
+      status: 'completed' as const,
+      endedAt: startedAt + 5_000,
+    };
+    repository.createSession({
+      id: 'cleanup-session',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt,
+      capabilities: {},
+      state: completedState,
+    });
+    repository.createSession({
+      id: 'active-session',
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt,
+      capabilities: {},
+      state: createInitialSessionState('active-session', startedAt),
+    });
+    const hub = new LiveHub();
+    const socket = new TestSocket();
+    hub.attach(socket);
+    const app = createServer({ repository, liveHub: hub, recoverOnStart: false });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const hidden = await app.inject({ method: 'POST', url: '/api/sessions/cleanup-session/hide' });
+    expect(hidden.statusCode).toBe(200);
+    expect(hidden.json()).toEqual({ id: 'cleanup-session', hidden: true });
+    expect((await app.inject('/api/sessions')).json()).toMatchObject({
+      items: [{ id: 'active-session' }],
+    });
+    const visibleWithHidden = (await app.inject('/api/sessions?includeHidden=true')).json() as {
+      items: Array<{ id: string; hiddenAt?: number }>;
+    };
+    expect(visibleWithHidden.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'cleanup-session', hiddenAt: expect.any(Number) }),
+      ]),
+    );
+
+    const restored = await app.inject({
+      method: 'POST',
+      url: '/api/sessions/cleanup-session/unhide',
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toEqual({ id: 'cleanup-session', hidden: false });
+
+    const activeDelete = await app.inject({
+      method: 'DELETE',
+      url: '/api/sessions/active-session',
+    });
+    expect(activeDelete.statusCode).toBe(409);
+    expect(activeDelete.json()).toMatchObject({ error: { code: 'conflict' } });
+
+    const deleted = await app.inject({ method: 'DELETE', url: '/api/sessions/cleanup-session' });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ id: 'cleanup-session', deleted: true });
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'session.deleted', sessionId: 'cleanup-session' }),
+      ]),
+    );
+    expect((await app.inject('/api/sessions/cleanup-session')).statusCode).toBe(404);
+  });
+
   it('publishes only committed repository events to the live hub', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
