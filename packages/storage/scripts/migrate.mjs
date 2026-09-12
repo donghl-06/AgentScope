@@ -19,6 +19,22 @@ const migrations = [
     id: '0001_session_status_updated_index',
     url: new URL('../src/migrations/0001_session_status_updated_index.sql', import.meta.url),
   },
+  {
+    id: '0002_observer_evidence',
+    url: new URL('../src/migrations/0002_observer_evidence.sql', import.meta.url),
+  },
+  {
+    id: '0003_turns',
+    url: new URL('../src/migrations/0003_turns.sql', import.meta.url),
+  },
+  {
+    id: '0004_observer_evidence_turn',
+    url: new URL('../src/migrations/0004_observer_evidence_turn.sql', import.meta.url),
+  },
+  {
+    id: '0005_session_visibility',
+    url: new URL('../src/migrations/0005_session_visibility.sql', import.meta.url),
+  },
 ];
 for (const migration of migrations) {
   const applied = client

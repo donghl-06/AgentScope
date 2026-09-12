@@ -26,7 +26,7 @@ export interface ProgressEngineInput {
 export type VerificationKey = keyof Pick<VerificationState, 'tests' | 'build' | 'typecheck'>;
 
 export interface ProgressConfig {
-  /** Verification gates required before a completed session can report 100%. */
+  /** Verification gates used to distinguish verified from unverified completion. */
   readonly requiredVerification?: readonly VerificationKey[];
   /** Optional per-milestone weights. Omitted milestone ids use the default weight of 1. */
   readonly milestoneWeights?: Readonly<Record<string, number>>;

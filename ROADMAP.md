@@ -122,7 +122,7 @@ agentscope/
 | 7 | Claude Code Adapter | Phase 0、2、5 | adapter、fixtures、capability | 真实 smoke + fixture golden test |
 | 8 | Codex CLI Adapter | Phase 0、2、5 | adapter、fixtures、capability | 真实 smoke + fixture golden test |
 | 9 | Workspace Observers | Phase 3、5 | process/git/file/test observers | 无原生事件时仍有客观活动信号 |
-| 10 | Progress V0 | Phase 3、9 | 可解释、可回退的进度引擎 | 验证前不 100%，典型路径测试通过 |
+| 10 | Progress V0 | Phase 3、9 | 可解释、可回退的进度引擎 | 运行中证据不足不 100%；终态执行进度与验证状态分离，典型路径测试通过 |
 | 11 | ETA V0 | Phase 10 | 区间 ETA 与 snapshots | 低信号/失败/阻塞行为符合预期 |
 | 12 | 集成加固与 V0 发布 | Phase 0–11 | E2E、文档、跨平台 smoke | 全部 V0 验收项有证据 |
 
@@ -620,8 +620,8 @@ agentscope/
 
 ### Step 10.3 — 计算 value/confidence/reasons
 
-- [x] 仅实现完成时 progress 上限默认 0.60。
-- [x] 有验证要求而尚未验证时禁止到 1.0。
+- [x] 运行中仅有实现信号时 progress 保持安全上限；终态 `completed` 的执行进度明确为 1.0，验证状态继续单独表达，避免小任务完成后仍停在 60%。
+- [x] 运行中有验证要求而尚未验证时禁止到 1.0；终态 `completed` 的 1.0 只表示执行完成，验证结果仍独立保留为 Unknown/Passed/Failed。
 - [x] verification failed、blocked、replanning 可以使 value 回退。
 - [x] session_finished 但 verification failed 时状态为 failed，不能显示成功 100%。
 - [x] confidence 综合 capability、milestone availability、event freshness 和 signal density。
@@ -818,7 +818,7 @@ agentscope/
 | AC-03 | 一个真实 Claude 和一个真实 Codex session 可监控 | 7、8、12 | manual dual-agent smoke |
 | AC-04 | 关键事件本地延迟 < 3 秒 | 4、6、12 | latency measurement |
 | AC-05 | exit code、interrupted、failed、completed 不混淆 | 3、5、7、8 | lifecycle tests + fault injection |
-| AC-06 | Progress 含 value/confidence/reasons，验证前不 100% | 10 | unit + E2E |
+| AC-06 | Progress 含 value/confidence/reasons；运行中证据不足不 100%，完成后执行进度与验证状态分离 | 10 | unit + E2E |
 | AC-07 | ETA 含 min/max/confidence/reasons，失败后可变长 | 11 | unit + E2E |
 | AC-08 | SQLite 保存并重载历史 session | 4 | restart integration test |
 | AC-09 | Dashboard 重连后 timeline 不丢失 | 4、6 | WS gap/catch-up test |

@@ -497,7 +497,7 @@ blocked turn 保留和 recovery evidence；wrapper 突然终止、Dashboard 重�
 #### Step 8.2 — 增加每轮 Progress 和 evidence 视图
 
 - [x] 在 Dashboard turn 列表显示每轮 evidence 数量，并可展开查看来源、类型、原因、时间和置信度。
-- [x] 将 turn projection 的 Progress、ETA、Activity 和 verification 状态写入存储并在展开详情中展示；完成 turn 在没有验证证据时仍遵守 60% 安全上限。
+- [x] 将 turn projection 的 Progress、ETA、Activity 和 verification 状态写入存储并在展开详情中展示；已完成 turn 的执行进度为 100%，验证状态仍独立显示为 Unknown/Passed/Failed。
 - [x] 在展开详情中展示包含 `turnId` 的 lifecycle timeline，旧数据也能从 event payload 兼容识别。
 - [x] 对已知 observer payload 渲染紧凑摘要（文件路径、命令/退出码、测试结果、Git 变更计数），不展示完整 raw payload，并对凭据形状做前端脱敏。
 - [x] 兼容长时间运行的旧 server 响应：显式 `turnId` 缺失时按 turn 开始/结束时间关联证据，并用回归测试防止冲突 ID 被误归属。

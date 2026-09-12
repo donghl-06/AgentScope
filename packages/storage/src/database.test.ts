@@ -32,7 +32,7 @@ describe('storage database', () => {
         'turns',
       ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 5,
+        count: 6,
       });
       expect(
         client
@@ -66,7 +66,7 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 5,
+        count: 6,
       });
       expect(
         client

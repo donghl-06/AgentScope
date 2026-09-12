@@ -132,10 +132,16 @@ is not treated as failed.
   recent normalized activity signal. Missing provider fields are shown as
   `Not reported`, not guessed.
 - **Progress**: an explainable estimate from 0–100%, followed by a confidence
-  bar and the reason that produced the estimate. Before objective verification,
-  the safety cap can keep a successful provider run below 100%.
+  bar and the reason that produced the estimate. While work is running, sparse
+  evidence keeps the estimate conservative; once the Session reaches
+  `Completed`, execution progress reaches 100% even when no verification phase
+  applies. Tests/build/typecheck remain a separate verification result and can
+  still be `Unknown`.
 - **ETA**: a range, not a precise promise. `Unavailable` means no reliable ETA
   signal has been observed yet; the confidence and reason are shown below it.
+  After at least three comparable completed Sessions, the estimate can use a
+  historical P25/P50/P75 baseline. Fewer samples are labeled as cold-start
+  history rather than turned into a precise-looking number.
 - **Evidence capabilities**: which structured events, tool calls, process/file
   signals, and session metadata the adapter reported as available. `not reported`
   means unavailable or unobserved, not necessarily unsupported by the provider.
@@ -152,6 +158,11 @@ is not treated as failed.
 The red banner is an API/Dashboard request error. `Offline · retrying` means the
 WebSocket is reconnecting; the HTTP cursor path is used to catch up events after
 it reconnects.
+
+Completed, failed, and interrupted Sessions have **Hide** and **Delete** actions.
+Hide is reversible and keeps evidence/history; enable **Show hidden** to restore
+or permanently delete it. Starting/running Sessions deliberately have no cleanup
+buttons and the API rejects cleanup with HTTP 409.
 
 ## 6. CLI inspection and recovery
 

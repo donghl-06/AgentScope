@@ -188,7 +188,8 @@ describe('StorageRepository', () => {
           endedAt: startedAt + 9_000,
         },
       });
-      const { endedAt: _completedAt, ...runningProjectionBase } = completedState;
+      const { endedAt, ...runningProjectionBase } = completedState;
+      void endedAt;
       repository.appendEvent(event('cleanup-event', 'session-cleanup'), {
         ...runningProjectionBase,
         status: 'running',

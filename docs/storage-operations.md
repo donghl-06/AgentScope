@@ -14,10 +14,27 @@ when the server opens the database. Current migrations are:
 | `0000_initial` | Projects, sessions, events, milestones, and ETA snapshots |
 | `0001_session_status_updated_index` | Index for session status/update queries |
 | `0002_observer_evidence` | Process, workspace, and known-command evidence |
+| `0003_turns` | Turn projections owned by a session |
+| `0004_observer_evidence_turn` | Optional turn ownership for observer evidence |
+| `0005_session_visibility` | Nullable `hidden_at` marker and visibility index |
 
 Do not delete rows from `_agentscope_migrations`, rename migration files, or edit an
 already-applied migration. A changed schema must be introduced as a new migration.
 The application does not perform automatic downgrades.
+
+## Session cleanup semantics
+
+The Dashboard's **Hide** action is a reversible soft cleanup: it sets
+`sessions.hidden_at`, excludes the session from the default list and overview
+counts, and keeps its events, turns, evidence and ETA history. Enable **Show
+hidden** to restore or permanently remove it.
+
+The **Delete** action is irreversible at the database level. It deletes the
+Session row and relies on the foreign-key cascade to remove its turns, events,
+milestones, ETA snapshots and observer evidence. Running or starting sessions
+are rejected with HTTP 409 and are never offered cleanup buttons in the
+Dashboard. A hidden completed session still contributes to the historical ETA
+baseline; a permanently deleted session no longer does.
 
 ## Backup before upgrades or experiments
 
@@ -67,4 +84,3 @@ the restored history and observer evidence have been verified.
 - Raw provider output is not stored by default. Database backups still contain
   workspace paths, event payloads, and observer metadata; protect them like local
   development data.
-

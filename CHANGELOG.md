@@ -4,6 +4,18 @@ All notable changes to AgentScope are recorded here.
 
 ## Unreleased
 
+- Added reversible Session hiding and permanent terminal-session deletion in the
+  Dashboard/API. Running or starting Sessions cannot be cleaned up, hidden
+  Sessions remain available through an explicit filter, and permanent deletion
+  cascades turns, events, milestones, ETA snapshots, and observer evidence.
+- Completed Sessions now report 100% execution progress even when no verification
+  signal is applicable; verification remains a separate Unknown/Passed/Failed
+  projection instead of making short completed tasks look stuck at 60%.
+- Added a conservative historical ETA baseline from comparable completed
+  Sessions. Sparse history remains explicitly `history_insufficient`; hidden
+  history is retained for estimates and permanently deleted history is removed.
+- Aligned the standalone storage migration command with all schema migrations
+  through `0005_session_visibility` and documented cleanup/backup semantics.
 - Added an explicit Codex app-server adapter using the locally installed JSON-RPC stdio
   protocol, with version-derived schema validation, thread resume/interrupt, redacted
   provider events, command/tool/file/plan/usage normalization, and conservative approval

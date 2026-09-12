@@ -13,7 +13,7 @@ documented limitation or manual-only portion remains.
 | AC-03 | One real Claude and one real Codex session can be monitored | Pass | `docs/findings/claude-code.md`, `docs/findings/codex-cli.md`, `docs/findings/e2e.md` |
 | AC-04 | Important event latency is below the V0 target | Partial | Cross-process event-to-WebSocket smoke is P50 220 ms/P95 396 ms; browser event-to-paint measurement remains pending |
 | AC-05 | Completed, failed, interrupted, and blocked are not conflated | Pass | reducer, provider-runner, observer-runtime and failure/interrupt tests |
-| AC-06 | Progress includes value, confidence and reasons and is capped before validation | Pass | `packages/progress` unit tests and Mock E2E |
+| AC-06 | Progress includes value, confidence and reasons; running work stays conservative while terminal execution progress reaches 100% independently of verification | Pass | `packages/progress` unit tests and Mock E2E |
 | AC-07 | ETA includes range, confidence and reasons and widens for risk | Pass | `packages/eta` unit tests and Mock E2E |
 | AC-08 | SQLite history survives a server restart | Pass | server-recovery integration test and 2026-09-06 same-database restart acceptance |
 | AC-09 | Dashboard refresh/WS catch-up does not duplicate or lose timeline events | Pass | HTTP cursor catch-up tests, user-confirmed Dashboard refresh/reconnect, and 2026-09-06 isolated real WS disconnect/catch-up smoke |
