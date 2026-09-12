@@ -26,13 +26,18 @@ describe('storage database', () => {
         '_agentscope_migrations',
         'eta_snapshots',
         'events',
+        'goals',
         'milestones',
         'observer_evidence',
+        'orchestrator_events',
         'sessions',
+        'task_attempts',
+        'tasks',
         'turns',
+        'verification_runs',
       ]);
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 6,
+        count: 7,
       });
       expect(
         client
@@ -66,7 +71,7 @@ describe('storage database', () => {
       migrateStorage(client);
 
       expect(client.prepare('SELECT count(*) AS count FROM _agentscope_migrations').get()).toEqual({
-        count: 6,
+        count: 7,
       });
       expect(
         client

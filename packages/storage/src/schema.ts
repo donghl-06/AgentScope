@@ -131,6 +131,119 @@ export const observerEvidence = sqliteTable(
   ],
 );
 
+export const goals = sqliteTable(
+  'goals',
+  {
+    id: text('id').primaryKey(),
+    workspace: text('workspace').notNull(),
+    prompt: text('prompt').notNull(),
+    provider: text('provider').notNull(),
+    status: text('status').notNull(),
+    constraintsJson: text('constraints_json').notNull(),
+    roadmapJson: text('roadmap_json').notNull(),
+    projectStateJson: text('project_state_json').notNull(),
+    executionMemoryJson: text('execution_memory_json').notNull(),
+    workingSetJson: text('working_set_json').notNull(),
+    currentTaskId: text('current_task_id'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'number' }),
+  },
+  (table) => [
+    index('goals_status_updated_idx').on(table.status, table.updatedAt),
+    index('goals_workspace_status_idx').on(table.workspace, table.status),
+  ],
+);
+
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    objective: text('objective').notNull(),
+    acceptanceCriteriaJson: text('acceptance_criteria_json').notNull(),
+    verificationJson: text('verification_json').notNull(),
+    constraintsJson: text('constraints_json').notNull(),
+    maxAttempts: integer('max_attempts').notNull(),
+    status: text('status').notNull(),
+    sequence: integer('sequence').notNull(),
+    tentative: integer('tentative').notNull(),
+    parentTaskId: text('parent_task_id'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    startedAt: integer('started_at', { mode: 'number' }),
+    endedAt: integer('ended_at', { mode: 'number' }),
+  },
+  (table) => [
+    index('tasks_goal_status_sequence_idx').on(table.goalId, table.status, table.sequence),
+  ],
+);
+
+export const taskAttempts = sqliteTable(
+  'task_attempts',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    attemptNumber: integer('attempt_number').notNull(),
+    provider: text('provider').notNull(),
+    sessionId: text('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+    status: text('status').notNull(),
+    workerResultJson: text('worker_result_json'),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    startedAt: integer('started_at', { mode: 'number' }),
+    endedAt: integer('ended_at', { mode: 'number' }),
+  },
+  (table) => [
+    index('task_attempts_task_status_idx').on(table.taskId, table.status, table.attemptNumber),
+  ],
+);
+
+export const verificationRuns = sqliteTable(
+  'verification_runs',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    attemptId: text('attempt_id').references(() => taskAttempts.id, { onDelete: 'set null' }),
+    status: text('status').notNull(),
+    criteriaJson: text('criteria_json').notNull(),
+    deterministicChecksJson: text('deterministic_checks_json').notNull(),
+    evidenceJson: text('evidence_json').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'number' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [index('verification_runs_task_created_idx').on(table.taskId, table.createdAt)],
+);
+
+export const orchestratorEvents = sqliteTable(
+  'orchestrator_events',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id')
+      .notNull()
+      .references(() => goals.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    attemptId: text('attempt_id').references(() => taskAttempts.id, { onDelete: 'set null' }),
+    seq: integer('seq').notNull(),
+    timestamp: integer('timestamp', { mode: 'number' }).notNull(),
+    type: text('type').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    confidence: real('confidence').notNull(),
+  },
+  (table) => [
+    index('orchestrator_events_goal_seq_idx').on(table.goalId, table.seq),
+    index('orchestrator_events_goal_timestamp_idx').on(table.goalId, table.timestamp),
+  ],
+);
+
 export const storageTables = {
   sessions,
   turns,
@@ -138,4 +251,9 @@ export const storageTables = {
   milestones,
   etaSnapshots,
   observerEvidence,
+  goals,
+  tasks,
+  taskAttempts,
+  verificationRuns,
+  orchestratorEvents,
 };
