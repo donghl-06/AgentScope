@@ -62,10 +62,14 @@ export function computeProgress(input: ProgressEngineInput): ProgressResult {
       message: 'Session completed with passing verification.',
     });
   } else if (state.status === 'completed') {
-    value = Math.min(value, 0.6);
+    // A terminal completion is authoritative for execution progress. A task
+    // may legitimately have no verification phase (for example a short
+    // question/answer or a read-only inspection), so missing verification
+    // evidence must not leave the projection stuck at the old 60% cap.
+    value = 1;
     reasons.push({
       code: 'completion_unverified',
-      message: 'Completion is capped until verification passes.',
+      message: 'Session completed; verification evidence is unavailable or not required.',
     });
   }
   if (state.status === 'failed') {

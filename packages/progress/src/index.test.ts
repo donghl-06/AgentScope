@@ -33,7 +33,7 @@ describe('progress engine', () => {
     expect(result.reasons.map((reason) => reason.code)).toContain('verified_completion');
   });
 
-  it('projects an unverified interactive completion to the guarded completion cap', () => {
+  it('projects an unverified interactive completion to full execution progress', () => {
     const result = computeProgress({
       state: state({
         status: 'completed',
@@ -42,7 +42,7 @@ describe('progress engine', () => {
       }),
       capabilities: { fileEvents: true },
     });
-    expect(result.value).toBe(0.6);
+    expect(result.value).toBe(1);
     expect(result.reasons.map((reason) => reason.code)).toContain('interactive_completion');
     expect(result.reasons.map((reason) => reason.code)).toContain('completion_unverified');
   });
@@ -92,12 +92,12 @@ describe('progress engine', () => {
     expect(result.reasons.map((reason) => reason.code)).not.toContain('verification_pending');
   });
 
-  it('keeps explicit no-verification projects below full confidence', () => {
+  it('treats explicit no-verification projects as fully executed', () => {
     const result = computeProgress({
       state: state({ status: 'completed', endedAt: 100 }),
       config: { requiredVerification: [] },
     });
-    expect(result.value).toBeLessThanOrEqual(0.6);
+    expect(result.value).toBe(1);
     expect(result.reasons.map((reason) => reason.code)).toContain('completion_unverified');
   });
 

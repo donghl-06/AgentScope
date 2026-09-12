@@ -56,7 +56,7 @@ describe('mock CLI runner', () => {
       const repository = new StorageRepository(storage.client);
       const session = repository.getSession('session-1');
       expect(session).toMatchObject({ status: 'completed' });
-      expect(session.state.progress.value).toBeLessThanOrEqual(0.6);
+      expect(session.state.progress.value).toBe(1);
       expect(session.state.progress.reasons.map((reason) => reason.code)).toContain(
         'completion_unverified',
       );
