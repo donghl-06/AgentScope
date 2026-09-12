@@ -403,6 +403,29 @@ export interface OrchestratorCommandReservation {
   readonly command: StoredOrchestratorCommand;
 }
 
+export interface ApplyInstructionAtBoundaryInput {
+  readonly id: string;
+  readonly status: Extract<
+    InstructionStatus,
+    'APPLIED' | 'REJECTED' | 'NEEDS_APPROVAL' | 'NEEDS_CLARIFICATION'
+  >;
+  readonly appliedRevision?: number;
+  readonly appliedTaskId?: string;
+  readonly appliedAttemptId?: string;
+  readonly decisionReason: string;
+  readonly executionMemory?: JsonObject;
+  readonly workingSet?: JsonObject;
+  readonly currentTaskId?: string | null;
+  readonly event?: AppendOrchestratorEventInput;
+  readonly now?: number;
+}
+
+export interface ApplyInstructionAtBoundaryResult {
+  readonly goal: StoredGoal;
+  readonly instruction: StoredGoalInstruction;
+  readonly event?: StoredOrchestratorEvent;
+}
+
 export interface CreateTaskInput {
   readonly id: string;
   readonly goalId: string;
@@ -820,6 +843,150 @@ export class OrchestratorRepository {
     const instruction = this.getInstruction(id);
     this.notify({ type: 'instruction.updated', instruction });
     return instruction;
+  }
+
+  /**
+   * Atomically apply a pending Instruction and its boundary context.
+   *
+   * The caller decides whether the Instruction is safe to apply. This method only
+   * enforces storage invariants and commits the Instruction, Goal documents, and
+   * optional audit event as one SQLite transaction.
+   */
+  applyInstructionAtBoundary(
+    input: ApplyInstructionAtBoundaryInput,
+  ): ApplyInstructionAtBoundaryResult {
+    const existingInstruction = this.getInstruction(input.id);
+    const existingGoal = this.getGoal(existingInstruction.goalId);
+    assertInstructionStatus(input.status);
+    assertInstructionTransition(existingInstruction.status, input.status);
+    if (input.decisionReason.trim().length === 0 || input.decisionReason.length > 4_000) {
+      throw new StorageError(
+        'Instruction decision reason must be between 1 and 4000 characters.',
+        'invalid_request',
+      );
+    }
+    if (input.status === 'APPLIED') {
+      if (input.appliedRevision === undefined) {
+        throw new StorageError(
+          'Applied instructions must reference an active revision.',
+          'invalid_request',
+        );
+      }
+      assertNonNegativeInteger(input.appliedRevision, 'Applied revision');
+      if (input.appliedRevision !== existingGoal.activeRevision) {
+        throw new StorageConflictError(
+          `Instruction revision conflict: expected active revision ${existingGoal.activeRevision}, found ${input.appliedRevision}.`,
+          'revision_conflict',
+        );
+      }
+    }
+    if (input.appliedTaskId !== undefined) {
+      const task = this.getTask(input.appliedTaskId);
+      if (task.goalId !== existingGoal.id) {
+        throw new StorageError(
+          `Applied Task ${input.appliedTaskId} belongs to another Goal.`,
+          'invalid_request',
+        );
+      }
+    }
+    if (input.appliedAttemptId !== undefined) {
+      const attempt = this.getAttempt(input.appliedAttemptId);
+      const task = this.getTask(attempt.taskId);
+      if (task.goalId !== existingGoal.id) {
+        throw new StorageError(
+          `Applied Attempt ${input.appliedAttemptId} belongs to another Goal.`,
+          'invalid_request',
+        );
+      }
+    }
+    if (input.event !== undefined) {
+      if (input.event.goalId !== existingGoal.id) {
+        throw new StorageError(
+          'Instruction boundary event belongs to another Goal.',
+          'invalid_request',
+        );
+      }
+      if (input.event.taskId !== undefined) {
+        const task = this.getTask(input.event.taskId);
+        if (task.goalId !== existingGoal.id) {
+          throw new StorageError(
+            'Instruction boundary event Task belongs to another Goal.',
+            'invalid_request',
+          );
+        }
+      }
+      if (input.event.attemptId !== undefined) {
+        const attempt = this.getAttempt(input.event.attemptId);
+        const task = this.getTask(attempt.taskId);
+        if (task.goalId !== existingGoal.id) {
+          throw new StorageError(
+            'Instruction boundary event Attempt belongs to another Goal.',
+            'invalid_request',
+          );
+        }
+      }
+    }
+    const now = input.now ?? Date.now();
+    const appliedAt = input.status === 'APPLIED' ? now : existingInstruction.appliedAt;
+    const run = this.client.transaction(() => {
+      if (
+        input.executionMemory !== undefined ||
+        input.workingSet !== undefined ||
+        input.currentTaskId !== undefined
+      ) {
+        this.client
+          .prepare(
+            `UPDATE goals SET constraints_json = ?, roadmap_json = ?, project_state_json = ?,
+             execution_memory_json = ?, working_set_json = ?, current_task_id = ?, updated_at = ?
+             WHERE id = ?`,
+          )
+          .run(
+            stringifyJson(existingGoal.constraints),
+            stringifyJson(existingGoal.roadmap),
+            stringifyJson(existingGoal.projectState),
+            stringifyJson(input.executionMemory ?? existingGoal.executionMemory),
+            stringifyJson(input.workingSet ?? existingGoal.workingSet),
+            input.currentTaskId === undefined
+              ? (existingGoal.currentTaskId ?? null)
+              : (input.currentTaskId ?? null),
+            now,
+            existingGoal.id,
+          );
+      }
+      const updatedInstruction = this.client
+        .prepare(
+          `UPDATE goal_instructions
+           SET status = ?, applied_revision = ?, applied_task_id = ?, applied_attempt_id = ?,
+               decision_reason = ?, updated_at = ?, applied_at = ?
+           WHERE id = ? AND status = ?`,
+        )
+        .run(
+          input.status,
+          input.appliedRevision ?? existingInstruction.appliedRevision ?? null,
+          input.appliedTaskId ?? existingInstruction.appliedTaskId ?? null,
+          input.appliedAttemptId ?? existingInstruction.appliedAttemptId ?? null,
+          input.decisionReason,
+          now,
+          appliedAt ?? null,
+          input.id,
+          existingInstruction.status,
+        );
+      if (updatedInstruction.changes !== 1) {
+        throw new StorageConflictError(
+          `Instruction ${input.id} changed before the boundary could be applied.`,
+          'conflict',
+        );
+      }
+      if (input.event !== undefined) this.insertEvent(input.event, now);
+    })();
+    void run;
+    const goal = this.getGoal(existingGoal.id);
+    const instruction = this.getInstruction(input.id);
+    const event = input.event === undefined ? undefined : this.getEvent(input.event.id);
+    this.notify({ type: 'goal.updated', goal });
+    this.notify({ type: 'instruction.updated', instruction });
+    if (event !== undefined) this.notify({ type: 'event.appended', event });
+    return { goal, instruction, ...(event === undefined ? {} : { event }) };
   }
 
   transitionGoal(id: string, status: GoalStatus, now = Date.now()): StoredGoal {
@@ -1697,30 +1864,7 @@ export class OrchestratorRepository {
     if (input.taskId !== undefined) this.getTask(input.taskId);
     if (input.attemptId !== undefined) this.getAttempt(input.attemptId);
     const now = input.timestamp ?? Date.now();
-    const nextSeq = (
-      this.client
-        .prepare(
-          'SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM orchestrator_events WHERE goal_id = ?',
-        )
-        .get(input.goalId) as { seq: number }
-    ).seq;
-    this.client
-      .prepare(
-        `INSERT INTO orchestrator_events
-          (id, goal_id, task_id, attempt_id, seq, timestamp, type, payload_json, confidence)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.id,
-        input.goalId,
-        input.taskId ?? null,
-        input.attemptId ?? null,
-        nextSeq,
-        now,
-        input.type,
-        stringifyJson(input.payload ?? {}),
-        input.confidence,
-      );
+    this.insertEvent(input, now);
     const event = this.getEvent(input.id);
     this.notify({ type: 'event.appended', event });
     return event;
@@ -1744,6 +1888,33 @@ export class OrchestratorRepository {
       EventRow | undefined;
     if (row === undefined) throw new StorageNotFoundError(`Orchestrator event not found: ${id}`);
     return decodeEvent(row);
+  }
+
+  private insertEvent(input: AppendOrchestratorEventInput, now: number): void {
+    const nextSeq = (
+      this.client
+        .prepare(
+          'SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM orchestrator_events WHERE goal_id = ?',
+        )
+        .get(input.goalId) as { seq: number }
+    ).seq;
+    this.client
+      .prepare(
+        `INSERT INTO orchestrator_events
+          (id, goal_id, task_id, attempt_id, seq, timestamp, type, payload_json, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.goalId,
+        input.taskId ?? null,
+        input.attemptId ?? null,
+        nextSeq,
+        input.timestamp ?? now,
+        input.type,
+        stringifyJson(input.payload ?? {}),
+        input.confidence,
+      );
   }
 
   private findOrchestratorCommandByKey(

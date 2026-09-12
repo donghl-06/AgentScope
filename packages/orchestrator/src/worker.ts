@@ -125,6 +125,7 @@ export function buildWorkerPrompt(
     ...Object.entries(task.constraints).map(([key, value]) => `- ${key}: ${String(value)}`),
     `Workspace: ${projectState.workspace}`,
     `Working set: ${workingSet.files.join(', ') || '(none selected)'}`,
+    ...formatAppliedInstructions(workingSet),
     ...(checks.length === 0
       ? []
       : ['Discoverable verification commands:', ...checks.map((check) => `- ${check}`)]),
@@ -132,6 +133,19 @@ export function buildWorkerPrompt(
     '',
     'At the end, summarize what changed, list changed files, and report verification honestly.',
   ].join('\n');
+}
+
+function formatAppliedInstructions(workingSet: WorkingSet): readonly string[] {
+  if (workingSet.appliedInstructions === undefined || workingSet.appliedInstructions.length === 0) {
+    return [];
+  }
+  return [
+    'Applied instructions for this Task boundary (follow them without changing the original Goal):',
+    ...workingSet.appliedInstructions.map(
+      (instruction) =>
+        `- [${instruction.kind}] ${instruction.content} (revision ${instruction.appliedRevision})`,
+    ),
+  ];
 }
 
 function formatRetryContext(context: WorkerRetryContext | undefined): readonly string[] {

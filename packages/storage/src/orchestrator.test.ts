@@ -442,6 +442,116 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('atomically applies an instruction with context and audit evidence', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'instruction-boundary-goal',
+        workspace: 'D:/workspace/instruction-boundary',
+        prompt: 'Apply boundary context safely.',
+        provider: 'mock',
+        now: 1,
+      });
+      const task = repository.createTask({
+        id: 'instruction-boundary-task',
+        goalId: 'instruction-boundary-goal',
+        title: 'Boundary task',
+        objective: 'Use the applied context.',
+        acceptanceCriteria: ['The context is visible to the Worker.'],
+        sequence: 1,
+        now: 2,
+      });
+      const instruction = repository.createInstruction({
+        id: 'instruction-boundary-1',
+        goalId: 'instruction-boundary-goal',
+        kind: 'constraint',
+        content: 'Keep the change local and verify it.',
+        now: 3,
+      });
+      const result = repository.applyInstructionAtBoundary({
+        id: instruction.id,
+        status: 'APPLIED',
+        appliedRevision: 0,
+        appliedTaskId: task.id,
+        decisionReason: 'Applied before the first Attempt.',
+        executionMemory: {
+          decisions: [{ id: 'instruction-boundary-1', status: 'STABLE' }],
+          notes: ['instruction-boundary-1:applied'],
+        },
+        workingSet: { appliedInstructions: [{ id: instruction.id, content: instruction.content }] },
+        event: {
+          id: 'instruction-boundary-event-1',
+          goalId: 'instruction-boundary-goal',
+          taskId: task.id,
+          type: 'goal.instruction.applied',
+          payload: { instructionId: instruction.id, boundary: 'before-attempt' },
+          confidence: 1,
+          timestamp: 4,
+        },
+        now: 4,
+      });
+      expect(result.instruction).toMatchObject({
+        status: 'APPLIED',
+        appliedRevision: 0,
+        appliedTaskId: task.id,
+      });
+      expect(result.goal.executionMemory).toMatchObject({
+        notes: ['instruction-boundary-1:applied'],
+      });
+      expect(repository.listEvents('instruction-boundary-goal')).toMatchObject([
+        { id: 'instruction-boundary-event-1', type: 'goal.instruction.applied', seq: 1 },
+      ]);
+    });
+  });
+
+  it('rolls back context and instruction status when boundary audit insertion fails', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'instruction-rollback-goal',
+        workspace: 'D:/workspace/instruction-rollback',
+        prompt: 'Keep the boundary atomic.',
+        provider: 'mock',
+        now: 1,
+      });
+      const instruction = repository.createInstruction({
+        id: 'instruction-rollback-1',
+        goalId: 'instruction-rollback-goal',
+        kind: 'general',
+        content: 'Record this only if every write succeeds.',
+        now: 2,
+      });
+      repository.appendEvent({
+        id: 'instruction-rollback-existing-event',
+        goalId: 'instruction-rollback-goal',
+        type: 'existing.event',
+        payload: {},
+        confidence: 1,
+        timestamp: 3,
+      });
+      expect(() =>
+        repository.applyInstructionAtBoundary({
+          id: instruction.id,
+          status: 'APPLIED',
+          appliedRevision: 0,
+          decisionReason: 'This must roll back.',
+          executionMemory: { notes: ['must-not-persist'] },
+          workingSet: { appliedInstructions: [{ id: instruction.id }] },
+          event: {
+            id: 'instruction-rollback-existing-event',
+            goalId: 'instruction-rollback-goal',
+            type: 'duplicate.event',
+            payload: {},
+            confidence: 1,
+            timestamp: 4,
+          },
+          now: 4,
+        }),
+      ).toThrow();
+      expect(repository.getInstruction(instruction.id).status).toBe('PENDING');
+      expect(repository.getGoal('instruction-rollback-goal').executionMemory).toEqual({});
+      expect(repository.listEvents('instruction-rollback-goal')).toHaveLength(1);
+    });
+  });
+
   it('rejects stale roadmap revisions without partially updating the active revision', () => {
     withRepository((repository) => {
       repository.createGoal({

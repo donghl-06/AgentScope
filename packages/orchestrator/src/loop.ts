@@ -18,7 +18,9 @@ import {
 } from '@agentscope/storage';
 import {
   bootstrapProjectContext,
+  type AppliedInstructionContext,
   type BootstrapContext,
+  type ExecutionMemory,
   type ProjectState,
   type WorkingSet,
 } from './index.js';
@@ -29,7 +31,12 @@ import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } f
 import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
 import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
-import { validateInstructionDraft, type InstructionDraft } from './instructions.js';
+import {
+  evaluateInstructionApplicability,
+  validateInstructionDraft,
+  type InstructionApplicabilityResult,
+  type InstructionDraft,
+} from './instructions.js';
 
 export type GoalVerification = (input: {
   readonly goal: StoredGoal;
@@ -83,6 +90,15 @@ export interface GoalRunResult {
   readonly tasks: readonly StoredTask[];
   readonly status: StoredGoal['status'];
   readonly lastVerification?: VerificationResult;
+}
+
+type InstructionBoundary = 'before-planning' | 'before-attempt' | 'after-attempt';
+
+interface InstructionApplicationOutcome {
+  readonly goal: StoredGoal;
+  readonly executionMemory: ExecutionMemory;
+  readonly workingSet: WorkingSet;
+  readonly blockedReason?: string;
 }
 
 export interface RetryRunResult extends GoalRunResult {
@@ -542,10 +558,27 @@ export class OrchestratorEngine {
       goalPrompt: goal.prompt,
     });
     const projectState = context.projectState;
-    const executionMemory = context.executionMemory;
-    const workingSet = context.workingSet;
+    let executionMemory = mergeExecutionMemory(context.executionMemory, goal.executionMemory);
+    let workingSet = mergeWorkingSet(context.workingSet, goal.workingSet);
     let tasks = repository.listTasks(goal.id);
     let lastVerificationTaskId: string | undefined;
+    let instructionApplication = this.applyPendingInstructions(
+      goal,
+      tasks,
+      executionMemory,
+      workingSet,
+      'before-planning',
+    );
+    goal = instructionApplication.goal;
+    executionMemory = instructionApplication.executionMemory;
+    workingSet = instructionApplication.workingSet;
+    if (instructionApplication.blockedReason !== undefined) {
+      return this.pauseForHuman(
+        repository.getGoal(goal.id),
+        repository.listTasks(goal.id),
+        instructionApplication.blockedReason,
+      );
+    }
     if (tasks.length === 0) {
       assertLease();
       const plan = this.planner.planInitial({ goal, projectState, executionMemory, workingSet });
@@ -599,6 +632,24 @@ export class OrchestratorEngine {
             'An active Attempt already exists; refusing to duplicate it.',
           );
         }
+        instructionApplication = this.applyPendingInstructions(
+          goal,
+          tasks,
+          executionMemory,
+          workingSet,
+          'before-attempt',
+          activeTask.id,
+        );
+        goal = instructionApplication.goal;
+        executionMemory = instructionApplication.executionMemory;
+        workingSet = instructionApplication.workingSet;
+        if (instructionApplication.blockedReason !== undefined) {
+          return this.pauseForHuman(
+            repository.getGoal(goal.id),
+            repository.listTasks(goal.id),
+            instructionApplication.blockedReason,
+          );
+        }
         if (activeTask.status === 'REPAIRING') {
           assertLease();
           repository.transitionTask(activeTask.id, 'RUNNING', this.now());
@@ -612,6 +663,24 @@ export class OrchestratorEngine {
         );
         lastVerification = result.verification;
         lastVerificationTaskId = activeTask.id;
+        instructionApplication = this.applyPendingInstructions(
+          repository.getGoal(goal.id),
+          repository.listTasks(goal.id),
+          executionMemory,
+          workingSet,
+          'after-attempt',
+          activeTask.id,
+        );
+        goal = instructionApplication.goal;
+        executionMemory = instructionApplication.executionMemory;
+        workingSet = instructionApplication.workingSet;
+        if (instructionApplication.blockedReason !== undefined) {
+          return this.pauseForHuman(
+            repository.getGoal(goal.id),
+            repository.listTasks(goal.id),
+            instructionApplication.blockedReason,
+          );
+        }
         if (result.next === 'HUMAN') {
           return this.pauseForHuman(
             repository.getGoal(goal.id),
@@ -631,6 +700,25 @@ export class OrchestratorEngine {
         }
         continue;
       }
+      instructionApplication = this.applyPendingInstructions(
+        goal,
+        tasks,
+        executionMemory,
+        workingSet,
+        'before-planning',
+        goal.currentTaskId,
+      );
+      goal = instructionApplication.goal;
+      executionMemory = instructionApplication.executionMemory;
+      workingSet = instructionApplication.workingSet;
+      if (instructionApplication.blockedReason !== undefined) {
+        return this.pauseForHuman(
+          repository.getGoal(goal.id),
+          repository.listTasks(goal.id),
+          instructionApplication.blockedReason,
+        );
+      }
+      tasks = repository.listTasks(goal.id);
       const rolling = this.planRolling(
         goal,
         tasks,
@@ -759,6 +847,73 @@ export class OrchestratorEngine {
       repository.listTasks(goal.id),
       `The Orchestrator reached its ${this.maxSteps}-step safety bound.`,
     );
+  }
+
+  private applyPendingInstructions(
+    goal: StoredGoal,
+    tasks: readonly StoredTask[],
+    executionMemory: ExecutionMemory,
+    workingSet: WorkingSet,
+    boundary: InstructionBoundary,
+    currentTaskId?: string,
+  ): InstructionApplicationOutcome {
+    const repository = this.options.repository;
+    let nextGoal = goal;
+    let nextExecutionMemory = executionMemory;
+    let nextWorkingSet = workingSet;
+    const pending = repository.listInstructions(goal.id, { status: 'PENDING' });
+    for (const instruction of pending) {
+      const decision = evaluateInstructionApplicability({
+        goal: nextGoal,
+        instruction,
+        tasks,
+      });
+      if (decision.decision === 'APPLY') {
+        nextExecutionMemory = rememberAppliedInstruction(
+          nextExecutionMemory,
+          instruction,
+          this.now(),
+        );
+        nextWorkingSet = rememberInstructionInWorkingSet(nextWorkingSet, instruction, this.now());
+      }
+      const status = instructionStatusForDecision(decision);
+      const application = repository.applyInstructionAtBoundary({
+        id: instruction.id,
+        status,
+        ...(status === 'APPLIED' ? { appliedRevision: nextGoal.activeRevision } : {}),
+        ...(currentTaskId === undefined ? {} : { appliedTaskId: currentTaskId }),
+        decisionReason: decision.reason,
+        ...(status === 'APPLIED'
+          ? {
+              executionMemory: asJsonObject(nextExecutionMemory),
+              workingSet: asJsonObject(nextWorkingSet),
+            }
+          : {}),
+        event: instructionDecisionEvent(
+          nextGoal.id,
+          instruction,
+          decision,
+          boundary,
+          currentTaskId,
+          this.now(),
+        ),
+        now: this.now(),
+      });
+      nextGoal = application.goal;
+      if (decision.decision === 'NEEDS_APPROVAL' || decision.decision === 'NEEDS_CLARIFICATION') {
+        return {
+          goal: nextGoal,
+          executionMemory: nextExecutionMemory,
+          workingSet: nextWorkingSet,
+          blockedReason: `Instruction ${instruction.id} cannot continue automatically: ${decision.reason}`,
+        };
+      }
+    }
+    return {
+      goal: nextGoal,
+      executionMemory: nextExecutionMemory,
+      workingSet: nextWorkingSet,
+    };
   }
 
   private planRolling(
@@ -1129,6 +1284,178 @@ export class OrchestratorEngine {
       timestamp: this.now(),
     });
   }
+}
+
+function instructionStatusForDecision(
+  decision: InstructionApplicabilityResult,
+): 'APPLIED' | 'REJECTED' | 'NEEDS_APPROVAL' | 'NEEDS_CLARIFICATION' {
+  switch (decision.decision) {
+    case 'APPLY':
+      return 'APPLIED';
+    case 'REJECT':
+      return 'REJECTED';
+    case 'NEEDS_APPROVAL':
+      return 'NEEDS_APPROVAL';
+    case 'NEEDS_CLARIFICATION':
+      return 'NEEDS_CLARIFICATION';
+  }
+}
+
+function instructionDecisionEvent(
+  goalId: string,
+  instruction: StoredGoalInstruction,
+  decision: InstructionApplicabilityResult,
+  boundary: InstructionBoundary,
+  currentTaskId: string | undefined,
+  timestamp: number,
+): {
+  readonly id: string;
+  readonly goalId: string;
+  readonly taskId?: string;
+  readonly type: string;
+  readonly payload: JsonObject;
+  readonly confidence: number;
+  readonly timestamp: number;
+} {
+  const type =
+    decision.decision === 'APPLY' ? 'goal.instruction.applied' : 'goal.instruction.rejected';
+  return {
+    id: `${instruction.id}:${type}:${randomUUID()}`,
+    goalId,
+    ...(currentTaskId === undefined ? {} : { taskId: currentTaskId }),
+    type,
+    payload: {
+      instructionId: instruction.id,
+      kind: instruction.kind,
+      source: instruction.source,
+      decision: decision.decision,
+      reasonCode: decision.reasonCode,
+      boundary,
+      ...(decision.decision === 'APPLY' ? { appliedRevision: instruction.baseRevision } : {}),
+    },
+    confidence: decision.decision === 'APPLY' || decision.decision === 'REJECT' ? 1 : 0.9,
+    timestamp,
+  };
+}
+
+function rememberAppliedInstruction(
+  memory: ExecutionMemory,
+  instruction: StoredGoalInstruction,
+  recordedAt: number,
+): ExecutionMemory {
+  const decisions = Array.isArray(memory.decisions) ? memory.decisions : [];
+  const completedTaskIds = Array.isArray(memory.completedTaskIds) ? memory.completedTaskIds : [];
+  const failedApproaches = Array.isArray(memory.failedApproaches) ? memory.failedApproaches : [];
+  const notes = Array.isArray(memory.notes) ? memory.notes : [];
+  if (decisions.some((decision) => decision.id === `instruction:${instruction.id}`)) {
+    return { decisions, completedTaskIds, failedApproaches, notes };
+  }
+  return {
+    decisions: [
+      ...decisions,
+      {
+        id: `instruction:${instruction.id}`,
+        summary: `Applied ${instruction.kind} instruction ${instruction.id} at a safe boundary.`,
+        status: instruction.kind === 'constraint' ? 'STABLE' : 'TENTATIVE',
+        source: instruction.source,
+        recordedAt,
+      },
+    ].slice(-100),
+    completedTaskIds,
+    failedApproaches,
+    notes: [...notes, `instruction:${instruction.id}:applied`].slice(-200),
+  };
+}
+
+function rememberInstructionInWorkingSet(
+  workingSet: WorkingSet,
+  instruction: StoredGoalInstruction,
+  updatedAt: number,
+): WorkingSet {
+  const existing = Array.isArray(workingSet.appliedInstructions)
+    ? workingSet.appliedInstructions
+    : [];
+  if (existing.some((item) => item.id === instruction.id)) return workingSet;
+  const context: AppliedInstructionContext = {
+    id: instruction.id,
+    kind: instruction.kind,
+    content:
+      instruction.content.length <= 4_000
+        ? instruction.content
+        : `${instruction.content.slice(0, 3_997)}...`,
+    appliedRevision: instruction.baseRevision,
+  };
+  return {
+    ...workingSet,
+    appliedInstructions: [...existing, context].slice(-8),
+    updatedAt,
+  };
+}
+
+function mergeExecutionMemory(context: ExecutionMemory, persisted: JsonObject): ExecutionMemory {
+  const candidate = persisted as Partial<ExecutionMemory>;
+  const persistedDecisions = Array.isArray(candidate.decisions) ? candidate.decisions : [];
+  const persistedCompleted = Array.isArray(candidate.completedTaskIds)
+    ? candidate.completedTaskIds.filter((value): value is string => typeof value === 'string')
+    : [];
+  const persistedFailed = Array.isArray(candidate.failedApproaches)
+    ? candidate.failedApproaches.filter((value): value is string => typeof value === 'string')
+    : [];
+  const persistedNotes = Array.isArray(candidate.notes)
+    ? candidate.notes.filter((value): value is string => typeof value === 'string')
+    : [];
+  const decisions = [...context.decisions, ...persistedDecisions].filter(
+    (decision, index, all) => all.findIndex((item) => item.id === decision.id) === index,
+  );
+  return {
+    decisions,
+    completedTaskIds: [...new Set([...context.completedTaskIds, ...persistedCompleted])],
+    failedApproaches: [...new Set([...context.failedApproaches, ...persistedFailed])],
+    notes: [...new Set([...context.notes, ...persistedNotes])],
+  };
+}
+
+function mergeWorkingSet(context: WorkingSet, persisted: JsonObject): WorkingSet {
+  const candidate = persisted as Partial<WorkingSet>;
+  const persistedFiles = Array.isArray(candidate.files)
+    ? candidate.files.filter((value): value is string => typeof value === 'string')
+    : [];
+  const persistedDirectories = Array.isArray(candidate.directories)
+    ? candidate.directories.filter((value): value is string => typeof value === 'string')
+    : [];
+  const persistedInstructions = Array.isArray(candidate.appliedInstructions)
+    ? candidate.appliedInstructions.filter(isAppliedInstructionContext)
+    : [];
+  const appliedInstructions = [
+    ...(context.appliedInstructions ?? []),
+    ...persistedInstructions,
+  ].filter(
+    (instruction, index, all) => all.findIndex((item) => item.id === instruction.id) === index,
+  );
+  return {
+    files: [...new Set([...context.files, ...persistedFiles])],
+    directories: [...new Set([...context.directories, ...persistedDirectories])],
+    rationale:
+      typeof candidate.rationale === 'string' && candidate.rationale.length > 0
+        ? candidate.rationale
+        : context.rationale,
+    updatedAt:
+      typeof candidate.updatedAt === 'number'
+        ? Math.max(context.updatedAt, candidate.updatedAt)
+        : context.updatedAt,
+    ...(appliedInstructions.length === 0 ? {} : { appliedInstructions }),
+  };
+}
+
+function isAppliedInstructionContext(value: unknown): value is AppliedInstructionContext {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.kind === 'string' &&
+    typeof candidate.content === 'string' &&
+    typeof candidate.appliedRevision === 'number'
+  );
 }
 
 function toWorkerClaim(result: WorkerExecutionResult): {

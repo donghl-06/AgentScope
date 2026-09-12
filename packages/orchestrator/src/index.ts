@@ -56,6 +56,15 @@ export interface WorkingSet {
   readonly directories: readonly string[];
   readonly rationale: string;
   readonly updatedAt: number;
+  /** User instructions that were applied before the current Worker boundary. */
+  readonly appliedInstructions?: readonly AppliedInstructionContext[];
+}
+
+export interface AppliedInstructionContext {
+  readonly id: string;
+  readonly kind: string;
+  readonly content: string;
+  readonly appliedRevision: number;
 }
 
 export interface BootstrapContext {

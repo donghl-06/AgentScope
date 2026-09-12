@@ -17,6 +17,7 @@ import {
   type RollingPlan,
   type WorkingSet,
 } from './index.js';
+import type { WorkerLaunchRequest } from './worker.js';
 
 const projectState = {
   workspace: 'D:/workspace/engine',
@@ -111,6 +112,7 @@ async function withEngine(
   finalStatus: 'PASS' | 'FAIL' = 'PASS',
   contextProvider: () => Promise<BootstrapContext> = async () => context,
   onEngine?: (engine: OrchestratorEngine) => void,
+  onWorker?: (request: WorkerLaunchRequest) => void,
 ): Promise<void> {
   const filename = path.join(os.tmpdir(), `agentscope-engine-${Date.now()}-${Math.random()}.db`);
   const { client } = openStorage({ filename, migrate: true });
@@ -118,14 +120,17 @@ async function withEngine(
     const repository = new OrchestratorRepository(client);
     let attemptCount = 0;
     const worker = new SerialWorkerRuntime({
-      launch: async (request) => ({
-        attemptId: request.attemptId,
-        status: 'completed' as const,
-        exitCode: 0,
-        summary: 'worker completed',
-        changedFiles: ['src/feature.ts'],
-        reportedVerification: {},
-      }),
+      launch: async (request) => {
+        onWorker?.(request);
+        return {
+          attemptId: request.attemptId,
+          status: 'completed' as const,
+          exitCode: 0,
+          summary: 'worker completed',
+          changedFiles: ['src/feature.ts'],
+          reportedVerification: {},
+        };
+      },
     });
     const engine = new OrchestratorEngine({
       repository,
@@ -306,6 +311,85 @@ describe('OrchestratorEngine', () => {
       ).toHaveLength(1);
       expect(repository.listOrchestratorCommands('goal-instruction-submit')).toMatchObject([
         { commandKind: 'instruction', status: 'APPLIED' },
+      ]);
+    });
+  });
+
+  it('queues a running instruction and applies it only after the Attempt boundary', async () => {
+    let activeEngine: OrchestratorEngine | undefined;
+    const workerPrompts: string[] = [];
+    await withEngine(
+      (attempt) => (attempt === 1 ? 'FAIL' : 'PASS'),
+      async (engine, repository) => {
+        activeEngine = engine;
+        const result = await engine.createGoalAndRun({
+          id: 'goal-boundary-instruction',
+          workspace: projectState.workspace,
+          prompt: 'Apply a boundary instruction.',
+          provider: 'claude',
+        });
+        expect(result.status).toBe('COMPLETED');
+        expect(workerPrompts).toHaveLength(2);
+        expect(workerPrompts[0]).not.toContain('Keep the next attempt deterministic.');
+        expect(workerPrompts[1]).toContain('Applied instructions for this Task boundary');
+        expect(workerPrompts[1]).toContain('Keep the next attempt deterministic.');
+        expect(repository.listInstructions('goal-boundary-instruction')).toMatchObject([
+          { status: 'APPLIED', appliedTaskId: 'goal-boundary-instruction:task:1' },
+        ]);
+        expect(repository.getGoal('goal-boundary-instruction').workingSet).toMatchObject({
+          appliedInstructions: [
+            { id: 'boundary-instruction-1', content: 'Keep the next attempt deterministic.' },
+          ],
+        });
+        expect(
+          repository
+            .listEvents('goal-boundary-instruction')
+            .filter((event) => event.type === 'goal.instruction.applied'),
+        ).toHaveLength(1);
+      },
+      'PASS',
+      async () => context,
+      (engine) => {
+        activeEngine = engine;
+      },
+      (request) => {
+        workerPrompts.push(request.prompt);
+        if (activeEngine !== undefined) {
+          activeEngine.submitInstruction(
+            'goal-boundary-instruction',
+            {
+              id: 'boundary-instruction-1',
+              kind: 'constraint',
+              content: 'Keep the next attempt deterministic.',
+            },
+            { idempotencyKey: 'boundary-instruction-command-1' },
+          );
+        }
+      },
+    );
+  });
+
+  it('blocks before starting a Worker when a pending instruction needs approval', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      repository.createGoal({
+        id: 'goal-approval-instruction',
+        workspace: projectState.workspace,
+        prompt: 'Require approval before work.',
+        provider: 'claude',
+      });
+      engine.submitInstruction(
+        'goal-approval-instruction',
+        { kind: 'general', content: 'Deploy this change to production.' },
+        { idempotencyKey: 'approval-instruction-command-1' },
+      );
+      const result = await engine.runGoal('goal-approval-instruction');
+      expect(result.status).toBe('NEEDS_HUMAN');
+      expect(repository.listTasks('goal-approval-instruction')).toHaveLength(0);
+      expect(repository.listInstructions('goal-approval-instruction')).toMatchObject([
+        {
+          status: 'NEEDS_APPROVAL',
+          decisionReason: expect.stringContaining('requires explicit approval'),
+        },
       ]);
     });
   });
