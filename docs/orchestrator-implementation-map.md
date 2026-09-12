@@ -105,3 +105,37 @@ Attempt 记录 provider、关联 Session、尝试号和 WorkerResult；Verificat
 尚未把外部服务凭据写入自动化测试：真实 Claude/Codex 长任务仍应由使用者在目标机器上做一次验收；这不影响本地核心、存储、API、Dashboard 和安全任务测试。
 
 最近一次本地门禁记录：`format:check`、`lint`、`typecheck`、单 worker 全量测试（306 tests）、集成测试（6 tests）和 `build` 均通过。文件系统高并发用例在并行全量运行时曾超时，单独重跑及单 worker 全量运行均通过；发布门禁采用后者以避免 Windows 文件系统资源争用。
+
+## V1 Step 0.1 能力矩阵（`codex/orchestrator-v1` 基线）
+
+本矩阵以当前工作树的真实实现为准，不把 V1 计划文档中的目标误认为已经完成。状态含义：
+
+- **已具备**：已有实现和自动测试可复用，V1 只需回归或小幅扩展。
+- **部分具备**：有可复用基础，但缺少 V1 要求的持久化、并发、解释或 UI 语义。
+- **未开始**：当前没有可直接提供 V1 行为的实现。
+
+| V1 能力 | 当前状态 | 已有落点 | V1 差距与风险 |
+| --- | --- | --- | --- |
+| Goal 历史、分页、筛选、搜索 | 部分具备 | `OrchestratorRepository.listGoals`、Server `GET /api/goals`、Dashboard Goal 列表 | 当前主要是固定 limit；缺少 cursor、查询条件、归档；历史数据增长会影响体验 |
+| Goal 归档/恢复显示 | 未开始 | 无 Orchestrator 归档状态或 API | 不能物理删除审计数据；活动 Goal 必须受到保护 |
+| Roadmap revision、编辑、插入、跳过、重排 | 部分具备 | Goal `roadmap` JSON、Initial/Rolling Planner、Task `sequence/tentative` | 缺少 immutable revision、并发冲突、用户锁定修改和安全 `SKIPPED` 语义 |
+| Human Instruction / Give Instruction | 未开始 | Continue 目前只恢复既有流程 | 缺少指令实体、校验、边界应用、审计和 CLI/API/UI 入口 |
+| Resume / Retry | 部分具备 | `OrchestratorEngine.resumeGoal`、内部 Repair Loop、`recoverOrchestrator` | 缺少 durable lease、跨进程 owner、显式 Retry API、幂等控制和细粒度恢复分类 |
+| 崩溃恢复与运行租约 | 部分具备 | Recovery 对活动 Attempt 加围栏；Server 启动恢复 | 当前依赖启动扫描，未有 generation/heartbeat/接管语义；不确定状态仍需更清楚的用户解释 |
+| Execution Memory 版本与来源 | 部分具备 | Goal 的 `executionMemory`、Bootstrap/rolling planning | 当前是单个 JSON 快照，缺少版本、来源引用、压缩 invariant 和历史查询 |
+| Project State / Working Set 边界刷新 | 部分具备 | Bootstrap `ProjectState`、`WorkingSet` | 缺少每个指令/Attempt/Task 边界的增量刷新和变更原因 |
+| 风险分类、审批、预算 | 未开始 | Task 只有静态 constraints/maxAttempts | 缺少动作风险、ApprovalRequest、Provider 权限映射、时间/usage 上限 |
+| Goal/Task Progress 与 ETA | 部分具备 | Monitor Session/Turn progress/ETA | Orchestrator 尚无独立 Goal/Task snapshot、历史样本、置信度/区间和 Gap Task 解释 |
+| Orchestrator 通知 | 部分具备 | Dashboard 浏览器通知、Server WebSocket | 缺少 NEEDS_HUMAN/Approval/Budget 规则、durable eventKey、通知中心和已读状态 |
+| Agent Control Center UI | 部分具备 | Goal 创建、详情、Pause/Abort/Continue、Task/Attempt/Verification 时间线 | 缺少历史导航、Instruction、Roadmap 编辑、Recovery/Approval、指标解释和异常状态体验 |
+| Claude/Codex Worker 一致性 | 部分具备 | 现有 Provider runner、Attempt↔Session 关联、真实 smoke | 缺少 V1 capability matrix、统一失败 taxonomy、退避/取消和 usage 能力降级记录 |
+| 可靠性/性能/长期稳定性 | 已具备（V0 基线） | `pnpm release:check`、集成测试和 V0 real-task 记录 | 需要新增 V1 故障注入、控制面并发、历史容量、ETA 校准和 soak 指标 |
+| V0 Monitor 兼容性 | 已具备（必须持续回归） | Claude/Codex TTY、structured、app-server、Session/Turn/Evidence | 任何 V1 migration、Server、WS、Dashboard 变更都必须跑回归门禁 |
+
+### V1 实施顺序冻结
+
+Step 0.1 的结论是：先实现 **持久化与历史查询（Phase 1）**，再实现 **租约/恢复/幂等（Phase 2）**，之后才开放
+Instruction 和 Roadmap 编辑。Progress/ETA、通知和 UI 必须消费后端持久化快照，不能由前端自行推算。V1 仍不进入
+V2 的并行 Worker、DAG、worktree、自动 merge 或智能 Provider Router。
+
+Step 0.1 已完成；下一步是 Step 0.2 的状态与安全语义测试夹具，然后才开始第一条运行时 migration。
