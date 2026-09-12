@@ -16,6 +16,29 @@ describe('DashboardApi', () => {
     expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/goals?limit=20');
   });
 
+  it('submits an orchestrator goal without starting a provider in the browser', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ goalId: 'goal-1', goal: { id: 'goal-1' } }), {
+        status: 202,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(
+      api.createGoal({ workspace: 'D:/workspace', prompt: 'Inspect safely', provider: 'claude' }),
+    ).resolves.toMatchObject({ goalId: 'goal-1' });
+    expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/goals', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspace: 'D:/workspace',
+        prompt: 'Inspect safely',
+        provider: 'claude',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {

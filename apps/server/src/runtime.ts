@@ -8,6 +8,7 @@ import {
   type OpenStorageResult,
 } from '@agentscope/storage';
 import { recoverOrchestrator } from '@agentscope/orchestrator';
+import type { OrchestratorEngine } from '@agentscope/orchestrator';
 
 import { createServer, type ServerOptions } from './index.js';
 
@@ -15,6 +16,7 @@ export interface StartServerOptions extends Omit<ServerOptions, 'repository'> {
   readonly filename: string;
   readonly host: string;
   readonly port: number;
+  readonly orchestratorEngineFactory?: (repository: OrchestratorRepository) => OrchestratorEngine;
 }
 
 export interface RunningServer {
@@ -29,7 +31,14 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   const orchestratorRepository =
     options.orchestratorRepository ?? new OrchestratorRepository(storage.client);
   if (options.recoverOnStart !== false) recoverOrchestrator(orchestratorRepository);
-  const app = createServer({ ...options, repository, orchestratorRepository });
+  const orchestratorEngine =
+    options.orchestratorEngine ?? options.orchestratorEngineFactory?.(orchestratorRepository);
+  const app = createServer({
+    ...options,
+    repository,
+    orchestratorRepository,
+    ...(orchestratorEngine === undefined ? {} : { orchestratorEngine }),
+  });
   let closed = false;
   try {
     const address = await app.listen({ host: options.host, port: options.port });

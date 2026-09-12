@@ -22,15 +22,25 @@ export interface OrchestratorRunOptions {
   readonly executable?: string;
 }
 
+export interface CliOrchestratorEngineOptions {
+  readonly filename: string;
+  readonly repository: OrchestratorRepository;
+  readonly claudeExecutable?: string;
+  readonly codexExecutable?: string;
+  readonly maxSteps?: number;
+}
+
 export async function runOrchestrator(options: OrchestratorRunOptions): Promise<GoalRunResult> {
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new OrchestratorRepository(storage.client);
-  const worker = new SerialWorkerRuntime({
-    launch: async (request) => runWorker(options, request),
-  });
-  const engine = new OrchestratorEngine({
+  const engine = createCliOrchestratorEngine({
+    filename: options.filename,
     repository,
-    worker,
+    ...(options.executable === undefined
+      ? {}
+      : options.provider === 'claude'
+        ? { claudeExecutable: options.executable }
+        : { codexExecutable: options.executable }),
     ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
   });
   const input: CreateGoalInput = {
@@ -46,26 +56,32 @@ export async function runOrchestrator(options: OrchestratorRunOptions): Promise<
   }
 }
 
-async function runWorker(
-  options: OrchestratorRunOptions,
-  request: WorkerLaunchRequest,
-): Promise<{
-  readonly attemptId: string;
-  readonly sessionId?: string;
-  readonly status: 'completed' | 'failed' | 'interrupted';
-  readonly exitCode: number;
-  readonly summary: string;
-  readonly changedFiles: readonly string[];
-  readonly reportedVerification: Readonly<Record<string, unknown>>;
-}> {
-  const result = await runProvider({
-    adapter: options.provider,
-    args: providerArgs(options.provider, request.prompt),
-    filename: options.filename,
-    workspacePath: options.workspacePath,
-    ...(options.executable === undefined ? {} : { executable: options.executable }),
+export function createCliOrchestratorEngine(
+  options: CliOrchestratorEngineOptions,
+): OrchestratorEngine {
+  return new OrchestratorEngine({
+    repository: options.repository,
+    worker: new SerialWorkerRuntime({
+      launch: async (request) => {
+        const provider = toOrchestratorProvider(request.provider);
+        const result = await runProvider({
+          adapter: provider,
+          args: providerArgs(provider, request.prompt),
+          filename: options.filename,
+          workspacePath: request.workspace,
+          ...(provider === 'claude'
+            ? options.claudeExecutable === undefined
+              ? {}
+              : { executable: options.claudeExecutable }
+            : options.codexExecutable === undefined
+              ? {}
+              : { executable: options.codexExecutable }),
+        });
+        return workerResult(request, result);
+      },
+    }),
+    ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
   });
-  return workerResult(request, result);
 }
 
 function providerArgs(provider: OrchestratorProvider, prompt: string): readonly string[] {
@@ -104,4 +120,9 @@ function workerResult(
       normalizedEventCount: result.eventCount,
     },
   };
+}
+
+function toOrchestratorProvider(value: string): OrchestratorProvider {
+  if (value === 'claude' || value === 'codex' || value === 'codex-app-server') return value;
+  throw new Error(`Unsupported Orchestrator provider: ${value}`);
 }

@@ -17,6 +17,12 @@ export interface DashboardApiOptions {
   readonly webSocket?: typeof WebSocket;
 }
 
+export interface CreateGoalRequest {
+  readonly workspace: string;
+  readonly prompt: string;
+  readonly provider: string;
+}
+
 export interface DashboardLiveNotification {
   readonly type:
     | 'hello'
@@ -85,6 +91,10 @@ export class DashboardApi {
   listGoals(limit = 100): Promise<readonly StoredGoal[]> {
     const query = new URLSearchParams({ limit: String(limit) });
     return this.get<readonly StoredGoal[]>('/api/goals', query);
+  }
+
+  createGoal(input: CreateGoalRequest): Promise<{ goalId: string; goal: StoredGoal }> {
+    return this.requestJson('/api/goals', 'POST', undefined, input);
   }
 
   getSession(sessionId: string): Promise<StoredSession> {
@@ -214,6 +224,7 @@ export class DashboardApi {
     pathname: string,
     method: 'GET' | 'POST' | 'DELETE',
     query?: URLSearchParams,
+    requestBody?: unknown,
   ): Promise<T> {
     const url = new URL(pathname, this.baseUrl || globalThis.location.origin);
     if (query !== undefined) url.search = query.toString();
@@ -222,7 +233,13 @@ export class DashboardApi {
       response =
         method === 'GET'
           ? await this.request(url.toString())
-          : await this.request(url.toString(), { method });
+          : await this.request(url.toString(), {
+              method,
+              ...(requestBody === undefined ? {} : { body: JSON.stringify(requestBody) }),
+              ...(requestBody === undefined
+                ? {}
+                : { headers: { 'content-type': 'application/json' } }),
+            });
     } catch (error) {
       throw new DashboardApiError('AgentScope server is unavailable.', 0, error);
     }

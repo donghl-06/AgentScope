@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import type { RunningServer, StartServerOptions } from '@agentscope/server/runtime';
 import { startServer } from '@agentscope/server/runtime';
+import type { OrchestratorRepository } from '@agentscope/storage';
+import type { OrchestratorEngine } from '@agentscope/orchestrator';
 
 import { resolveCliConfig, type CliConfig, type CliConfigOverrides } from './config.js';
 
@@ -20,6 +22,7 @@ export interface StartCommandRuntimeOptions extends CliConfigOverrides {
   readonly dashboard?: boolean;
   readonly startDashboard?: (options: StartDashboardOptions) => Promise<RunningDashboard>;
   readonly signals?: ShutdownSignals;
+  readonly orchestratorEngineFactory?: (repository: OrchestratorRepository) => OrchestratorEngine;
 }
 
 export interface StartDashboardOptions {
@@ -48,7 +51,9 @@ export async function runStartCommand(options: StartCommandRuntimeOptions = {}):
   let server: RunningServer | undefined;
   let dashboard: RunningDashboard | undefined;
   try {
-    server = await (options.startServer ?? startServer)(toStartServerOptions(config));
+    server = await (options.startServer ?? startServer)(
+      toStartServerOptions(config, options.orchestratorEngineFactory),
+    );
     if (options.dashboard === true) {
       dashboard = await (options.startDashboard ?? launchDashboard)({
         cwd: config.workspacePath,
@@ -77,11 +82,15 @@ export async function runStartCommand(options: StartCommandRuntimeOptions = {}):
   return waitForShutdown(server, signals, dashboard);
 }
 
-export function toStartServerOptions(config: CliConfig): StartServerOptions {
+export function toStartServerOptions(
+  config: CliConfig,
+  orchestratorEngineFactory?: StartCommandRuntimeOptions['orchestratorEngineFactory'],
+): StartServerOptions {
   return {
     filename: config.database,
     host: config.host,
     port: config.port,
+    ...(orchestratorEngineFactory === undefined ? {} : { orchestratorEngineFactory }),
   };
 }
 

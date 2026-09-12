@@ -15,7 +15,7 @@ import { runInteractiveProvider } from './interactive-runner.js';
 import { recoverSessions } from './recover-runner.js';
 import { ServerClient } from './server-client.js';
 import { runStartCommand } from './start-runtime.js';
-import { runOrchestrator } from './orchestrator-runner.js';
+import { createCliOrchestratorEngine, runOrchestrator } from './orchestrator-runner.js';
 
 export interface CliMainOptions {
   readonly argv?: readonly string[];
@@ -72,6 +72,17 @@ export async function runCli(options: CliMainOptions = {}): Promise<number> {
                 dashboardPort: config.dashboardPort,
                 dashboard: command.dashboard !== false,
                 write,
+                orchestratorEngineFactory: (repository) =>
+                  createCliOrchestratorEngine({
+                    filename: config.database,
+                    repository,
+                    ...(configuredClaudeExecutable === undefined
+                      ? {}
+                      : { claudeExecutable: configuredClaudeExecutable }),
+                    ...(configuredCodexExecutable === undefined
+                      ? {}
+                      : { codexExecutable: configuredCodexExecutable }),
+                  }),
               }),
           }
         : {}),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   StoredGoal,
   StoredEvent,
@@ -8,7 +8,12 @@ import type {
 } from '@agentscope/storage';
 import type { ProviderTelemetry } from '@agentscope/protocol';
 
-import { DashboardApi, DashboardApiError, type DashboardLiveNotification } from './api.js';
+import {
+  DashboardApi,
+  DashboardApiError,
+  type CreateGoalRequest,
+  type DashboardLiveNotification,
+} from './api.js';
 import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
 import { loadAllPages } from './pagination.js';
@@ -22,6 +27,7 @@ export function App() {
   const [sessions, setSessions] = useState<readonly StoredSession[]>([]);
   const [goals, setGoals] = useState<readonly StoredGoal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
+  const [goalActionBusy, setGoalActionBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [selected, setSelected] = useState<StoredSession>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
@@ -88,6 +94,21 @@ export function App() {
       setGoalsLoading(false);
     }
   }, []);
+
+  const submitGoal = useCallback(
+    async (input: CreateGoalRequest) => {
+      setGoalActionBusy(true);
+      try {
+        await api.createGoal(input);
+        await refreshGoals();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to start orchestrator goal.');
+      } finally {
+        setGoalActionBusy(false);
+      }
+    },
+    [refreshGoals],
+  );
 
   const changeSessionVisibility = useCallback(
     async (session: StoredSession, hidden: boolean) => {
@@ -395,7 +416,13 @@ export function App() {
         <Stat label="Failed" value={counts.failed} tone="red" />
       </section>
 
-      <GoalPanel goals={goals} loading={goalsLoading} onRefresh={() => void refreshGoals()} />
+      <GoalPanel
+        goals={goals}
+        loading={goalsLoading}
+        actionBusy={goalActionBusy}
+        onRefresh={() => void refreshGoals()}
+        onCreate={submitGoal}
+      />
 
       <section className="content-grid">
         <div className="panel sessions-panel">
@@ -489,12 +516,27 @@ export function App() {
 function GoalPanel({
   goals,
   loading,
+  actionBusy,
   onRefresh,
+  onCreate,
 }: {
   goals: readonly StoredGoal[];
   loading: boolean;
+  actionBusy: boolean;
   onRefresh: () => void;
+  onCreate: (input: CreateGoalRequest) => Promise<void>;
 }) {
+  const [workspace, setWorkspace] = useState('.');
+  const [provider, setProvider] = useState<'claude' | 'codex' | 'codex-app-server'>('claude');
+  const [prompt, setPrompt] = useState('');
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (prompt.trim().length === 0 || workspace.trim().length === 0) return;
+    void onCreate({ workspace: workspace.trim(), prompt: prompt.trim(), provider });
+    setPrompt('');
+  };
+
   return (
     <section className="panel goals-panel" aria-label="Orchestrator goals">
       <div className="panel-heading">
@@ -506,6 +548,42 @@ function GoalPanel({
           Refresh
         </button>
       </div>
+      <form className="goal-form" onSubmit={submit}>
+        <label>
+          <span>Workspace</span>
+          <input
+            value={workspace}
+            onChange={(event) => setWorkspace(event.target.value)}
+            placeholder="Workspace path"
+            required
+          />
+        </label>
+        <label>
+          <span>Provider</span>
+          <select
+            value={provider}
+            onChange={(event) =>
+              setProvider(event.target.value as 'claude' | 'codex' | 'codex-app-server')
+            }
+          >
+            <option value="claude">Claude</option>
+            <option value="codex">Codex CLI</option>
+            <option value="codex-app-server">Codex app-server</option>
+          </select>
+        </label>
+        <label className="goal-form-prompt">
+          <span>Goal</span>
+          <input
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Describe the larger coding goal"
+            required
+          />
+        </label>
+        <button className="quiet-button" type="submit" disabled={actionBusy}>
+          {actionBusy ? 'Starting…' : 'Start goal'}
+        </button>
+      </form>
       {loading ? (
         <p className="empty-state">Loading goals…</p>
       ) : goals.length === 0 ? (

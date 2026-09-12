@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createInitialSessionState, createInitialTurnState } from '@agentscope/protocol';
+import type { OrchestratorEngine } from '@agentscope/orchestrator';
 import { openStorage, OrchestratorRepository, StorageRepository } from '@agentscope/storage';
 
 import { createServer } from './index.js';
@@ -138,6 +139,47 @@ describe('server HTTP API', () => {
         expect.objectContaining({ type: 'event.appended', goalId: 'external-goal', seq: 1 }),
       ]),
     );
+  });
+
+  it('accepts a Goal submission only through the configured engine', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const engine = {
+      createGoalAndRun: async (input: Parameters<OrchestratorEngine['createGoalAndRun']>[0]) => {
+        const goal = orchestratorRepository.createGoal(input);
+        return { goal, tasks: [], status: goal.status as 'CREATED' };
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/goals',
+      payload: {
+        id: 'submitted-goal',
+        workspace: 'D:/workspace',
+        prompt: 'Submit a safe goal',
+        provider: 'mock',
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      goalId: 'submitted-goal',
+      goal: { id: 'submitted-goal' },
+    });
+    expect((await app.inject('/api/goals')).json()).toMatchObject([{ id: 'submitted-goal' }]);
   });
 
   it('serves health, sessions, events, and project overview', async () => {
