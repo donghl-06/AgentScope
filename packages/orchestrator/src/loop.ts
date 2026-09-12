@@ -4,6 +4,7 @@ import type {
   JsonObject,
   StoredGoal,
   StoredTask,
+  StoredVerificationRun,
 } from '@agentscope/storage';
 
 import {
@@ -163,6 +164,7 @@ export class OrchestratorEngine {
     const executionMemory = context.executionMemory;
     const workingSet = context.workingSet;
     let tasks = repository.listTasks(goal.id);
+    let lastVerificationTaskId: string | undefined;
     if (tasks.length === 0) {
       const plan = this.planner.planInitial({ goal, projectState, executionMemory, workingSet });
       repository.updateGoalDocuments(
@@ -219,6 +221,7 @@ export class OrchestratorEngine {
         }
         const result = await this.executeTask(goal, activeTask, projectState, workingSet);
         lastVerification = result.verification;
+        lastVerificationTaskId = activeTask.id;
         if (result.next === 'HUMAN') {
           return this.pauseForHuman(
             repository.getGoal(goal.id),
@@ -232,6 +235,45 @@ export class OrchestratorEngine {
           return this.applyControl(goal.id, control);
         }
         continue;
+      }
+      const rolling = this.planRolling(
+        goal,
+        tasks,
+        lastVerificationTaskId === undefined
+          ? undefined
+          : repository.listVerificationRuns(lastVerificationTaskId).at(-1),
+        projectState,
+        executionMemory,
+        workingSet,
+        step,
+      );
+      tasks = repository.listTasks(goal.id);
+      if (rolling.action === 'NEEDS_HUMAN' || rolling.action === 'INSPECT') {
+        return this.pauseForHuman(goal, tasks, rolling.rationale);
+      }
+      if (rolling.action === 'REPLAN' && rolling.nextTask === undefined) {
+        return this.pauseForHuman(
+          goal,
+          tasks,
+          'Rolling Planner requested a replan without a safe Task Contract.',
+        );
+      }
+      if (
+        rolling.nextTask !== undefined &&
+        !tasks.some((task) => task.id === rolling.nextTask?.id)
+      ) {
+        repository.createTask({ ...rolling.nextTask, goalId: goal.id, now: this.now() });
+        tasks = repository.listTasks(goal.id);
+      }
+      if (
+        rolling.action === 'GOAL_READY_FOR_FINAL_VERIFICATION' &&
+        tasks.some((task) => task.status !== 'COMPLETED' && task.status !== 'SKIPPED')
+      ) {
+        return this.pauseForHuman(
+          goal,
+          tasks,
+          'Rolling Planner marked the Goal ready while non-terminal Tasks remain.',
+        );
       }
       const pending = tasks
         .filter((task) => task.status === 'PENDING')
@@ -283,6 +325,51 @@ export class OrchestratorEngine {
       repository.listTasks(goal.id),
       `The Orchestrator reached its ${this.maxSteps}-step safety bound.`,
     );
+  }
+
+  private planRolling(
+    goal: StoredGoal,
+    tasks: readonly StoredTask[],
+    latestVerification: StoredVerificationRun | undefined,
+    projectState: ProjectState,
+    executionMemory: BootstrapContext['executionMemory'],
+    workingSet: WorkingSet,
+    step: number,
+  ): ReturnType<Planner['planRolling']> {
+    try {
+      const plan = this.planner.planRolling({
+        goal,
+        tasks,
+        ...(latestVerification === undefined ? {} : { latestVerification }),
+        projectState,
+        executionMemory,
+        workingSet,
+      });
+      this.options.repository.appendEvent({
+        id: `${goal.id}:rolling-plan:${step}`,
+        goalId: goal.id,
+        type: 'goal.rolling_plan',
+        payload: { action: plan.action, rationale: plan.rationale, nextTaskId: plan.nextTask?.id },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      return plan;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.options.repository.appendEvent({
+        id: `${goal.id}:rolling-plan:${step}:error`,
+        goalId: goal.id,
+        type: 'goal.rolling_plan_failed',
+        payload: { reason },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      return {
+        goalId: goal.id,
+        action: 'NEEDS_HUMAN',
+        rationale: `Rolling Planner failed safely: ${reason}`,
+      };
+    }
   }
 
   private applyControl(goalId: string, control: 'PAUSE' | 'ABORT'): GoalRunResult {

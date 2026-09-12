@@ -76,8 +76,32 @@ class SingleTaskPlanner implements Planner {
     };
   }
 
-  planRolling(): RollingPlan {
-    return { goalId: 'unused', action: 'NEEDS_HUMAN', rationale: 'not used in this test' };
+  planRolling(input: Parameters<Planner['planRolling']>[0]): RollingPlan {
+    const pending = input.tasks.find((task) => task.status === 'PENDING');
+    if (pending !== undefined) {
+      return {
+        goalId: input.goal.id,
+        action: 'NEXT_TASK',
+        nextTask: {
+          id: pending.id,
+          title: pending.title,
+          objective: pending.objective,
+          acceptanceCriteria: pending.acceptanceCriteria,
+          verification: pending.verification,
+          constraints: pending.constraints,
+          maxAttempts: pending.maxAttempts,
+          sequence: pending.sequence,
+          tentative: pending.tentative,
+          ...(pending.parentTaskId === undefined ? {} : { parentTaskId: pending.parentTaskId }),
+        },
+        rationale: 'test next task',
+      };
+    }
+    return {
+      goalId: input.goal.id,
+      action: 'GOAL_READY_FOR_FINAL_VERIFICATION',
+      rationale: 'test final',
+    };
   }
 }
 
