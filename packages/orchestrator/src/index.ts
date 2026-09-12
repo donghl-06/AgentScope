@@ -304,3 +304,4 @@ export * from './worker.js';
 export * from './verification.js';
 export * from './repair.js';
 export * from './loop.js';
+export * from './recovery.js';

@@ -7,6 +7,7 @@ import {
   StorageRepository,
   type OpenStorageResult,
 } from '@agentscope/storage';
+import { recoverOrchestrator } from '@agentscope/orchestrator';
 
 import { createServer, type ServerOptions } from './index.js';
 
@@ -27,6 +28,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   const repository = new StorageRepository(storage.client);
   const orchestratorRepository =
     options.orchestratorRepository ?? new OrchestratorRepository(storage.client);
+  if (options.recoverOnStart !== false) recoverOrchestrator(orchestratorRepository);
   const app = createServer({ ...options, repository, orchestratorRepository });
   let closed = false;
   try {
