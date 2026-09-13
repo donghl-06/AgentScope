@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type Database from 'better-sqlite3';
 
@@ -845,22 +845,62 @@ export class OrchestratorRepository {
       throw new StorageConflictError(`Goal ${id} still has an active run lease.`);
     }
     if (existing.archivedAt !== undefined) return existing;
-    this.client
-      .prepare('UPDATE goals SET archived_at = ?, updated_at = ? WHERE id = ?')
-      .run(now, now, id);
+    const eventId = randomUUID();
+    const archive = this.client.transaction(() => {
+      const result = this.client
+        .prepare('UPDATE goals SET archived_at = ?, updated_at = ? WHERE id = ?')
+        .run(now, now, id);
+      if (result.changes !== 1) {
+        throw new StorageConflictError(`Goal ${id} changed before it could be archived.`);
+      }
+      this.insertEvent(
+        {
+          id: eventId,
+          goalId: id,
+          type: 'goal.archived',
+          payload: { archivedAt: now },
+          timestamp: now,
+          confidence: 1,
+        },
+        now,
+      );
+    });
+    archive();
     const goal = this.getGoal(id);
+    const event = this.getEvent(eventId);
     this.notify({ type: 'goal.updated', goal });
+    this.notify({ type: 'event.appended', event });
     return goal;
   }
 
   unarchiveGoal(id: string, now = Date.now()): StoredGoal {
     const existing = this.getGoal(id);
     if (existing.archivedAt === undefined) return existing;
-    this.client
-      .prepare('UPDATE goals SET archived_at = NULL, updated_at = ? WHERE id = ?')
-      .run(now, id);
+    const eventId = randomUUID();
+    const unarchive = this.client.transaction(() => {
+      const result = this.client
+        .prepare('UPDATE goals SET archived_at = NULL, updated_at = ? WHERE id = ?')
+        .run(now, id);
+      if (result.changes !== 1) {
+        throw new StorageConflictError(`Goal ${id} changed before it could be restored.`);
+      }
+      this.insertEvent(
+        {
+          id: eventId,
+          goalId: id,
+          type: 'goal.unarchived',
+          payload: { archivedAt: null },
+          timestamp: now,
+          confidence: 1,
+        },
+        now,
+      );
+    });
+    unarchive();
     const goal = this.getGoal(id);
+    const event = this.getEvent(eventId);
     this.notify({ type: 'goal.updated', goal });
+    this.notify({ type: 'event.appended', event });
     return goal;
   }
 

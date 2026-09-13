@@ -85,6 +85,8 @@ describe('DashboardApi', () => {
     await api.pauseGoal('goal/1');
     await api.abortGoal('goal/1');
     await api.continueGoal('goal/1');
+    await api.archiveGoal('goal/1');
+    await api.unarchiveGoal('goal/1');
 
     expect(request).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8787/api/goals/goal%2F1');
     expect(request).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8787/api/goals/goal%2F1/pause', {
@@ -96,6 +98,14 @@ describe('DashboardApi', () => {
     expect(request).toHaveBeenNthCalledWith(
       4,
       'http://127.0.0.1:8787/api/goals/goal%2F1/continue',
+      { method: 'POST' },
+    );
+    expect(request).toHaveBeenNthCalledWith(5, 'http://127.0.0.1:8787/api/goals/goal%2F1/archive', {
+      method: 'POST',
+    });
+    expect(request).toHaveBeenNthCalledWith(
+      6,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/unarchive',
       { method: 'POST' },
     );
   });

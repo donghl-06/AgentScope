@@ -187,6 +187,93 @@ describe('server HTTP API', () => {
     );
   });
 
+  it('archives and restores a non-active Goal through HTTP with audit events', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'archive-api-goal',
+      workspace: 'D:/workspace/archive',
+      prompt: 'Archive this Goal through the API.',
+      provider: 'mock',
+      now: 1_700_000_000_100,
+    });
+    orchestratorRepository.transitionGoal(goal.id, 'PAUSED', 1_700_000_000_101);
+    const activeGoal = orchestratorRepository.createGoal({
+      id: 'archive-api-active-goal',
+      workspace: 'D:/workspace/archive',
+      prompt: 'Keep this active Goal visible.',
+      provider: 'mock',
+      now: 1_700_000_000_102,
+    });
+    orchestratorRepository.transitionGoal(activeGoal.id, 'PLANNING', 1_700_000_000_103);
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    const archiveResponse = await app.inject({
+      method: 'POST',
+      url: `/api/goals/${goal.id}/archive`,
+    });
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json()).toMatchObject({
+      id: goal.id,
+      archivedAt: expect.any(Number),
+    });
+    expect((await app.inject('/api/goals/page')).json()).toMatchObject({
+      items: [expect.objectContaining({ id: activeGoal.id })],
+    });
+    expect((await app.inject('/api/goals/page?includeArchived=true')).json()).toMatchObject({
+      items: [
+        expect.objectContaining({ id: goal.id }),
+        expect.objectContaining({ id: activeGoal.id }),
+      ],
+    });
+    expect((await app.inject('/api/goals')).json()).toEqual([
+      expect.objectContaining({ id: goal.id }),
+      expect.objectContaining({ id: activeGoal.id }),
+    ]);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/goals/${activeGoal.id}/archive`,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(orchestratorRepository.listEvents(goal.id).map((event) => event.type)).toContain(
+      'goal.archived',
+    );
+
+    const restoreResponse = await app.inject({
+      method: 'POST',
+      url: `/api/goals/${goal.id}/unarchive`,
+    });
+    expect(restoreResponse.statusCode).toBe(200);
+    expect(restoreResponse.json()).toMatchObject({ id: goal.id });
+    expect(restoreResponse.json().archivedAt).toBeUndefined();
+    expect(orchestratorRepository.listEvents(goal.id).map((event) => event.type)).toEqual([
+      'goal.archived',
+      'goal.unarchived',
+    ]);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/goals/missing/archive',
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
   it('forwards future Task Contract edits through the orchestrator engine', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

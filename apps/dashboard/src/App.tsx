@@ -791,6 +791,30 @@ function GoalPanel({
     }
   };
 
+  const changeGoalArchive = async (archive: boolean) => {
+    if (selectedGoalId === undefined) return;
+    if (
+      archive &&
+      typeof globalThis.confirm === 'function' &&
+      !globalThis.confirm('Archive this Goal? Its history will remain recoverable.')
+    ) {
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      if (archive) await api.archiveGoal(selectedGoalId);
+      else await api.unarchiveGoal(selectedGoalId);
+      setGoalError(undefined);
+      await onRefresh();
+      await loadGoalHistory();
+      await inspectGoal(selectedGoalId);
+    } catch (cause) {
+      setGoalError(cause instanceof Error ? cause.message : 'Unable to change Goal archive state.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   return (
     <section className="panel goals-panel" aria-label="Orchestrator goals">
       <div className="panel-heading">
@@ -966,6 +990,29 @@ function GoalPanel({
                       disabled={detailLoading}
                     >
                       Abort
+                    </button>
+                  )}
+                  {selectedGoal.goal.archivedAt === undefined &&
+                    ['PAUSED', 'NEEDS_HUMAN', 'COMPLETED', 'FAILED', 'ABORTED'].includes(
+                      selectedGoal.goal.status,
+                    ) && (
+                      <button
+                        className="quiet-button quiet-button-small"
+                        type="button"
+                        onClick={() => void changeGoalArchive(true)}
+                        disabled={detailLoading}
+                      >
+                        Archive
+                      </button>
+                    )}
+                  {selectedGoal.goal.archivedAt !== undefined && (
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => void changeGoalArchive(false)}
+                      disabled={detailLoading}
+                    >
+                      Restore
                     </button>
                   )}
                 </div>

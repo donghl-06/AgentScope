@@ -221,6 +221,14 @@ export class DashboardApi {
     return this.get<GoalDetail>(`/api/goals/${encodeURIComponent(goalId)}`);
   }
 
+  archiveGoal(goalId: string): Promise<StoredGoal> {
+    return this.mutate<StoredGoal>(`/api/goals/${encodeURIComponent(goalId)}/archive`);
+  }
+
+  unarchiveGoal(goalId: string): Promise<StoredGoal> {
+    return this.mutate<StoredGoal>(`/api/goals/${encodeURIComponent(goalId)}/unarchive`);
+  }
+
   listGoalMetrics(goalId: string, limit = 100): Promise<readonly StoredGoalMetricSnapshot[]> {
     const query = new URLSearchParams({ limit: String(limit) });
     return this.get<readonly StoredGoalMetricSnapshot[]>(

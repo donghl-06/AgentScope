@@ -1217,11 +1217,34 @@ describe('OrchestratorRepository', () => {
       repository.transitionGoal('archive-paused', 'PAUSED', 404);
       const archived = repository.archiveGoal('archive-paused', 405);
       expect(archived.archivedAt).toBe(405);
+      expect(repository.listEvents('archive-paused')).toEqual([
+        expect.objectContaining({
+          type: 'goal.archived',
+          goalId: 'archive-paused',
+          timestamp: 405,
+          payload: { archivedAt: 405 },
+          confidence: 1,
+        }),
+      ]);
+      expect(repository.archiveGoal('archive-paused', 405).archivedAt).toBe(405);
+      expect(repository.listEvents('archive-paused')).toHaveLength(1);
       expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual(['archive-running']);
       expect(
         repository.listGoalPage({ includeArchived: true }).items.map((goal) => goal.id),
       ).toEqual(['archive-paused', 'archive-running']);
       expect(repository.unarchiveGoal('archive-paused', 406).archivedAt).toBeUndefined();
+      expect(repository.listEvents('archive-paused')).toEqual([
+        expect.objectContaining({ type: 'goal.archived' }),
+        expect.objectContaining({
+          type: 'goal.unarchived',
+          goalId: 'archive-paused',
+          timestamp: 406,
+          payload: { archivedAt: null },
+          confidence: 1,
+        }),
+      ]);
+      expect(repository.unarchiveGoal('archive-paused', 406).archivedAt).toBeUndefined();
+      expect(repository.listEvents('archive-paused')).toHaveLength(2);
       expect(repository.listGoalPage().items.map((goal) => goal.id)).toEqual([
         'archive-paused',
         'archive-running',

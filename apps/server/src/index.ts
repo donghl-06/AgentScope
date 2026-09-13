@@ -716,6 +716,62 @@ export function createServer(options: ServerOptions): FastifyInstance {
     },
   );
 
+  app.post(
+    '/api/goals/:id/archive',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          200: Type.Unknown(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.orchestratorRepository.archiveGoal(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/unarchive',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        response: {
+          200: Type.Unknown(),
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        return reply.send(options.orchestratorRepository.unarchiveGoal(id));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
   app.get(
     '/api/goals/:id/notifications',
     {
