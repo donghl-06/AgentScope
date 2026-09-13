@@ -451,6 +451,16 @@ describe('OrchestratorRepository', () => {
         payload: { reason: 'Fixture notification.' },
         now: 153,
       });
+      expect(
+        repository.createOrchestratorNotification({
+          id: 'v1-notification-duplicate-id',
+          goalId: 'v1-control-goal',
+          eventKey: 'goal.needs-human:v1-control-goal',
+          kind: 'needs-human',
+          payload: { reason: 'Fixture notification.' },
+          now: 154,
+        }),
+      ).toEqual(notification);
       repository.transitionOrchestratorNotification(notification.id, 'DELIVERED', 154);
       expect(
         repository.transitionOrchestratorNotification(notification.id, 'READ', 155),

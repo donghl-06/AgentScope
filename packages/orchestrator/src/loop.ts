@@ -21,6 +21,7 @@ import {
   type StoredOrchestratorCommand,
   type StoredGoalInstruction,
   type StoredGoalMetricSnapshot,
+  type OrchestratorRepositoryNotification,
   type StoredTask,
   type StoredVerificationRun,
   type StoredApprovalRequest,
@@ -65,6 +66,11 @@ import {
   type MetricSnapshotCandidate,
   type MetricSnapshotPolicy,
 } from './metric-snapshot.js';
+import {
+  notificationForGoalStatus,
+  notificationForOrchestratorEvent,
+  type OrchestratorNotificationCandidate,
+} from './notifications.js';
 import {
   evaluateInstructionApplicability,
   validateInstructionDraft,
@@ -203,6 +209,7 @@ export class OrchestratorEngine {
   private readonly leaseHeartbeatMs: number;
   private readonly approvalTtlMs: number;
   private readonly metricSnapshotPolicy: MetricSnapshotPolicy;
+  private readonly unsubscribeRepository: () => void;
   private activeGoalId: string | undefined;
   private readonly controlRequests = new Map<
     string,
@@ -232,10 +239,18 @@ export class OrchestratorEngine {
     this.metricSnapshotPolicy = validateMetricSnapshotPolicy(
       options.metricSnapshotPolicy ?? DEFAULT_METRIC_SNAPSHOT_POLICY,
     );
+    this.unsubscribeRepository = options.repository.subscribe((notification) => {
+      this.handleRepositoryNotification(notification);
+    });
   }
 
   get active(): boolean {
     return this.activeGoalId !== undefined;
+  }
+
+  /** Release the event listener when an embedding application discards an engine. */
+  dispose(): void {
+    this.unsubscribeRepository();
   }
 
   requestPause(goalId: string, options: ControlCommandOptions = {}): StoredGoal {
@@ -1363,6 +1378,32 @@ export class OrchestratorEngine {
       confidence: candidate.confidence,
       reasons: candidate.reasons,
       capturedAt: candidate.capturedAt,
+    });
+  }
+
+  private handleRepositoryNotification(notification: OrchestratorRepositoryNotification): void {
+    try {
+      const candidate =
+        notification.type === 'goal.updated'
+          ? notificationForGoalStatus(notification.goal)
+          : notification.type === 'event.appended'
+            ? notificationForOrchestratorEvent(notification.event)
+            : undefined;
+      if (candidate === undefined) return;
+      this.persistActionableNotification(candidate);
+    } catch {
+      // Notification persistence is best effort and must not alter Goal execution.
+    }
+  }
+
+  private persistActionableNotification(candidate: OrchestratorNotificationCandidate): void {
+    this.options.repository.createOrchestratorNotification({
+      id: `${candidate.goalId}:notification:${randomUUID()}`,
+      goalId: candidate.goalId,
+      eventKey: candidate.eventKey,
+      kind: candidate.kind,
+      payload: candidate.payload,
+      now: this.now(),
     });
   }
 

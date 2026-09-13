@@ -2114,6 +2114,21 @@ export class OrchestratorRepository {
         'invalid_request',
       );
     }
+    const eventKey = redactSecretText(input.eventKey);
+    const existing = this.findOrchestratorNotificationByEventKey(input.goalId, eventKey);
+    if (existing !== undefined) {
+      const nextPayload = input.payload ?? {};
+      if (
+        existing.kind !== input.kind ||
+        JSON.stringify(existing.payload) !== JSON.stringify(nextPayload)
+      ) {
+        throw new StorageConflictError(
+          `Notification event key ${eventKey} was already used with different content.`,
+          'notification_conflict',
+        );
+      }
+      return existing;
+    }
     const now = input.now ?? Date.now();
     this.client
       .prepare(
@@ -2121,14 +2136,7 @@ export class OrchestratorRepository {
           (id, goal_id, event_key, kind, status, payload_json, created_at)
          VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`,
       )
-      .run(
-        input.id,
-        input.goalId,
-        input.eventKey,
-        input.kind,
-        stringifyJson(input.payload ?? {}),
-        now,
-      );
+      .run(input.id, input.goalId, eventKey, input.kind, stringifyJson(input.payload ?? {}), now);
     const notification = this.getOrchestratorNotification(input.id);
     this.notify({ type: 'notification.created', notification });
     return notification;
@@ -2141,6 +2149,17 @@ export class OrchestratorRepository {
     if (row === undefined)
       throw new StorageNotFoundError(`Orchestrator notification not found: ${id}`);
     return decodeNotification(row);
+  }
+
+  findOrchestratorNotificationByEventKey(
+    goalId: string,
+    eventKey: string,
+  ): StoredOrchestratorNotification | undefined {
+    this.getGoal(goalId);
+    const row = this.client
+      .prepare('SELECT * FROM orchestrator_notifications WHERE goal_id = ? AND event_key = ?')
+      .get(goalId, eventKey) as NotificationRow | undefined;
+    return row === undefined ? undefined : decodeNotification(row);
   }
 
   listOrchestratorNotifications(

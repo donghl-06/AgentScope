@@ -809,6 +809,8 @@ function isOrchestratorNotification(message: DashboardLiveNotification): boolean
     message.type === 'attempt.updated' ||
     message.type === 'verification.created' ||
     message.type === 'goal.metrics.updated' ||
+    message.type === 'goal.notification.created' ||
+    message.type === 'goal.notification.updated' ||
     (message.type === 'event.appended' && message.goalId !== undefined)
   );
 }

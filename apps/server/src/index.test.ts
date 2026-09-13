@@ -90,8 +90,20 @@ describe('server HTTP API', () => {
       capturedAt: 1_700_000_000_003,
     });
     expect((await app.inject(`/api/goals/${goal.id}/metrics?limit=1`)).json()).toEqual([metric]);
+    const notification = orchestratorRepository.createOrchestratorNotification({
+      id: 'goal-api-1:notification:1',
+      goalId: goal.id,
+      eventKey: 'goal-status:completed',
+      kind: 'completed',
+      payload: { status: 'COMPLETED' },
+      now: 1_700_000_000_004,
+    });
+    expect(
+      (await app.inject(`/api/goals/${goal.id}/notifications?status=PENDING&limit=1`)).json(),
+    ).toEqual([notification]);
     expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
       metrics: [expect.objectContaining({ id: metric.id, progress: 0.35 })],
+      notifications: [expect.objectContaining({ id: notification.id, kind: 'completed' })],
     });
     expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
       expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
@@ -331,6 +343,14 @@ describe('server HTTP API', () => {
       reasons: [{ code: 'running', message: 'External metric.' }],
       capturedAt: 1_700_000_000_300,
     });
+    writer.createOrchestratorNotification({
+      id: 'external-goal:notification:1',
+      goalId: 'external-goal',
+      eventKey: 'needs-human:external',
+      kind: 'needs-human',
+      payload: { reason: 'External notification.' },
+      now: 1_700_000_000_301,
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     const notifications = socket.messages.slice(1).map((message) => JSON.parse(message));
@@ -343,6 +363,15 @@ describe('server HTTP API', () => {
           type: 'goal.metrics.updated',
           goalId: 'external-goal',
           payload: { progress: 0.35, confidence: 0.4, capturedAt: 1_700_000_000_300 },
+        }),
+        expect.objectContaining({
+          type: 'goal.notification.created',
+          goalId: 'external-goal',
+          payload: expect.objectContaining({
+            notificationId: 'external-goal:notification:1',
+            kind: 'needs-human',
+            status: 'PENDING',
+          }),
         }),
       ]),
     );

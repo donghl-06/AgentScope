@@ -11,6 +11,7 @@ import type {
   StoredAttempt,
   StoredVerificationRun,
   StoredGoalMetricSnapshot,
+  StoredOrchestratorNotification,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -38,6 +39,7 @@ export interface GoalDetail {
   }[];
   readonly events: readonly StoredOrchestratorEvent[];
   readonly metrics?: readonly StoredGoalMetricSnapshot[];
+  readonly notifications?: readonly StoredOrchestratorNotification[];
 }
 
 export interface DashboardLiveNotification {
@@ -60,6 +62,8 @@ export interface DashboardLiveNotification {
     | 'attempt.updated'
     | 'verification.created'
     | 'goal.metrics.updated'
+    | 'goal.notification.created'
+    | 'goal.notification.updated'
     | 'ping'
     | 'pong'
     | 'error';
@@ -123,6 +127,17 @@ export class DashboardApi {
     const query = new URLSearchParams({ limit: String(limit) });
     return this.get<readonly StoredGoalMetricSnapshot[]>(
       `/api/goals/${encodeURIComponent(goalId)}/metrics`,
+      query,
+    );
+  }
+
+  listGoalNotifications(
+    goalId: string,
+    limit = 100,
+  ): Promise<readonly StoredOrchestratorNotification[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return this.get<readonly StoredOrchestratorNotification[]>(
+      `/api/goals/${encodeURIComponent(goalId)}/notifications`,
       query,
     );
   }

@@ -31,6 +31,7 @@ import {
   type StoredApprovalRequest,
   type StoredGoal,
   type StoredGoalMetricSnapshot,
+  type StoredOrchestratorNotification,
   type StoredTask,
 } from '@agentscope/storage';
 
@@ -143,6 +144,10 @@ const GoalEventQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 const GoalMetricQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const GoalNotificationQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 const GoalRoadmapRevisionQuerySchema = Type.Object({
@@ -283,6 +288,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const observedVerifications = new Map<string, ObservedVerification>();
   const observedGoalEvents = new Map<string, number>();
   const observedGoalMetrics = new Map<string, string>();
+  const observedGoalNotifications = new Map<string, string>();
   hydrateObservedSessions(options.repository, observedSessions);
   hydrateObservedTurns(options.repository, observedTurns);
   if (options.orchestratorRepository !== undefined) {
@@ -294,6 +300,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
       observedVerifications,
       observedGoalEvents,
       observedGoalMetrics,
+      observedGoalNotifications,
     );
   }
   const unsubscribeRepository = options.repository.subscribe((notification) => {
@@ -365,6 +372,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
       observedVerifications,
       observedGoalEvents,
       observedGoalMetrics,
+      observedGoalNotifications,
     );
     publishOrchestratorNotification(liveHub, notification, options.orchestratorRepository);
   });
@@ -449,6 +457,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
           observedVerifications,
           observedGoalEvents,
           observedGoalMetrics,
+          observedGoalNotifications,
         });
       }
     } finally {
@@ -602,6 +611,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
           })),
           events: options.orchestratorRepository.listEvents(id),
           metrics: options.orchestratorRepository.listGoalMetricSnapshots(id),
+          notifications: options.orchestratorRepository.listOrchestratorNotifications(id),
         });
       } catch (error) {
         return sendError(reply, error);
@@ -634,6 +644,45 @@ export function createServer(options: ServerOptions): FastifyInstance {
         const query = request.query as Record<string, unknown>;
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.orchestratorRepository.listGoalMetricSnapshots(id, limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/notifications',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: GoalNotificationQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const status = query.status === undefined ? undefined : String(query.status);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(
+          options.orchestratorRepository.listOrchestratorNotifications(id, {
+            ...(status === undefined
+              ? {}
+              : { status: status as StoredOrchestratorNotification['status'] }),
+            limit,
+          }),
+        );
       } catch (error) {
         return sendError(reply, error);
       }
@@ -2064,6 +2113,7 @@ interface OrchestratorObservations {
   readonly observedVerifications: Map<string, ObservedVerification>;
   readonly observedGoalEvents: Map<string, number>;
   readonly observedGoalMetrics: Map<string, string>;
+  readonly observedGoalNotifications: Map<string, string>;
 }
 
 function publishOrchestratorNotification(
@@ -2100,6 +2150,13 @@ function publishOrchestratorNotification(
     publishOrchestratorMetric(liveHub, notification.metric);
     return;
   }
+  if (
+    notification.type === 'notification.created' ||
+    notification.type === 'notification.updated'
+  ) {
+    publishOrchestratorNotificationUpdate(liveHub, notification.notification, notification.type);
+    return;
+  }
   if (notification.type !== 'event.appended') return;
   publishOrchestratorEvent(liveHub, notification.event);
 }
@@ -2113,6 +2170,24 @@ function publishOrchestratorMetric(liveHub: LiveHub, metric: StoredGoalMetricSna
       progress: metric.progress,
       confidence: metric.confidence,
       capturedAt: metric.capturedAt,
+    },
+  });
+}
+
+function publishOrchestratorNotificationUpdate(
+  liveHub: LiveHub,
+  notification: StoredOrchestratorNotification,
+  type: 'notification.created' | 'notification.updated',
+): void {
+  liveHub.publish({
+    type:
+      type === 'notification.created' ? 'goal.notification.created' : 'goal.notification.updated',
+    goalId: notification.goalId,
+    payload: {
+      notificationId: notification.id,
+      eventKey: notification.eventKey,
+      kind: notification.kind,
+      status: notification.status,
     },
   });
 }
@@ -2220,12 +2295,17 @@ function hydrateObservedOrchestrator(
   observedVerifications: Map<string, ObservedVerification>,
   observedGoalEvents: Map<string, number>,
   observedGoalMetrics: Map<string, string>,
+  observedGoalNotifications: Map<string, string>,
 ): void {
   for (const goal of repository.listGoals()) {
     observedGoals.set(goal.id, { updatedAt: goal.updatedAt, status: goal.status });
     observedGoalEvents.set(goal.id, findLastOrchestratorEventSeq(repository, goal.id));
     const latestMetric = repository.listGoalMetricSnapshots(goal.id, 1)[0];
     if (latestMetric !== undefined) observedGoalMetrics.set(goal.id, latestMetric.id);
+    const latestNotification = repository.listOrchestratorNotifications(goal.id, { limit: 1 })[0];
+    if (latestNotification !== undefined) {
+      observedGoalNotifications.set(goal.id, notificationMarker(latestNotification));
+    }
     for (const task of repository.listTasks(goal.id)) {
       observedTasks.set(task.id, {
         goalId: task.goalId,
@@ -2323,6 +2403,7 @@ function rememberOrchestratorNotification(
   observedVerifications: Map<string, ObservedVerification>,
   observedGoalEvents: Map<string, number>,
   observedGoalMetrics: Map<string, string>,
+  observedGoalNotifications: Map<string, string>,
 ): void {
   if (notification.type === 'goal.created' || notification.type === 'goal.updated') {
     observedGoals.set(notification.goal.id, {
@@ -2357,6 +2438,16 @@ function rememberOrchestratorNotification(
   }
   if (notification.type === 'metric.created') {
     observedGoalMetrics.set(notification.metric.goalId, notification.metric.id);
+    return;
+  }
+  if (
+    notification.type === 'notification.created' ||
+    notification.type === 'notification.updated'
+  ) {
+    observedGoalNotifications.set(
+      notification.notification.goalId,
+      notificationMarker(notification.notification),
+    );
     return;
   }
   if (notification.type !== 'event.appended') return;
@@ -2401,6 +2492,20 @@ function pollExternalOrchestratorChanges(
     ) {
       publishOrchestratorMetric(liveHub, latestMetric);
       observations.observedGoalMetrics.set(goal.id, latestMetric.id);
+    }
+
+    const latestNotification = repository.listOrchestratorNotifications(goal.id, { limit: 1 })[0];
+    if (
+      latestNotification !== undefined &&
+      observations.observedGoalNotifications.get(goal.id) !== notificationMarker(latestNotification)
+    ) {
+      const previousMarker = observations.observedGoalNotifications.get(goal.id);
+      publishOrchestratorNotificationUpdate(
+        liveHub,
+        latestNotification,
+        previousMarker === undefined ? 'notification.created' : 'notification.updated',
+      );
+      observations.observedGoalNotifications.set(goal.id, notificationMarker(latestNotification));
     }
 
     for (const task of repository.listTasks(goal.id)) {
@@ -2519,4 +2624,13 @@ function rememberNotification(
 
 function isTerminalTurnStatus(status: StoredTurn['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'interrupted';
+}
+
+function notificationMarker(notification: StoredOrchestratorNotification): string {
+  return [
+    notification.id,
+    notification.status,
+    notification.deliveredAt ?? '',
+    notification.readAt ?? '',
+  ].join(':');
 }

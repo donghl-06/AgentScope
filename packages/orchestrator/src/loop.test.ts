@@ -184,6 +184,9 @@ describe('OrchestratorEngine', () => {
         provider: 'mock',
       });
       expect(result.status).toBe('COMPLETED');
+      expect(repository.listOrchestratorNotifications(result.goal.id)).toEqual([
+        expect.objectContaining({ kind: 'completed', eventKey: 'goal-status:completed' }),
+      ]);
       const snapshots = repository.listGoalMetricSnapshots(result.goal.id, 500);
       expect(snapshots).toEqual(
         expect.arrayContaining([

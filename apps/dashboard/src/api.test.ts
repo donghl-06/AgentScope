@@ -92,6 +92,26 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('loads actionable Goal notifications with an optional status filter', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify([{ id: 'notification-1', goalId: 'goal-1', status: 'PENDING' }]),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listGoalNotifications('goal/1', 20)).resolves.toMatchObject([
+      { id: 'notification-1', status: 'PENDING' },
+    ]);
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/goals/goal%2F1/notifications?limit=20',
+    );
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {

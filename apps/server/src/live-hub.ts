@@ -22,7 +22,9 @@ export interface LiveNotification {
     | 'attempt.created'
     | 'attempt.updated'
     | 'verification.created'
-    | 'goal.metrics.updated';
+    | 'goal.metrics.updated'
+    | 'goal.notification.created'
+    | 'goal.notification.updated';
   readonly sessionId?: string;
   readonly projectId?: string;
   readonly goalId?: string;
