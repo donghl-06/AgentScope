@@ -78,6 +78,12 @@ import {
   type OrchestratorNotificationCandidate,
 } from './notifications.js';
 import {
+  computeRetryBackoff,
+  waitForRetryBackoff,
+  type RetryBackoffConfig,
+  type RetryBackoffWaiter,
+} from './backoff.js';
+import {
   evaluateInstructionApplicability,
   validateInstructionDraft,
   type InstructionApplicabilityResult,
@@ -114,6 +120,10 @@ export interface OrchestratorEngineOptions {
   readonly approvalTtlMs?: number;
   /** Controls durable progress/ETA snapshot sampling; defaults to a 5s heartbeat. */
   readonly metricSnapshotPolicy?: MetricSnapshotPolicy;
+  /** Bounded delay policy for retryable Provider failures. */
+  readonly retryBackoff?: RetryBackoffConfig;
+  /** Injectable waiter for deterministic tests and host-specific cancellation. */
+  readonly retryBackoffWait?: RetryBackoffWaiter;
 }
 
 export interface ControlCommandOptions {
@@ -215,6 +225,8 @@ export class OrchestratorEngine {
   private readonly leaseHeartbeatMs: number;
   private readonly approvalTtlMs: number;
   private readonly metricSnapshotPolicy: MetricSnapshotPolicy;
+  private readonly retryBackoff: RetryBackoffConfig;
+  private readonly retryBackoffWait: RetryBackoffWaiter;
   private readonly unsubscribeRepository: () => void;
   private activeGoalId: string | undefined;
   private readonly controlRequests = new Map<
@@ -245,6 +257,8 @@ export class OrchestratorEngine {
     this.metricSnapshotPolicy = validateMetricSnapshotPolicy(
       options.metricSnapshotPolicy ?? DEFAULT_METRIC_SNAPSHOT_POLICY,
     );
+    this.retryBackoff = options.retryBackoff ?? {};
+    this.retryBackoffWait = options.retryBackoffWait ?? waitForRetryBackoff;
     this.unsubscribeRepository = options.repository.subscribe((notification) => {
       this.handleRepositoryNotification(notification);
     });
@@ -1021,6 +1035,26 @@ export class OrchestratorEngine {
           );
         }
         if (activeTask.status === 'REPAIRING') {
+          const backoff = await this.waitBeforeRetry(goal, activeTask, assertLease);
+          if (backoff.kind === 'cancelled') {
+            const controlRequest = this.controlRequests.get(goal.id);
+            if (controlRequest !== undefined) {
+              this.controlRequests.delete(goal.id);
+              return this.applyControl(goal.id, controlRequest.control, controlRequest.command);
+            }
+            if (backoff.reason === 'budget') {
+              return this.pauseForHuman(
+                repository.getGoal(goal.id),
+                repository.listTasks(goal.id),
+                backoff.message,
+              );
+            }
+            return this.pauseForHuman(
+              repository.getGoal(goal.id),
+              repository.listTasks(goal.id),
+              backoff.message,
+            );
+          }
           assertLease();
           repository.transitionTask(activeTask.id, 'RUNNING', this.now());
         }
@@ -2050,6 +2084,138 @@ export class OrchestratorEngine {
     );
   }
 
+  /**
+   * Wait at the safe boundary between a retryable Provider failure and the
+   * next Attempt. The wait is intentionally outside the Worker boundary: no
+   * Provider process is alive while it is pending, so Pause/Abort can cancel
+   * it without sending a second stop signal to a stale process.
+   */
+  private async waitBeforeRetry(
+    goal: StoredGoal,
+    task: StoredTask,
+    assertLease: () => void,
+  ): Promise<
+    | { readonly kind: 'elapsed' }
+    | {
+        readonly kind: 'cancelled';
+        readonly reason: 'control' | 'budget' | 'cancelled';
+        readonly message: string;
+      }
+  > {
+    const repository = this.options.repository;
+    const attempts = repository.listAttempts(task.id);
+    const previousAttempt = [...attempts].sort(
+      (left, right) => right.attemptNumber - left.attemptNumber,
+    )[0];
+    const failure = previousAttempt?.workerResult?.failure;
+    if (previousAttempt === undefined || failure === undefined || !failure.retryable) {
+      return { kind: 'elapsed' };
+    }
+    const cumulativeDelayMs = sumRetryBackoffDelays(repository, goal.id, task.id);
+    const decision = computeRetryBackoff(
+      previousAttempt.attemptNumber + 1,
+      failure,
+      cumulativeDelayMs,
+      this.retryBackoff,
+    );
+    if (decision.delayMs === 0) return { kind: 'elapsed' };
+
+    const startedAt = this.now();
+    repository.appendEvent({
+      id: `${task.id}:retry-backoff:${previousAttempt.attemptNumber}:${randomUUID()}:started`,
+      goalId: goal.id,
+      taskId: task.id,
+      attemptId: previousAttempt.id,
+      type: 'attempt.retry_backoff.started',
+      payload: {
+        attemptNumber: previousAttempt.attemptNumber + 1,
+        failureCode: failure.code,
+        delayMs: decision.delayMs,
+        cumulativeDelayMs: decision.cumulativeDelayMs,
+        capped: decision.capped,
+        policyReason: decision.reason,
+      },
+      confidence: 1,
+      timestamp: startedAt,
+    });
+
+    let cancellationReason: 'control' | 'budget' | 'cancelled' | undefined;
+    let budgetMessage = `Retry backoff for Task ${task.id} was cancelled by the execution budget.`;
+    const waitResult = await this.retryBackoffWait({
+      delayMs: decision.delayMs,
+      ...(this.retryBackoff.pollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: this.retryBackoff.pollIntervalMs }),
+      shouldCancel: () => {
+        assertLease();
+        if (this.controlRequests.has(goal.id)) {
+          cancellationReason = 'control';
+          return true;
+        }
+        const latestGoal = repository.getGoal(goal.id);
+        const latestTask = repository.getTask(task.id);
+        const budgetGate = this.enforceBudget(
+          latestGoal,
+          repository.listTasks(goal.id),
+          latestTask,
+        );
+        if (!budgetGate.allowed) {
+          cancellationReason = 'budget';
+          budgetMessage = budgetGate.reason;
+          return true;
+        }
+        return false;
+      },
+    });
+    const endedAt = this.now();
+    if (waitResult === 'cancelled') {
+      const reason = cancellationReason ?? 'cancelled';
+      repository.appendEvent({
+        id: `${task.id}:retry-backoff:${previousAttempt.attemptNumber}:${randomUUID()}:cancelled`,
+        goalId: goal.id,
+        taskId: task.id,
+        attemptId: previousAttempt.id,
+        type: 'attempt.retry_backoff.cancelled',
+        payload: {
+          attemptNumber: previousAttempt.attemptNumber + 1,
+          failureCode: failure.code,
+          delayMs: decision.delayMs,
+          elapsedMs: Math.max(0, endedAt - startedAt),
+          reason,
+        },
+        confidence: 1,
+        timestamp: endedAt,
+      });
+      return {
+        kind: 'cancelled',
+        reason,
+        message:
+          reason === 'budget'
+            ? budgetMessage
+            : reason === 'control'
+              ? 'Retry backoff was cancelled at a requested control boundary.'
+              : 'Retry backoff was cancelled before the next Attempt started.',
+      };
+    }
+    repository.appendEvent({
+      id: `${task.id}:retry-backoff:${previousAttempt.attemptNumber}:${randomUUID()}:completed`,
+      goalId: goal.id,
+      taskId: task.id,
+      attemptId: previousAttempt.id,
+      type: 'attempt.retry_backoff.completed',
+      payload: {
+        attemptNumber: previousAttempt.attemptNumber + 1,
+        failureCode: failure.code,
+        delayMs: decision.delayMs,
+        cumulativeDelayMs: decision.cumulativeDelayMs,
+        elapsedMs: Math.max(0, endedAt - startedAt),
+      },
+      confidence: 1,
+      timestamp: endedAt,
+    });
+    return { kind: 'elapsed' };
+  }
+
   private handleVerification(
     goal: StoredGoal,
     task: StoredTask,
@@ -2485,6 +2651,9 @@ function createWorkerRetryContext(
     previousAttemptId: previousAttempt.id,
     previousAttemptNumber: previousAttempt.attemptNumber,
     previousAttemptStatus: previousAttempt.status,
+    ...(previousAttempt.workerResult?.failure === undefined
+      ? {}
+      : { previousFailure: previousAttempt.workerResult.failure }),
     ...(previousVerification === undefined
       ? {}
       : {
@@ -2494,6 +2663,28 @@ function createWorkerRetryContext(
     previousVerificationEvidence: previousVerification?.evidence ?? [],
     repairObjective,
   };
+}
+
+function sumRetryBackoffDelays(
+  repository: OrchestratorRepository,
+  goalId: string,
+  taskId: string,
+): number {
+  let afterSeq = 0;
+  let total = 0;
+  while (true) {
+    const page = repository.listEvents(goalId, afterSeq, 500);
+    for (const event of page) {
+      if (event.taskId !== taskId || event.type !== 'attempt.retry_backoff.started') continue;
+      const delayMs = event.payload.delayMs;
+      if (typeof delayMs === 'number' && Number.isFinite(delayMs) && delayMs > 0) {
+        total += delayMs;
+      }
+    }
+    if (page.length < 500) return total;
+    afterSeq = page.at(-1)?.seq ?? afterSeq;
+    if (afterSeq === 0) return total;
+  }
 }
 
 async function defaultGoalVerifier(input: {

@@ -22,6 +22,8 @@ export interface WorkerRetryContext {
   readonly previousAttemptId?: string;
   readonly previousAttemptNumber?: number;
   readonly previousAttemptStatus?: string;
+  /** Normalized failure from the previous Attempt, when it was retryable. */
+  readonly previousFailure?: WorkerFailure;
   readonly previousVerificationStatus?: string;
   readonly previousVerificationReason?: string;
   readonly previousVerificationEvidence: readonly JsonObject[];
@@ -340,6 +342,11 @@ function formatRetryContext(context: WorkerRetryContext | undefined): readonly s
       ? []
       : [
           `Previous Attempt: ${context.previousAttemptId} (${context.previousAttemptStatus ?? 'unknown'})`,
+        ]),
+    ...(context.previousFailure === undefined
+      ? []
+      : [
+          `Previous Worker failure: ${context.previousFailure.code} (retryable=${context.previousFailure.retryable})`,
         ]),
     ...(context.previousVerificationStatus === undefined
       ? []

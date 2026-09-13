@@ -16,8 +16,9 @@ import {
   type InitialPlan,
   type RollingPlan,
   type WorkingSet,
+  type OrchestratorEngineOptions,
 } from './index.js';
-import type { WorkerLaunchRequest } from './worker.js';
+import type { WorkerExecutionResult, WorkerLaunchRequest } from './worker.js';
 
 const projectState = {
   workspace: 'D:/workspace/engine',
@@ -113,6 +114,10 @@ async function withEngine(
   contextProvider: () => Promise<BootstrapContext> = async () => context,
   onEngine?: (engine: OrchestratorEngine) => void,
   onWorker?: (request: WorkerLaunchRequest) => void,
+  workerResultForAttempt?: (
+    request: WorkerLaunchRequest,
+  ) => Partial<Omit<WorkerExecutionResult, 'attemptId'>> | undefined,
+  engineOptions?: Pick<OrchestratorEngineOptions, 'retryBackoff' | 'retryBackoffWait'>,
 ): Promise<void> {
   const filename = path.join(os.tmpdir(), `agentscope-engine-${Date.now()}-${Math.random()}.db`);
   const { client } = openStorage({ filename, migrate: true });
@@ -129,6 +134,7 @@ async function withEngine(
           summary: 'worker completed',
           changedFiles: ['src/feature.ts'],
           reportedVerification: {},
+          ...workerResultForAttempt?.(request),
         };
       },
     });
@@ -159,6 +165,7 @@ async function withEngine(
         let value = 100;
         return () => (value += 1);
       })(),
+      ...engineOptions,
     });
     onEngine?.(engine);
     await test(engine, repository);
@@ -380,6 +387,121 @@ describe('OrchestratorEngine', () => {
         });
         expect(result.status).toBe('COMPLETED');
         expect(repository.listAttempts('goal-retry:task:1')).toHaveLength(2);
+      },
+    );
+  });
+
+  it('backs off retryable Worker failures before launching the next Attempt', async () => {
+    const requests: WorkerLaunchRequest[] = [];
+    const waits: number[] = [];
+    await withEngine(
+      (attempt) => (attempt === 1 ? 'FAIL' : 'PASS'),
+      async (engine, repository) => {
+        const result = await engine.createGoalAndRun({
+          id: 'goal-retry-backoff',
+          workspace: projectState.workspace,
+          prompt: 'Back off a transient Provider failure.',
+          provider: 'claude',
+        });
+        expect(result.status).toBe('COMPLETED');
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.retryContext?.previousFailure).toMatchObject({
+          code: 'rate_limit',
+          retryable: true,
+        });
+        expect(waits).toEqual([1_000]);
+        expect(repository.listEvents('goal-retry-backoff').map((event) => event.type)).toEqual(
+          expect.arrayContaining([
+            'attempt.retry_backoff.started',
+            'attempt.retry_backoff.completed',
+          ]),
+        );
+      },
+      'PASS',
+      async () => context,
+      undefined,
+      undefined,
+      (request) => {
+        requests.push(request);
+        return request.retryContext === undefined
+          ? {
+              status: 'failed',
+              exitCode: 429,
+              summary: 'Transient Provider failure.',
+              changedFiles: [],
+              reportedVerification: {},
+              failure: {
+                code: 'rate_limit',
+                retryable: true,
+                summary: 'Worker provider rate limit or concurrency limit was reached.',
+                diagnosticRef: 'worker:claude:rate_limit:429',
+                exitCode: 429,
+              },
+            }
+          : undefined;
+      },
+      {
+        retryBackoff: { jitterRatio: 0 },
+        retryBackoffWait: async ({ delayMs }) => {
+          waits.push(delayMs);
+          return 'elapsed';
+        },
+      },
+    );
+  });
+
+  it('cancels a pending retry backoff at a requested Pause boundary', async () => {
+    let activeEngine: OrchestratorEngine | undefined;
+    await withEngine(
+      (attempt) => (attempt === 1 ? 'FAIL' : 'PASS'),
+      async (engine, repository) => {
+        const result = await engine.createGoalAndRun({
+          id: 'goal-retry-backoff-pause',
+          workspace: projectState.workspace,
+          prompt: 'Cancel transient retry while pausing.',
+          provider: 'claude',
+        });
+        expect(result.status).toBe('PAUSED');
+        expect(repository.listAttempts('goal-retry-backoff-pause:task:1')).toHaveLength(1);
+        expect(repository.listEvents('goal-retry-backoff-pause').at(-1)).toMatchObject({
+          type: 'goal.paused',
+        });
+        expect(
+          repository
+            .listEvents('goal-retry-backoff-pause')
+            .some((event) => event.type === 'attempt.retry_backoff.cancelled'),
+        ).toBe(true);
+      },
+      'PASS',
+      async () => context,
+      (engine) => {
+        activeEngine = engine;
+      },
+      undefined,
+      (request) =>
+        request.retryContext === undefined
+          ? {
+              status: 'failed',
+              exitCode: 429,
+              summary: 'Transient Provider failure.',
+              changedFiles: [],
+              reportedVerification: {},
+              failure: {
+                code: 'rate_limit',
+                retryable: true,
+                summary: 'Worker provider rate limit or concurrency limit was reached.',
+                diagnosticRef: 'worker:claude:rate_limit:429',
+                exitCode: 429,
+              },
+            }
+          : undefined,
+      {
+        retryBackoffWait: async ({ shouldCancel }) => {
+          activeEngine?.requestPause('goal-retry-backoff-pause', {
+            idempotencyKey: 'retry-backoff-pause',
+          });
+          return shouldCancel?.() === true ? 'cancelled' : 'elapsed';
+        },
       },
     );
   });
