@@ -278,6 +278,26 @@ describe('OrchestratorEngine', () => {
     });
   });
 
+  it('pauses before starting a Task when the wall-clock budget is already exceeded', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      const result = await engine.createGoalAndRun({
+        id: 'goal-budget-wall-clock',
+        workspace: projectState.workspace,
+        prompt: 'Respect the wall-clock budget.',
+        provider: 'mock',
+        constraints: { maxWallClockMs: 1 },
+        now: 100,
+      });
+      expect(result.status).toBe('NEEDS_HUMAN');
+      expect(repository.listAttempts('goal-budget-wall-clock:task:1')).toHaveLength(0);
+      expect(
+        repository
+          .listEvents('goal-budget-wall-clock')
+          .some((event) => event.type === 'goal.budget.exceeded'),
+      ).toBe(true);
+    });
+  });
+
   it('runs one serial Task and completes only after final verification', async () => {
     await withEngine('PASS', async (engine, repository) => {
       const result = await engine.createGoalAndRun({

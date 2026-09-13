@@ -1,4 +1,4 @@
-import type { JsonObject, StoredTask } from '@agentscope/storage';
+import type { JsonObject, StoredTask, WorkerUsage } from '@agentscope/storage';
 
 import type { ProjectState, WorkingSet } from './index.js';
 
@@ -31,6 +31,8 @@ export interface WorkerExecutionResult {
   readonly summary: string;
   readonly changedFiles: readonly string[];
   readonly reportedVerification: Readonly<Record<string, unknown>>;
+  /** Usage reported by the Provider; AgentScope never estimates missing values. */
+  readonly usage?: WorkerUsage;
 }
 
 export type WorkerLauncher = (request: WorkerLaunchRequest) => Promise<WorkerExecutionResult>;

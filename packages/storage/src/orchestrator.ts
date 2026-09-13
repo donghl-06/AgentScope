@@ -94,6 +94,15 @@ export interface WorkerResult {
   readonly summary: string;
   readonly changedFiles: readonly string[];
   readonly reportedVerification: JsonObject;
+  /** Provider-reported usage only; absent means the provider did not report it. */
+  readonly usage?: WorkerUsage;
+}
+
+export interface WorkerUsage {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+  readonly cost?: number;
 }
 
 export interface VerificationCheck {

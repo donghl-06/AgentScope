@@ -23,6 +23,7 @@ import {
   type StoredTask,
   type StoredVerificationRun,
   type StoredApprovalRequest,
+  type WorkerResult,
   type TaskContractPatch,
   type UpdateFutureTaskContractInput,
 } from '@agentscope/storage';
@@ -44,7 +45,8 @@ import {
   findMatchingTaskApproval,
   TASK_APPROVAL_ACTION,
 } from './approval.js';
-import { classifyTaskRisk, type RiskAssessment } from './risk.js';
+import { classifyTaskRisk } from './risk.js';
+import { evaluateBudget, type BudgetEvaluation, type BudgetUsage } from './budget.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
 import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
@@ -929,6 +931,14 @@ export class OrchestratorEngine {
         (task) =>
           task.status === 'RUNNING' || task.status === 'REPAIRING' || task.status === 'VERIFYING',
       );
+      const budgetGate = this.enforceBudget(goal, tasks, activeTask);
+      if (!budgetGate.allowed) {
+        return this.pauseForHuman(
+          repository.getGoal(goal.id),
+          repository.listTasks(goal.id),
+          budgetGate.reason,
+        );
+      }
       if (activeTask?.status === 'VERIFYING') {
         return this.pauseForHuman(goal, tasks, 'A Task was left in VERIFYING during recovery.');
       }
@@ -1050,6 +1060,18 @@ export class OrchestratorEngine {
           workingSet,
           'after-attempt',
         );
+        const afterAttemptBudget = this.enforceBudget(
+          repository.getGoal(goal.id),
+          repository.listTasks(goal.id),
+          repository.getTask(activeTask.id),
+        );
+        if (!afterAttemptBudget.allowed) {
+          return this.pauseForHuman(
+            repository.getGoal(goal.id),
+            repository.listTasks(goal.id),
+            afterAttemptBudget.reason,
+          );
+        }
         if (result.next === 'HUMAN') {
           return this.pauseForHuman(
             repository.getGoal(goal.id),
@@ -1655,6 +1677,87 @@ export class OrchestratorEngine {
     };
   }
 
+  private enforceBudget(
+    goal: StoredGoal,
+    tasks: readonly StoredTask[],
+    activeTask: StoredTask | undefined,
+  ): { readonly allowed: boolean; readonly reason: string } {
+    const repository = this.options.repository;
+    const allAttempts = tasks.flatMap((task) => repository.listAttempts(task.id));
+    const taskAttemptRecords =
+      activeTask === undefined ? [] : repository.listAttempts(activeTask.id);
+    const evaluation = evaluateBudget({
+      goalConstraints: goal.constraints,
+      ...(activeTask === undefined ? {} : { taskConstraints: activeTask.constraints }),
+      ...(activeTask === undefined ? {} : { taskMaxAttempts: activeTask.maxAttempts }),
+      usage: {
+        goalAttempts: allAttempts.length,
+        taskAttempts: taskAttemptRecords.length,
+        elapsedMs: Math.max(0, this.now() - goal.createdAt),
+        ...aggregateAttemptUsage(allAttempts),
+      },
+    });
+    this.recordBudgetSignals(goal, activeTask, evaluation);
+    const exceeded = evaluation.signals.find((signal) => signal.severity === 'exceeded');
+    if (exceeded === undefined) return { allowed: true, reason: '' };
+    if (
+      activeTask !== undefined &&
+      !['COMPLETED', 'FAILED', 'SKIPPED'].includes(activeTask.status)
+    ) {
+      repository.transitionTask(activeTask.id, 'NEEDS_HUMAN', this.now());
+    }
+    return {
+      allowed: false,
+      reason: `Execution budget exceeded for Goal ${goal.id}: ${exceeded.message}`,
+    };
+  }
+
+  private recordBudgetSignals(
+    goal: StoredGoal,
+    activeTask: StoredTask | undefined,
+    evaluation: BudgetEvaluation,
+  ): void {
+    const repository = this.options.repository;
+    const existing = repository.listEvents(goal.id);
+    for (const issue of evaluation.issues) {
+      const key = `configuration:${issue.key}`;
+      if (
+        existing.some((event) => event.type === 'goal.budget.warning' && event.payload.key === key)
+      )
+        continue;
+      repository.appendEvent({
+        id: `${goal.id}:budget:warning:${randomUUID()}`,
+        goalId: goal.id,
+        ...(activeTask === undefined ? {} : { taskId: activeTask.id }),
+        type: 'goal.budget.warning',
+        payload: { key, kind: 'configuration', reason: issue.reason },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+    }
+    for (const signal of evaluation.signals) {
+      const key = `${signal.severity}:${signal.scope}:${signal.metric}:${signal.limit}`;
+      const type = signal.severity === 'exceeded' ? 'goal.budget.exceeded' : 'goal.budget.warning';
+      if (existing.some((event) => event.type === type && event.payload.key === key)) continue;
+      repository.appendEvent({
+        id: `${goal.id}:budget:${signal.severity}:${randomUUID()}`,
+        goalId: goal.id,
+        ...(activeTask === undefined ? {} : { taskId: activeTask.id }),
+        type,
+        payload: {
+          key,
+          metric: signal.metric,
+          scope: signal.scope,
+          limit: signal.limit,
+          observed: signal.observed,
+          reason: signal.message,
+        },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+    }
+  }
+
   private async executeTask(
     goal: StoredGoal,
     task: StoredTask,
@@ -2128,12 +2231,7 @@ function isAppliedInstructionContext(value: unknown): value is AppliedInstructio
   );
 }
 
-function toWorkerClaim(result: WorkerExecutionResult): {
-  claimedStatus: 'completed' | 'blocked' | 'failed';
-  summary: string;
-  changedFiles: readonly string[];
-  reportedVerification: JsonObject;
-} {
+function toWorkerClaim(result: WorkerExecutionResult): WorkerResult {
   return {
     claimedStatus:
       result.status === 'completed'
@@ -2144,6 +2242,24 @@ function toWorkerClaim(result: WorkerExecutionResult): {
     summary: result.summary,
     changedFiles: result.changedFiles,
     reportedVerification: result.reportedVerification,
+    ...(result.usage === undefined ? {} : { usage: result.usage }),
+  };
+}
+
+function aggregateAttemptUsage(
+  attempts: readonly StoredAttempt[],
+): Pick<BudgetUsage, 'totalTokens' | 'cost'> {
+  if (attempts.length === 0) return {};
+  const usages = attempts.map((attempt) => attempt.workerResult?.usage);
+  const totalTokens = usages.every((usage) => usage?.totalTokens !== undefined)
+    ? usages.reduce((total, usage) => total + (usage?.totalTokens ?? 0), 0)
+    : undefined;
+  const cost = usages.every((usage) => usage?.cost !== undefined)
+    ? usages.reduce((total, usage) => total + (usage?.cost ?? 0), 0)
+    : undefined;
+  return {
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(cost === undefined ? {} : { cost }),
   };
 }
 
