@@ -83,6 +83,20 @@ describe('server HTTP API', () => {
     expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
       expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
     ]);
+    expect((await app.inject('/api/orchestrator/metrics')).json()).toMatchObject({
+      goalCount: 1,
+      taskCount: 1,
+      attemptCount: 0,
+      taskSuccessRate: { numerator: 0, denominator: 0 },
+      usage: { availability: 'unavailable', attemptCount: 0 },
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/orchestrator/metrics?from=1700000000001&to=1700000000000',
+        })
+      ).statusCode,
+    ).toBe(400);
     const roadmapRevision = orchestratorRepository.createRoadmapRevision({
       id: 'goal-api-1:revision:1',
       goalId: goal.id,

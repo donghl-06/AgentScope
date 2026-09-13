@@ -8,6 +8,7 @@ import type { SessionStatus } from '@agentscope/protocol';
 import { reduceSessionState } from '@agentscope/core';
 import {
   OrchestratorBusyError,
+  computeReliabilityMetrics,
   type InstructionDraft,
   type OrchestratorEngine,
 } from '@agentscope/orchestrator';
@@ -28,6 +29,8 @@ import {
   type InstructionStatus,
   type StoredVerificationRun,
   type StoredApprovalRequest,
+  type StoredGoal,
+  type StoredTask,
 } from '@agentscope/storage';
 
 import { LiveHub } from './live-hub.js';
@@ -117,6 +120,13 @@ const DiagnosticsSchema = Type.Object({
 });
 const GoalListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+const ReliabilityMetricsQuerySchema = Type.Object({
+  provider: Type.Optional(Type.String({ minLength: 1 })),
+  workspace: Type.Optional(Type.String({ minLength: 1 })),
+  includeArchived: Type.Optional(Type.Boolean()),
+  from: Type.Optional(Type.Integer({ minimum: 0 })),
+  to: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 const GoalParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
 const GoalTaskParamsSchema = Type.Object({
@@ -513,6 +523,45 @@ export function createServer(options: ServerOptions): FastifyInstance {
       try {
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.orchestratorRepository.listGoals(limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/orchestrator/metrics',
+    {
+      schema: {
+        querystring: ReliabilityMetricsQuerySchema,
+        response: {
+          200: Type.Unknown(),
+          400: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const query = request.query as Record<string, unknown>;
+        const from = query.from === undefined ? undefined : parseNonNegativeInteger(query.from);
+        const to = query.to === undefined ? undefined : parseNonNegativeInteger(query.to);
+        if (from !== undefined && to !== undefined && from > to) {
+          throw new StorageError('Metrics from must not be after to.', 'invalid_query');
+        }
+        const records = collectOrchestratorRecords(options.orchestratorRepository, {
+          includeArchived: query.includeArchived !== false,
+          ...(typeof query.provider === 'string' ? { provider: query.provider } : {}),
+          ...(typeof query.workspace === 'string' ? { workspace: query.workspace } : {}),
+          ...(from === undefined ? {} : { from }),
+          ...(to === undefined ? {} : { to }),
+        });
+        return reply.send(computeReliabilityMetrics(records));
       } catch (error) {
         return sendError(reply, error);
       }
@@ -2149,6 +2198,60 @@ function findLastOrchestratorEventSeq(repository: OrchestratorRepository, goalId
     after = last.seq;
     if (page.length < 500) return after;
   }
+}
+
+interface ReliabilityMetricsFilter {
+  readonly provider?: string;
+  readonly workspace?: string;
+  readonly includeArchived: boolean;
+  readonly from?: number;
+  readonly to?: number;
+}
+
+function collectOrchestratorRecords(
+  repository: OrchestratorRepository,
+  filter: ReliabilityMetricsFilter,
+): {
+  readonly goals: readonly StoredGoal[];
+  readonly tasks: readonly StoredTask[];
+  readonly attempts: readonly StoredAttempt[];
+  readonly verifications: readonly StoredVerificationRun[];
+  readonly events: readonly StoredOrchestratorEvent[];
+} {
+  const goals: StoredGoal[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const page = repository.listGoalPage({
+      limit: 100,
+      includeArchived: filter.includeArchived,
+      ...(filter.provider === undefined ? {} : { provider: filter.provider }),
+      ...(filter.workspace === undefined ? {} : { workspace: filter.workspace }),
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    goals.push(
+      ...page.items.filter(
+        (goal) =>
+          (filter.from === undefined || goal.createdAt >= filter.from) &&
+          (filter.to === undefined || goal.createdAt <= filter.to),
+      ),
+    );
+    if (page.nextCursor === undefined) break;
+    cursor = page.nextCursor;
+  }
+  const tasks: StoredTask[] = [];
+  const attempts: StoredAttempt[] = [];
+  const verifications: StoredVerificationRun[] = [];
+  const events: StoredOrchestratorEvent[] = [];
+  for (const goal of goals) {
+    const goalTasks = repository.listTasks(goal.id);
+    tasks.push(...goalTasks);
+    for (const task of goalTasks) {
+      attempts.push(...repository.listAttempts(task.id));
+      verifications.push(...repository.listVerificationRuns(task.id));
+    }
+    events.push(...repository.listEvents(goal.id));
+  }
+  return { goals, tasks, attempts, verifications, events };
 }
 
 function rememberOrchestratorNotification(
