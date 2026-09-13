@@ -20,6 +20,7 @@ import {
   type StoredGoal,
   type StoredOrchestratorCommand,
   type StoredGoalInstruction,
+  type StoredGoalMetricSnapshot,
   type StoredTask,
   type StoredVerificationRun,
   type StoredApprovalRequest,
@@ -55,6 +56,15 @@ import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
 import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
 import { evaluatePlannerTaskMerge } from './roadmap.js';
+import { projectGoalProgress } from './goal-progress.js';
+import { projectTaskProgress } from './task-progress.js';
+import { estimateOrchestratorEta, type EtaHistoryRecord } from './orchestrator-eta.js';
+import {
+  DEFAULT_METRIC_SNAPSHOT_POLICY,
+  metricSnapshotChanged,
+  type MetricSnapshotCandidate,
+  type MetricSnapshotPolicy,
+} from './metric-snapshot.js';
 import {
   evaluateInstructionApplicability,
   validateInstructionDraft,
@@ -90,6 +100,8 @@ export interface OrchestratorEngineOptions {
   readonly leaseHeartbeatMs?: number;
   /** How long a newly requested Task approval remains actionable. */
   readonly approvalTtlMs?: number;
+  /** Controls durable progress/ETA snapshot sampling; defaults to a 5s heartbeat. */
+  readonly metricSnapshotPolicy?: MetricSnapshotPolicy;
 }
 
 export interface ControlCommandOptions {
@@ -190,6 +202,7 @@ export class OrchestratorEngine {
   private readonly leaseManager: GoalRunLeaseManager;
   private readonly leaseHeartbeatMs: number;
   private readonly approvalTtlMs: number;
+  private readonly metricSnapshotPolicy: MetricSnapshotPolicy;
   private activeGoalId: string | undefined;
   private readonly controlRequests = new Map<
     string,
@@ -216,6 +229,9 @@ export class OrchestratorEngine {
       options.leaseTtlMs ?? 30_000,
     );
     this.approvalTtlMs = validateApprovalTtl(options.approvalTtlMs ?? 30 * 60_000);
+    this.metricSnapshotPolicy = validateMetricSnapshotPolicy(
+      options.metricSnapshotPolicy ?? DEFAULT_METRIC_SNAPSHOT_POLICY,
+    );
   }
 
   get active(): boolean {
@@ -834,7 +850,9 @@ export class OrchestratorEngine {
     assertLease();
     let goal = repository.getGoal(goalId);
     if (goal.status === 'COMPLETED' || goal.status === 'FAILED' || goal.status === 'ABORTED') {
-      return { goal, tasks: repository.listTasks(goal.id), status: goal.status };
+      const tasks = repository.listTasks(goal.id);
+      this.persistMetricSnapshots(goal, tasks);
+      return { goal, tasks, status: goal.status };
     }
     if (goal.status === 'CREATED' || goal.status === 'PAUSED' || goal.status === 'NEEDS_HUMAN') {
       goal = repository.transitionGoal(goal.id, 'PLANNING', this.now());
@@ -928,6 +946,7 @@ export class OrchestratorEngine {
       assertLease();
       goal = repository.getGoal(goal.id);
       tasks = repository.listTasks(goal.id);
+      this.persistMetricSnapshots(goal, tasks);
       const activeTask = tasks.find(
         (task) =>
           task.status === 'RUNNING' || task.status === 'REPAIRING' || task.status === 'VERIFYING',
@@ -1061,6 +1080,7 @@ export class OrchestratorEngine {
           workingSet,
           'after-attempt',
         );
+        this.persistMetricSnapshots(repository.getGoal(goal.id), repository.listTasks(goal.id));
         const afterAttemptBudget = this.enforceBudget(
           repository.getGoal(goal.id),
           repository.listTasks(goal.id),
@@ -1259,13 +1279,91 @@ export class OrchestratorEngine {
         workingSet,
         'final-verification',
       );
-      return { goal, tasks: repository.listTasks(goal.id), status: goal.status, lastVerification };
+      tasks = repository.listTasks(goal.id);
+      this.persistMetricSnapshots(goal, tasks);
+      return { goal, tasks, status: goal.status, lastVerification };
     }
     return this.pauseForHuman(
       repository.getGoal(goal.id),
       repository.listTasks(goal.id),
       `The Orchestrator reached its ${this.maxSteps}-step safety bound.`,
     );
+  }
+
+  /**
+   * Persist the latest evidence-backed projection without making metrics part
+   * of the execution critical path. A storage/serialization failure is
+   * deliberately ignored: a missing observability sample must never turn a
+   * valid Worker result into a failed Goal run.
+   */
+  private persistMetricSnapshots(goal: StoredGoal, tasks: readonly StoredTask[]): void {
+    try {
+      const repository = this.options.repository;
+      const capturedAt = this.now();
+      const verifications = tasks.flatMap((task) => repository.listVerificationRuns(task.id));
+      const progress = projectGoalProgress({ goal, tasks, verifications });
+      const eta = estimateOrchestratorEta({
+        goal,
+        progress,
+        now: capturedAt,
+        history: collectEtaHistory(repository, goal),
+      });
+      const previous = repository.listGoalMetricSnapshots(goal.id, 500);
+      const goalCandidate: MetricSnapshotCandidate = {
+        goalId: goal.id,
+        progress: progress.value,
+        eta: asJsonObject(eta),
+        confidence: progress.confidence,
+        reasons: [
+          { code: 'goal_status', message: `Goal status is ${goal.status}.` },
+          ...progress.reasons.map((reason) => asJsonObject(reason)),
+        ],
+        capturedAt,
+      };
+      this.createMetricIfChanged(goalCandidate, latestMetric(previous, undefined));
+      for (const task of tasks) {
+        const taskVerifications = repository.listVerificationRuns(task.id);
+        const taskProgress = projectTaskProgress({
+          task,
+          verifications: taskVerifications,
+          evidenceCount: taskVerifications.reduce(
+            (count, verification) => count + verification.evidence.length,
+            0,
+          ),
+        });
+        const taskCandidate: MetricSnapshotCandidate = {
+          goalId: goal.id,
+          taskId: task.id,
+          progress: taskProgress.value,
+          confidence: taskProgress.confidence,
+          reasons: [
+            { code: 'task_status', message: `Task status is ${task.status}.` },
+            ...taskProgress.reasons.map((reason) => asJsonObject(reason)),
+          ],
+          capturedAt,
+        };
+        this.createMetricIfChanged(taskCandidate, latestMetric(previous, task.id));
+      }
+    } catch {
+      // Metrics are an observational projection and must not alter execution.
+    }
+  }
+
+  private createMetricIfChanged(
+    candidate: MetricSnapshotCandidate,
+    previous: StoredGoalMetricSnapshot | undefined,
+  ): void {
+    if (!metricSnapshotChanged(previous, candidate, this.metricSnapshotPolicy)) return;
+    this.options.repository.createGoalMetricSnapshot({
+      id: `${candidate.goalId}:metric:${candidate.taskId ?? 'goal'}:${randomUUID()}`,
+      goalId: candidate.goalId,
+      ...(candidate.taskId === undefined ? {} : { taskId: candidate.taskId }),
+      progress: candidate.progress,
+      ...(candidate.eta === undefined ? {} : { eta: candidate.eta }),
+      confidence: candidate.confidence,
+      reasons: candidate.reasons,
+      capturedAt: candidate.capturedAt,
+    });
   }
 
   private applyPendingInstructions(
@@ -1961,7 +2059,10 @@ export class OrchestratorEngine {
       confidence: 1,
       timestamp: this.now(),
     });
-    return { goal, tasks, status: goal.status };
+    const currentGoal = repository.getGoal(goal.id);
+    const currentTasks = repository.listTasks(goal.id);
+    this.persistMetricSnapshots(currentGoal, currentTasks);
+    return { goal: currentGoal, tasks: currentTasks, status: currentGoal.status };
   }
 
   private prepareHumanRecovery(goalId: string): void {
@@ -2356,6 +2457,42 @@ function asJsonObject(value: unknown): JsonObject {
   return value as JsonObject;
 }
 
+function latestMetric(
+  snapshots: readonly StoredGoalMetricSnapshot[],
+  taskId: string | undefined,
+): StoredGoalMetricSnapshot | undefined {
+  return snapshots.find((snapshot) => snapshot.taskId === taskId);
+}
+
+function collectEtaHistory(
+  repository: OrchestratorRepository,
+  currentGoal: StoredGoal,
+): readonly EtaHistoryRecord[] {
+  const completed: EtaHistoryRecord[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const page = repository.listGoalPage({
+      limit: 100,
+      includeArchived: true,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    for (const goal of page.items) {
+      if (goal.id === currentGoal.id || goal.status !== 'COMPLETED') continue;
+      const endedAt = goal.completedAt ?? goal.updatedAt;
+      const durationSeconds = (endedAt - goal.createdAt) / 1_000;
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) continue;
+      completed.push({
+        durationSeconds,
+        workspace: goal.workspace,
+        provider: goal.provider,
+        outcome: 'completed',
+      });
+    }
+    if (page.nextCursor === undefined) return completed;
+    cursor = page.nextCursor;
+  }
+}
+
 function summarizeProjectStateChanges(
   previous: ProjectState,
   next: ProjectState,
@@ -2496,6 +2633,22 @@ function validateLeaseHeartbeat(value: number, ttlMs: number): number {
 function validateApprovalTtl(value: number): number {
   if (!Number.isInteger(value) || value < 1_000 || value > 24 * 60 * 60_000) {
     throw new RangeError('approvalTtlMs must be an integer between 1000ms and 24 hours.');
+  }
+  return value;
+}
+
+function validateMetricSnapshotPolicy(value: MetricSnapshotPolicy): MetricSnapshotPolicy {
+  if (!Number.isFinite(value.minIntervalMs) || value.minIntervalMs < 0) {
+    throw new RangeError('metricSnapshotPolicy.minIntervalMs must be non-negative.');
+  }
+  if (!Number.isFinite(value.progressDelta) || value.progressDelta < 0) {
+    throw new RangeError('metricSnapshotPolicy.progressDelta must be non-negative.');
+  }
+  if (!Number.isFinite(value.confidenceDelta) || value.confidenceDelta < 0) {
+    throw new RangeError('metricSnapshotPolicy.confidenceDelta must be non-negative.');
+  }
+  if (!Number.isFinite(value.etaDeltaSeconds) || value.etaDeltaSeconds < 0) {
+    throw new RangeError('metricSnapshotPolicy.etaDeltaSeconds must be non-negative.');
   }
   return value;
 }

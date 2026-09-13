@@ -175,6 +175,32 @@ async function withEngine(
 }
 
 describe('OrchestratorEngine', () => {
+  it('persists evidence-backed Goal and Task metric snapshots at lifecycle boundaries', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      const result = await engine.createGoalAndRun({
+        id: 'goal-metric-snapshots',
+        workspace: projectState.workspace,
+        prompt: 'Persist metric projections.',
+        provider: 'mock',
+      });
+      expect(result.status).toBe('COMPLETED');
+      const snapshots = repository.listGoalMetricSnapshots(result.goal.id, 500);
+      expect(snapshots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ goalId: result.goal.id, progress: 1 }),
+          expect.objectContaining({
+            goalId: result.goal.id,
+            taskId: `${result.goal.id}:task:1`,
+            progress: 1,
+          }),
+        ]),
+      );
+      expect(snapshots.some((snapshot) => snapshot.taskId === undefined)).toBe(true);
+      expect(snapshots.some((snapshot) => snapshot.taskId !== undefined)).toBe(true);
+      expect(snapshots.every((snapshot) => snapshot.capturedAt > 0)).toBe(true);
+    });
+  });
+
   it('refreshes Project State after an Attempt boundary before final planning', async () => {
     let contextCalls = 0;
     const refreshedContext: BootstrapContext = {

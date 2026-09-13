@@ -387,3 +387,4 @@ export * from './goal-progress.js';
 export * from './task-progress.js';
 export * from './orchestrator-eta.js';
 export * from './reliability.js';
+export * from './metric-snapshot.js';
