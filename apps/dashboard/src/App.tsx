@@ -6,6 +6,7 @@ import type {
   StoredObserverEvidence,
   StoredOrchestratorNotification,
   StoredSession,
+  StoredTask,
   StoredTurn,
 } from '@agentscope/storage';
 import type { ProviderTelemetry } from '@agentscope/protocol';
@@ -954,6 +955,11 @@ function GoalPanel({
                 onRefresh={onRefresh}
                 onReload={() => inspectGoal(selectedGoal.goal.id)}
               />
+              <RoadmapEditor
+                detail={selectedGoal}
+                onRefresh={onRefresh}
+                onReload={() => inspectGoal(selectedGoal.goal.id)}
+              />
               <ol className="goal-task-list">
                 {selectedGoal.tasks.map((task) => {
                   const taskDetail = selectedGoal.taskDetails?.find(
@@ -1253,6 +1259,591 @@ function GoalInstructionPanel({
           ))
         )}
       </div>
+    </section>
+  );
+}
+
+function RoadmapEditor({
+  detail,
+  onRefresh,
+  onReload,
+}: {
+  detail: GoalDetail;
+  onRefresh: () => void;
+  onReload: () => Promise<void>;
+}) {
+  const [editingTaskId, setEditingTaskId] = useState<string>();
+  const [editTitle, setEditTitle] = useState('');
+  const [editObjective, setEditObjective] = useState('');
+  const [editCriteria, setEditCriteria] = useState('');
+  const [editMaxAttempts, setEditMaxAttempts] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [insertTitle, setInsertTitle] = useState('');
+  const [insertObjective, setInsertObjective] = useState('');
+  const [insertCriteria, setInsertCriteria] = useState('');
+  const [insertMaxAttempts, setInsertMaxAttempts] = useState('3');
+  const [insertReason, setInsertReason] = useState('');
+  const [skipTaskId, setSkipTaskId] = useState<string>();
+  const [skipReason, setSkipReason] = useState('');
+  const [reorderReason, setReorderReason] = useState('');
+  const [reorderOrder, setReorderOrder] = useState<readonly string[]>([]);
+  const [busyAction, setBusyAction] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
+
+  const editableTasks = useMemo(
+    () =>
+      detail.tasks.filter(
+        (task) =>
+          task.status === 'PENDING' &&
+          task.startedAt === undefined &&
+          detail.goal.roadmap.find((item) => item.id === task.id)?.status !== 'LOCKED',
+      ),
+    [detail],
+  );
+  const reorderableTasks = useMemo(
+    () => editableTasks.filter((task) => task.tentative),
+    [editableTasks],
+  );
+  const reorderableIds = useMemo(() => reorderableTasks.map((task) => task.id), [reorderableTasks]);
+  const editingTask = editableTasks.find((task) => task.id === editingTaskId);
+  const isTerminal = ['COMPLETED', 'FAILED', 'ABORTED'].includes(detail.goal.status);
+  const orderChanged =
+    reorderOrder.length === reorderableIds.length &&
+    reorderOrder.some((taskId, index) => taskId !== reorderableIds[index]);
+
+  useEffect(() => {
+    setReorderOrder((current) => reconcileTaskOrder(current, reorderableIds));
+    if (editingTaskId !== undefined && !reorderableIds.includes(editingTaskId)) {
+      setEditingTaskId(undefined);
+    }
+    if (skipTaskId !== undefined && !reorderableIds.includes(skipTaskId)) {
+      setSkipTaskId(undefined);
+    }
+  }, [detail.goal.id, detail.goal.activeRevision, editingTaskId, reorderableIds, skipTaskId]);
+
+  const setMutationFeedback = (message: string, isError = false) => {
+    if (message.length === 0) {
+      setError(undefined);
+      setSuccess(undefined);
+      return;
+    }
+    if (isError) {
+      setError(message);
+      setSuccess(undefined);
+    } else {
+      setSuccess(message);
+      setError(undefined);
+    }
+  };
+
+  const reloadAfterMutation = async () => {
+    onRefresh();
+    await onReload();
+  };
+
+  const confirmMutation = (description: string): boolean => {
+    if (typeof globalThis.confirm !== 'function') return true;
+    return globalThis.confirm(
+      `This will create roadmap revision ${detail.goal.activeRevision + 1}. ${description}`,
+    );
+  };
+
+  const handleMutationError = (cause: unknown, action: string) => {
+    const conflict = cause instanceof DashboardApiError && cause.status === 409;
+    setMutationFeedback(
+      conflict
+        ? `Roadmap changed before ${action}. The latest revision was reloaded; your draft was kept.`
+        : formatError(cause),
+      true,
+    );
+    if (conflict) void onReload();
+  };
+
+  const startEditing = (task: StoredTask) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditObjective(task.objective);
+    setEditCriteria(task.acceptanceCriteria.join('\n'));
+    setEditMaxAttempts(String(task.maxAttempts));
+    setEditReason('');
+    setMutationFeedback('');
+  };
+
+  const submitEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (editingTask === undefined || isTerminal || busyAction !== undefined) return;
+    const title = editTitle.trim();
+    const objective = editObjective.trim();
+    const acceptanceCriteria = splitCriteria(editCriteria);
+    const reason = editReason.trim();
+    const maxAttempts = Number(editMaxAttempts.trim());
+    if (title.length === 0 || objective.length === 0 || acceptanceCriteria.length === 0) {
+      setMutationFeedback(
+        'Title, objective, and at least one acceptance criterion are required.',
+        true,
+      );
+      return;
+    }
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10) {
+      setMutationFeedback('Max attempts must be an integer from 1 to 10.', true);
+      return;
+    }
+    if (reason.length === 0) {
+      setMutationFeedback('A reason is required for every roadmap revision.', true);
+      return;
+    }
+    if (!confirmMutation(`Only the future Task “${editingTask.title}” will be changed.`)) return;
+    const patch: {
+      title?: string;
+      objective?: string;
+      acceptanceCriteria?: readonly string[];
+      maxAttempts?: number;
+    } = {};
+    if (title !== editingTask.title) patch.title = title;
+    if (objective !== editingTask.objective) patch.objective = objective;
+    if (JSON.stringify(acceptanceCriteria) !== JSON.stringify(editingTask.acceptanceCriteria)) {
+      patch.acceptanceCriteria = acceptanceCriteria;
+    }
+    if (maxAttempts !== editingTask.maxAttempts) patch.maxAttempts = maxAttempts;
+    if (Object.keys(patch).length === 0) {
+      setMutationFeedback('Change at least one future Task field before saving.', true);
+      return;
+    }
+    setBusyAction(`edit:${editingTask.id}`);
+    try {
+      await api.updateGoalTask(detail.goal.id, editingTask.id, {
+        patch,
+        reason,
+        expectedRevision: detail.goal.activeRevision,
+        idempotencyKey: createClientRequestId('roadmap-edit'),
+      });
+      await reloadAfterMutation();
+      setEditingTaskId(undefined);
+      setMutationFeedback('Future Task contract updated and recorded as a new revision.');
+    } catch (cause) {
+      handleMutationError(cause, 'editing the Task');
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const submitInsert = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isTerminal || busyAction !== undefined) return;
+    const title = insertTitle.trim();
+    const objective = insertObjective.trim();
+    const acceptanceCriteria = splitCriteria(insertCriteria);
+    const reason = insertReason.trim();
+    const maxAttempts = Number(insertMaxAttempts.trim());
+    if (title.length === 0 || objective.length === 0 || acceptanceCriteria.length === 0) {
+      setMutationFeedback(
+        'Title, objective, and at least one acceptance criterion are required.',
+        true,
+      );
+      return;
+    }
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10) {
+      setMutationFeedback('Max attempts must be an integer from 1 to 10.', true);
+      return;
+    }
+    if (reason.length === 0) {
+      setMutationFeedback('A reason is required for every roadmap revision.', true);
+      return;
+    }
+    if (!confirmMutation(`A new tentative Task “${title}” will be appended to the future work.`)) {
+      return;
+    }
+    setBusyAction('insert');
+    try {
+      await api.insertGoalTask(detail.goal.id, {
+        title,
+        objective,
+        acceptanceCriteria,
+        maxAttempts,
+        tentative: true,
+        reason,
+        expectedRevision: detail.goal.activeRevision,
+        idempotencyKey: createClientRequestId('roadmap-insert'),
+      });
+      await reloadAfterMutation();
+      setInsertTitle('');
+      setInsertObjective('');
+      setInsertCriteria('');
+      setInsertMaxAttempts('3');
+      setInsertReason('');
+      setMutationFeedback('Tentative future Task inserted and recorded as a new revision.');
+    } catch (cause) {
+      handleMutationError(cause, 'inserting a Task');
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const submitSkip = async (task: StoredTask) => {
+    if (isTerminal || busyAction !== undefined) return;
+    const reason = skipReason.trim();
+    if (reason.length === 0) {
+      setMutationFeedback('A reason is required before skipping a Task.', true);
+      return;
+    }
+    if (!confirmMutation(`The tentative future Task “${task.title}” will be marked skipped.`)) {
+      return;
+    }
+    setBusyAction(`skip:${task.id}`);
+    try {
+      await api.skipGoalTask(detail.goal.id, task.id, {
+        reason,
+        expectedRevision: detail.goal.activeRevision,
+        idempotencyKey: createClientRequestId('roadmap-skip'),
+      });
+      await reloadAfterMutation();
+      setSkipTaskId(undefined);
+      setSkipReason('');
+      setMutationFeedback('Future Task skipped and recorded as a new revision.');
+    } catch (cause) {
+      handleMutationError(cause, 'skipping the Task');
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const submitReorder = async () => {
+    if (isTerminal || busyAction !== undefined || !orderChanged) return;
+    const reason = reorderReason.trim();
+    if (reason.length === 0) {
+      setMutationFeedback('A reason is required before reordering future Tasks.', true);
+      return;
+    }
+    if (!confirmMutation('Only the order of unstarted tentative Tasks will change.')) return;
+    setBusyAction('reorder');
+    try {
+      await api.reorderGoalTasks(detail.goal.id, {
+        taskIds: reorderOrder,
+        reason,
+        expectedRevision: detail.goal.activeRevision,
+        idempotencyKey: createClientRequestId('roadmap-reorder'),
+      });
+      await reloadAfterMutation();
+      setReorderReason('');
+      setMutationFeedback('Future Task order updated and recorded as a new revision.');
+    } catch (cause) {
+      handleMutationError(cause, 'reordering Tasks');
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const moveTask = (taskId: string, direction: -1 | 1) => {
+    setReorderOrder((current) => {
+      const index = current.indexOf(taskId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      const currentTaskId = next[index];
+      const nextTaskId = next[nextIndex];
+      if (currentTaskId === undefined || nextTaskId === undefined) return current;
+      next[index] = nextTaskId;
+      next[nextIndex] = currentTaskId;
+      return next;
+    });
+  };
+
+  return (
+    <section className="roadmap-editor" aria-label="Roadmap editor">
+      <details open>
+        <summary>
+          <span className="eyebrow">ROADMAP CONTROL</span>
+          <strong>Future Task plan</strong>
+          <span className="roadmap-editor-revision">revision {detail.goal.activeRevision}</span>
+        </summary>
+        {isTerminal ? (
+          <p className="roadmap-editor-note">Terminal Goals cannot be edited.</p>
+        ) : (
+          <p className="roadmap-editor-note">
+            Only unstarted, unlocked Tasks are shown. Every change creates an auditable revision;
+            running and historical Tasks are protected.
+          </p>
+        )}
+        {error !== undefined && (
+          <p className="roadmap-editor-feedback roadmap-editor-error" role="alert">
+            {error}
+          </p>
+        )}
+        {success !== undefined && <p className="roadmap-editor-feedback">{success}</p>}
+        {reorderableTasks.length > 0 && (
+          <div className="roadmap-order-list">
+            <div className="roadmap-editor-section-heading">
+              <span className="eyebrow">FUTURE ORDER</span>
+              <small>{reorderableTasks.length} tentative Task(s)</small>
+            </div>
+            {reorderOrder.map((taskId, index) => {
+              const task = reorderableTasks.find((candidate) => candidate.id === taskId);
+              if (task === undefined) return null;
+              const skipOpen = skipTaskId === task.id;
+              return (
+                <div className="roadmap-order-row" key={task.id}>
+                  <span className="roadmap-order-number">{index + 1}</span>
+                  <div className="roadmap-order-copy">
+                    <strong>{task.title}</strong>
+                    <small>
+                      {statusLabel(task.status)} · tentative · {shortId(task.id)}
+                    </small>
+                  </div>
+                  <div className="roadmap-order-actions">
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => moveTask(task.id, -1)}
+                      disabled={busyAction !== undefined || index === 0 || isTerminal}
+                      aria-label={`Move ${task.title} up`}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => moveTask(task.id, 1)}
+                      disabled={
+                        busyAction !== undefined || index === reorderOrder.length - 1 || isTerminal
+                      }
+                      aria-label={`Move ${task.title} down`}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => startEditing(task)}
+                      disabled={busyAction !== undefined || isTerminal}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="quiet-button quiet-button-small quiet-button-danger"
+                      type="button"
+                      onClick={() => {
+                        setSkipTaskId(skipOpen ? undefined : task.id);
+                        setSkipReason('');
+                      }}
+                      disabled={busyAction !== undefined || isTerminal}
+                    >
+                      Skip
+                    </button>
+                  </div>
+                  {skipOpen && (
+                    <div className="roadmap-inline-action">
+                      <label>
+                        <span>Skip reason</span>
+                        <input
+                          value={skipReason}
+                          onChange={(event) => setSkipReason(event.target.value)}
+                          placeholder="Why is this future Task no longer needed?"
+                          maxLength={4_000}
+                          disabled={busyAction !== undefined}
+                        />
+                      </label>
+                      <button
+                        className="quiet-button quiet-button-small quiet-button-danger"
+                        type="button"
+                        onClick={() => void submitSkip(task)}
+                        disabled={busyAction !== undefined}
+                      >
+                        {busyAction === `skip:${task.id}` ? 'Skipping…' : 'Confirm skip'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {orderChanged && (
+              <div className="roadmap-reorder-submit">
+                <label>
+                  <span>Reorder reason</span>
+                  <input
+                    value={reorderReason}
+                    onChange={(event) => setReorderReason(event.target.value)}
+                    placeholder="Why should these future Tasks run in this order?"
+                    maxLength={4_000}
+                    disabled={busyAction !== undefined}
+                  />
+                </label>
+                <button
+                  className="quiet-button quiet-button-small"
+                  type="button"
+                  onClick={() => void submitReorder()}
+                  disabled={busyAction !== undefined}
+                >
+                  {busyAction === 'reorder' ? 'Saving…' : 'Save order'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {editingTask !== undefined && (
+          <form className="roadmap-task-form" onSubmit={(event) => void submitEdit(event)}>
+            <div className="roadmap-editor-section-heading">
+              <span className="eyebrow">EDIT FUTURE TASK</span>
+              <small>{editingTask.title}</small>
+            </div>
+            <label>
+              <span>Title</span>
+              <input
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+                maxLength={200}
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Objective</span>
+              <textarea
+                value={editObjective}
+                onChange={(event) => setEditObjective(event.target.value)}
+                rows={2}
+                maxLength={16_000}
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Acceptance criteria (one per line)</span>
+              <textarea
+                value={editCriteria}
+                onChange={(event) => setEditCriteria(event.target.value)}
+                rows={3}
+                maxLength={16_000}
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Max attempts</span>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                value={editMaxAttempts}
+                onChange={(event) => setEditMaxAttempts(event.target.value)}
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Revision reason</span>
+              <input
+                value={editReason}
+                onChange={(event) => setEditReason(event.target.value)}
+                maxLength={4_000}
+                placeholder="Explain the safe future change."
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <div className="roadmap-form-actions">
+              <button
+                className="quiet-button quiet-button-small"
+                type="submit"
+                disabled={busyAction !== undefined}
+              >
+                {busyAction?.startsWith('edit:') ? 'Saving…' : 'Save Task revision'}
+              </button>
+              <button
+                className="quiet-button quiet-button-small"
+                type="button"
+                onClick={() => setEditingTaskId(undefined)}
+                disabled={busyAction !== undefined}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+        {!isTerminal && (
+          <form
+            className="roadmap-task-form roadmap-insert-form"
+            onSubmit={(event) => void submitInsert(event)}
+          >
+            <div className="roadmap-editor-section-heading">
+              <span className="eyebrow">INSERT FUTURE TASK</span>
+              <small>Creates a tentative Task after the current future boundary.</small>
+            </div>
+            <label>
+              <span>Title</span>
+              <input
+                value={insertTitle}
+                onChange={(event) => setInsertTitle(event.target.value)}
+                maxLength={200}
+                placeholder="New verification or implementation step"
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Objective</span>
+              <textarea
+                value={insertObjective}
+                onChange={(event) => setInsertObjective(event.target.value)}
+                rows={2}
+                maxLength={16_000}
+                placeholder="What should this future Task accomplish?"
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Acceptance criteria (one per line)</span>
+              <textarea
+                value={insertCriteria}
+                onChange={(event) => setInsertCriteria(event.target.value)}
+                rows={2}
+                maxLength={16_000}
+                placeholder="The expected evidence is available."
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Max attempts</span>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                value={insertMaxAttempts}
+                onChange={(event) => setInsertMaxAttempts(event.target.value)}
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <label>
+              <span>Revision reason</span>
+              <input
+                value={insertReason}
+                onChange={(event) => setInsertReason(event.target.value)}
+                maxLength={4_000}
+                placeholder="Why is this future Task needed?"
+                disabled={busyAction !== undefined}
+                required
+              />
+            </label>
+            <div className="roadmap-form-actions">
+              <button
+                className="quiet-button quiet-button-small"
+                type="submit"
+                disabled={busyAction !== undefined}
+              >
+                {busyAction === 'insert' ? 'Inserting…' : 'Insert Task'}
+              </button>
+            </div>
+          </form>
+        )}
+        {!isTerminal && editableTasks.length === 0 && (
+          <p className="roadmap-editor-note">No editable future Tasks are available right now.</p>
+        )}
+      </details>
     </section>
   );
 }
@@ -1662,6 +2253,23 @@ function formatError(cause: unknown): string {
 function createClientRequestId(prefix: string): string {
   const randomUUID = globalThis.crypto?.randomUUID;
   return `${prefix}:${randomUUID === undefined ? `${Date.now()}-${Math.random().toString(36).slice(2)}` : randomUUID()}`;
+}
+
+function splitCriteria(value: string): readonly string[] {
+  return value
+    .split(/\r?\n/u)
+    .map((criterion) => criterion.trim())
+    .filter((criterion) => criterion.length > 0);
+}
+
+function reconcileTaskOrder(
+  current: readonly string[],
+  expected: readonly string[],
+): readonly string[] {
+  const expectedSet = new Set(expected);
+  const preserved = current.filter((taskId) => expectedSet.has(taskId));
+  const missing = expected.filter((taskId) => !preserved.includes(taskId));
+  return [...preserved, ...missing];
 }
 
 function notificationStatusLabel(status: StoredOrchestratorNotification['status']): string {

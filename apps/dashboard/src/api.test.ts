@@ -195,6 +195,77 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('exposes revision-safe roadmap mutation endpoints', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ goal: { id: 'goal-1' }, task: { id: 'task-1' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.listGoalRoadmapRevisions('goal/1', 20);
+    await api.updateGoalTask('goal/1', 'task/1', {
+      patch: { objective: 'Updated objective' },
+      reason: 'Clarify the future Task.',
+      expectedRevision: 3,
+      idempotencyKey: 'edit-1',
+    });
+    await api.insertGoalTask('goal/1', {
+      title: 'New future Task',
+      objective: 'Add the missing check.',
+      acceptanceCriteria: ['The check is recorded.'],
+      reason: 'Add a verification step.',
+      expectedRevision: 4,
+      idempotencyKey: 'insert-1',
+    });
+    await api.skipGoalTask('goal/1', 'task/1', {
+      reason: 'The future Task is no longer needed.',
+      expectedRevision: 5,
+      idempotencyKey: 'skip-1',
+    });
+    await api.reorderGoalTasks('goal/1', {
+      taskIds: ['task-2', 'task-1'],
+      reason: 'Run the independent check first.',
+      expectedRevision: 6,
+      idempotencyKey: 'reorder-1',
+    });
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/roadmap/revisions?limit=20',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/tasks/task%2F1',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          patch: { objective: 'Updated objective' },
+          reason: 'Clarify the future Task.',
+          expectedRevision: 3,
+          idempotencyKey: 'edit-1',
+        }),
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/tasks',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      4,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/tasks/task%2F1/skip',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      5,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/roadmap/reorder',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('loads the notification center page and updates read or dismissed state', async () => {
     const request = vi
       .fn<typeof fetch>()

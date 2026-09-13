@@ -19,6 +19,10 @@ import type {
   InstructionKind,
   InstructionStatus,
   StoredGoalInstruction,
+  RoadmapReorderResult,
+  RoadmapTaskMutationResult,
+  StoredRoadmapRevision,
+  TaskContractPatch,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -55,6 +59,41 @@ export interface CreateGoalInstructionRequest {
 export interface CreateGoalInstructionResponse {
   readonly goalId: string;
   readonly instruction: StoredGoalInstruction;
+  readonly idempotencyKey?: string;
+}
+
+export interface UpdateGoalTaskRequest {
+  readonly patch: TaskContractPatch;
+  readonly reason: string;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface InsertGoalTaskRequest {
+  readonly title: string;
+  readonly objective: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly reason: string;
+  readonly sequence?: number;
+  readonly tentative?: boolean;
+  readonly parentTaskId?: string;
+  readonly verification?: Record<string, unknown>;
+  readonly constraints?: Record<string, unknown>;
+  readonly maxAttempts?: number;
+  readonly idempotencyKey?: string;
+  readonly expectedRevision?: number;
+}
+
+export interface SkipGoalTaskRequest {
+  readonly reason: string;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface ReorderGoalTasksRequest {
+  readonly taskIds: readonly string[];
+  readonly reason: string;
+  readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
 }
 
@@ -209,6 +248,58 @@ export class DashboardApi {
   ): Promise<CreateGoalInstructionResponse> {
     return this.requestJson<CreateGoalInstructionResponse>(
       `/api/goals/${encodeURIComponent(goalId)}/instructions`,
+      'POST',
+      undefined,
+      input,
+    );
+  }
+
+  listGoalRoadmapRevisions(goalId: string, limit = 100): Promise<readonly StoredRoadmapRevision[]> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    return this.get<readonly StoredRoadmapRevision[]>(
+      `/api/goals/${encodeURIComponent(goalId)}/roadmap/revisions`,
+      query,
+    );
+  }
+
+  updateGoalTask(
+    goalId: string,
+    taskId: string,
+    input: UpdateGoalTaskRequest,
+  ): Promise<RoadmapTaskMutationResult> {
+    return this.requestJson<RoadmapTaskMutationResult>(
+      `/api/goals/${encodeURIComponent(goalId)}/tasks/${encodeURIComponent(taskId)}`,
+      'PATCH',
+      undefined,
+      input,
+    );
+  }
+
+  insertGoalTask(goalId: string, input: InsertGoalTaskRequest): Promise<RoadmapTaskMutationResult> {
+    return this.requestJson<RoadmapTaskMutationResult>(
+      `/api/goals/${encodeURIComponent(goalId)}/tasks`,
+      'POST',
+      undefined,
+      input,
+    );
+  }
+
+  skipGoalTask(
+    goalId: string,
+    taskId: string,
+    input: SkipGoalTaskRequest,
+  ): Promise<RoadmapTaskMutationResult> {
+    return this.requestJson<RoadmapTaskMutationResult>(
+      `/api/goals/${encodeURIComponent(goalId)}/tasks/${encodeURIComponent(taskId)}/skip`,
+      'POST',
+      undefined,
+      input,
+    );
+  }
+
+  reorderGoalTasks(goalId: string, input: ReorderGoalTasksRequest): Promise<RoadmapReorderResult> {
+    return this.requestJson<RoadmapReorderResult>(
+      `/api/goals/${encodeURIComponent(goalId)}/roadmap/reorder`,
       'POST',
       undefined,
       input,
@@ -383,7 +474,7 @@ export class DashboardApi {
 
   private async requestJson<T>(
     pathname: string,
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     query?: URLSearchParams,
     requestBody?: unknown,
   ): Promise<T> {

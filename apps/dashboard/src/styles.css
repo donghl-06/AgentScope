@@ -727,6 +727,179 @@ h3 {
   color: #e8bd72;
   font-size: 10px;
 }
+.roadmap-editor {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #2b4565;
+  border-radius: 9px;
+  background: rgba(10, 25, 43, 0.52);
+}
+.roadmap-editor details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.roadmap-editor details > summary::-webkit-details-marker {
+  display: none;
+}
+.roadmap-editor details > summary::before {
+  content: '▸';
+  color: #7f9dc4;
+  font-size: 12px;
+}
+.roadmap-editor details[open] > summary::before {
+  content: '▾';
+}
+.roadmap-editor details > summary .eyebrow {
+  margin-bottom: 0;
+}
+.roadmap-editor details > summary strong {
+  color: #dbe8f7;
+  font-size: 12px;
+}
+.roadmap-editor-revision {
+  margin-left: auto;
+  color: #8299b7;
+  font-size: 10px;
+}
+.roadmap-editor-note,
+.roadmap-editor-feedback {
+  margin: 9px 0 0;
+  color: #8299b7;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.roadmap-editor-feedback {
+  color: #7ae0b8;
+}
+.roadmap-editor-feedback.roadmap-editor-error {
+  color: #ffacb9;
+}
+.roadmap-order-list,
+.roadmap-task-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #223752;
+}
+.roadmap-editor-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.roadmap-editor-section-heading .eyebrow {
+  margin-bottom: 0;
+}
+.roadmap-editor-section-heading small {
+  color: #8299b7;
+  font-size: 10px;
+  text-align: right;
+}
+.roadmap-order-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-left: 2px solid #365b84;
+  background: #10243c;
+}
+.roadmap-order-number {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 6px;
+  background: #233a59;
+  color: #9bb7d6;
+  font-size: 10px;
+}
+.roadmap-order-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.roadmap-order-copy strong {
+  overflow: hidden;
+  color: #cbdcf0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.roadmap-order-copy small {
+  overflow: hidden;
+  color: #8299b7;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.roadmap-order-actions,
+.roadmap-form-actions,
+.roadmap-reorder-submit,
+.roadmap-inline-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.roadmap-order-actions .quiet-button-small {
+  min-width: 28px;
+  padding-right: 7px;
+  padding-left: 7px;
+}
+.roadmap-inline-action,
+.roadmap-reorder-submit {
+  grid-column: 2 / -1;
+  padding-top: 5px;
+}
+.roadmap-inline-action label,
+.roadmap-reorder-submit label,
+.roadmap-task-form label {
+  display: grid;
+  flex: 1 1 180px;
+  gap: 4px;
+  min-width: 0;
+  color: #8fa8c6;
+  font-size: 10px;
+}
+.roadmap-task-form label input,
+.roadmap-task-form label textarea,
+.roadmap-inline-action label input,
+.roadmap-reorder-submit label input {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #334967;
+  border-radius: 7px;
+  background: #121f34;
+  color: #d7e5f6;
+  font: inherit;
+  font-size: 11px;
+}
+.roadmap-task-form label textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+.roadmap-task-form label input:focus,
+.roadmap-task-form label textarea:focus,
+.roadmap-inline-action label input:focus,
+.roadmap-reorder-submit label input:focus {
+  border-color: #68b1ff;
+  outline: 2px solid rgb(104 177 255 / 25%);
+  outline-offset: 1px;
+}
+.roadmap-task-form .roadmap-editor-section-heading,
+.roadmap-task-form .roadmap-form-actions {
+  grid-column: 1 / -1;
+}
+.roadmap-reorder-submit .quiet-button,
+.roadmap-inline-action .quiet-button {
+  flex: 0 0 auto;
+  align-self: end;
+}
 .goal-task-list li {
   display: grid;
   gap: 6px;
@@ -1536,6 +1709,15 @@ h3 {
   }
   .goal-instruction-content {
     grid-column: 1 / -1;
+  }
+  .roadmap-order-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .roadmap-order-actions,
+  .roadmap-inline-action,
+  .roadmap-reorder-submit {
+    grid-column: 2;
+    justify-content: flex-start;
   }
   .notification-center-heading,
   .notification-row {
