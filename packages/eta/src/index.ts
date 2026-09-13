@@ -24,6 +24,8 @@ export interface EtaConfig {
   readonly lowSignalPenalty?: number;
   readonly verificationPendingPenalty?: number;
   readonly replanningPenalty?: number;
+  /** Confidence multiplier when elapsed time has passed the historical p75. */
+  readonly historyOverrunConfidenceFactor?: number;
   /** Minimum completed comparable sessions before history can influence ETA. */
   readonly minHistorySamples?: number;
 }
@@ -38,6 +40,7 @@ export const DEFAULT_ETA_CONFIG: EtaConfig = {
   lowSignalPenalty: 1.5,
   verificationPendingPenalty: 1.2,
   replanningPenalty: 1.4,
+  historyOverrunConfidenceFactor: 0.65,
   minHistorySamples: 3,
 };
 
@@ -57,6 +60,13 @@ export function estimateEta(
   }
   const history = summarizeHistory(input.history, config.minHistorySamples ?? 3);
   const historyReasons: Array<{ code: string; message: string }> = [];
+  const historyOverrun = history !== undefined && elapsed > history.p75;
+  if (historyOverrun) {
+    historyReasons.push({
+      code: 'history_overrun',
+      message: `Elapsed time has exceeded the historical p75 of ${formatSeconds(history!.p75)}; ETA confidence is reduced.`,
+    });
+  }
   if (input.history !== undefined && history === undefined) {
     historyReasons.push({
       code: 'history_insufficient',
@@ -69,7 +79,14 @@ export function estimateEta(
       return {
         minSeconds: historyRange.minSeconds,
         maxSeconds: historyRange.maxSeconds,
-        confidence: Math.min(0.35, historyConfidence(history.count)),
+        confidence: Math.min(
+          0.35,
+          historyConfidence(history.count) *
+            (historyOverrun
+              ? (config.historyOverrunConfidenceFactor ??
+                DEFAULT_ETA_CONFIG.historyOverrunConfidenceFactor!)
+              : 1),
+        ),
         reasons: [
           ...historyReasons,
           {
@@ -167,12 +184,16 @@ export function estimateEta(
     maxSeconds = Math.min(config.maxSeconds, Math.max(maxSeconds, historyRange.maxSeconds));
   }
   const historyConfidenceValue = history === undefined ? 0 : historyConfidence(history.count);
+  const overrunConfidenceFactor = historyOverrun
+    ? (config.historyOverrunConfidenceFactor ?? DEFAULT_ETA_CONFIG.historyOverrunConfidenceFactor!)
+    : 1;
   return {
     minSeconds,
     maxSeconds,
     confidence: clamp(
       Math.max(input.progress.confidence, historyConfidenceValue) *
-        (input.state.verification.overall === 'passed' ? 1 : 0.8),
+        (input.state.verification.overall === 'passed' ? 1 : 0.8) *
+        overrunConfidenceFactor,
     ),
     reasons: dedupeReasons([...historyReasons, ...reasons]),
   };
@@ -281,5 +302,13 @@ function validateConfig(config: EtaConfig): void {
     if (value !== undefined && (!Number.isFinite(value) || value < 1 || value > 10)) {
       throw new RangeError(`${name} must be between 1 and 10.`);
     }
+  }
+  if (
+    config.historyOverrunConfidenceFactor !== undefined &&
+    (!Number.isFinite(config.historyOverrunConfidenceFactor) ||
+      config.historyOverrunConfidenceFactor <= 0 ||
+      config.historyOverrunConfidenceFactor > 1)
+  ) {
+    throw new RangeError('historyOverrunConfidenceFactor must be in (0, 1].');
   }
 }

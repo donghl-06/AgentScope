@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
 
-import { estimateEta } from './index.js';
+import { DEFAULT_ETA_CONFIG, estimateEta } from './index.js';
 
 function state(overrides: Partial<SessionState> = {}): SessionState {
   return { ...createInitialSessionState('session-1', 0), ...overrides };
@@ -146,6 +146,44 @@ describe('ETA engine', () => {
     const second = estimateEta(input);
     expect(first).toEqual(second);
     expect(first.reasons.map((reason) => reason.code)).toContain('low_signal_penalty');
+  });
+
+  it('lowers confidence and marks the historical range overdue after p75', () => {
+    const history = { durationsSeconds: [90, 100, 110, 120, 130], scope: 'claude-code-tty' };
+    const onTime = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 100,
+      history,
+    });
+    const overdue = estimateEta({
+      state: state(),
+      progress: { value: 0.5, confidence: 0.8, reasons: [] },
+      elapsedSeconds: 150,
+      history,
+    });
+
+    expect(overdue.reasons.map((reason) => reason.code)).toContain('history_overrun');
+    expect(overdue.confidence).toBeLessThan(onTime.confidence);
+    expect(overdue.minSeconds).toBe(0);
+    expect(overdue.maxSeconds).toBeGreaterThanOrEqual(overdue.minSeconds);
+  });
+
+  it('validates the overrun confidence factor as a confidence multiplier', () => {
+    expect(() =>
+      estimateEta(
+        {
+          state: state(),
+          progress: { value: 0.5, confidence: 0.8, reasons: [] },
+          elapsedSeconds: 150,
+          history: { durationsSeconds: [90, 100, 110] },
+        },
+        {
+          ...DEFAULT_ETA_CONFIG,
+          historyOverrunConfidenceFactor: 2,
+        },
+      ),
+    ).toThrow(RangeError);
   });
 
   it('uses a comparable-session history baseline after the cold-start threshold', () => {
