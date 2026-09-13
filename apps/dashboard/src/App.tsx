@@ -15,6 +15,7 @@ import {
   type CreateGoalRequest,
   type DashboardLiveNotification,
   type GoalDetail,
+  type SessionDetail as DashboardSessionDetail,
 } from './api.js';
 import { evidenceBelongsToTurn, evidencePayloadSummary } from './evidence.js';
 import { formatDuration, formatTimestamp, statusLabel } from './format.js';
@@ -32,8 +33,10 @@ export function App() {
   const [goals, setGoals] = useState<readonly StoredGoal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
   const [goalActionBusy, setGoalActionBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>();
-  const [selected, setSelected] = useState<StoredSession>();
+  const [selectedId, setSelectedId] = useState<string | undefined>(() =>
+    loadSelectionFromUrl('session'),
+  );
+  const [selected, setSelected] = useState<DashboardSessionDetail>();
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
   const [turns, setTurns] = useState<readonly StoredTurn[]>([]);
   const [evidence, setEvidence] = useState<readonly StoredObserverEvidence[]>([]);
@@ -332,6 +335,10 @@ export function App() {
   }, [selectedId]);
 
   useEffect(() => {
+    syncSelectionToUrl('session', selectedId);
+  }, [selectedId]);
+
+  useEffect(() => {
     let socket: WebSocket | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let reconnectAttempt = 0;
@@ -491,6 +498,7 @@ export function App() {
         actionBusy={goalActionBusy}
         onRefresh={() => void refreshGoals()}
         onCreate={submitGoal}
+        onSelectSession={setSelectedId}
       />
 
       <section className="content-grid">
@@ -588,12 +596,14 @@ function GoalPanel({
   actionBusy,
   onRefresh,
   onCreate,
+  onSelectSession,
 }: {
   goals: readonly StoredGoal[];
   loading: boolean;
   actionBusy: boolean;
   onRefresh: () => void;
   onCreate: (input: CreateGoalRequest) => Promise<void>;
+  onSelectSession: (sessionId: string) => void;
 }) {
   type GoalStatusFilter = 'all' | StoredGoal['status'];
   type GoalHistoryFilter = {
@@ -606,7 +616,15 @@ function GoalPanel({
   const [workspace, setWorkspace] = useState('.');
   const [provider, setProvider] = useState<'claude' | 'codex' | 'codex-app-server'>('claude');
   const [prompt, setPrompt] = useState('');
-  const [selectedGoalId, setSelectedGoalId] = useState<string>();
+  const [selectedGoalId, setSelectedGoalId] = useState<string | undefined>(() =>
+    loadSelectionFromUrl('goal'),
+  );
+  const [focusedTaskId, setFocusedTaskId] = useState<string | undefined>(() =>
+    loadSelectionFromUrl('task'),
+  );
+  const [focusedAttemptId, setFocusedAttemptId] = useState<string | undefined>(() =>
+    loadSelectionFromUrl('attempt'),
+  );
   const [selectedGoal, setSelectedGoal] = useState<GoalDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [goalError, setGoalError] = useState<string>();
@@ -687,7 +705,7 @@ function GoalPanel({
     setPrompt('');
   };
 
-  const inspectGoal = async (goalId: string) => {
+  const inspectGoal = useCallback(async (goalId: string) => {
     setSelectedGoalId(goalId);
     setDetailLoading(true);
     try {
@@ -698,7 +716,25 @@ function GoalPanel({
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    syncSelectionToUrl('goal', selectedGoalId);
+  }, [selectedGoalId]);
+
+  useEffect(() => {
+    syncSelectionToUrl('task', focusedTaskId);
+  }, [focusedTaskId]);
+
+  useEffect(() => {
+    syncSelectionToUrl('attempt', focusedAttemptId);
+  }, [focusedAttemptId]);
+
+  useEffect(() => {
+    if (selectedGoalId !== undefined && selectedGoal === undefined) {
+      void inspectGoal(selectedGoalId);
+    }
+  }, [inspectGoal, selectedGoal, selectedGoalId]);
 
   const controlGoal = async (action: 'pause' | 'abort' | 'continue') => {
     if (selectedGoalId === undefined) return;
@@ -913,25 +949,81 @@ function GoalPanel({
                 </span>
               </div>
               <ol className="goal-task-list">
-                {selectedGoal.tasks.map((task) => (
-                  <li key={task.id}>
-                    <span>{task.sequence}</span>
-                    <div>
-                      <strong>{task.title}</strong>
-                      <small>
-                        {statusLabel(task.status)} ·{' '}
-                        {selectedGoal.taskDetails?.find((item) => item.task.id === task.id)
-                          ?.attempts.length ?? 0}{' '}
-                        attempt(s) · verification{' '}
-                        {statusLabel(
-                          selectedGoal.taskDetails
-                            ?.find((item) => item.task.id === task.id)
-                            ?.verifications.at(-1)?.status ?? 'UNKNOWN',
-                        )}
-                      </small>
-                    </div>
-                  </li>
-                ))}
+                {selectedGoal.tasks.map((task) => {
+                  const taskDetail = selectedGoal.taskDetails?.find(
+                    (item) => item.task.id === task.id,
+                  );
+                  const focused = focusedTaskId === task.id;
+                  return (
+                    <li key={task.id} className={focused ? 'goal-task-focused' : undefined}>
+                      <button
+                        className="goal-task-select"
+                        type="button"
+                        onClick={() => setFocusedTaskId(focused ? undefined : task.id)}
+                        aria-expanded={focused}
+                      >
+                        <span>{task.sequence}</span>
+                        <span>
+                          <strong>{task.title}</strong>
+                          <small>
+                            {statusLabel(task.status)} · {taskDetail?.attempts.length ?? 0}{' '}
+                            attempt(s) · verification{' '}
+                            {statusLabel(taskDetail?.verifications.at(-1)?.status ?? 'UNKNOWN')}
+                          </small>
+                        </span>
+                      </button>
+                      {focused && taskDetail !== undefined && (
+                        <div className="goal-task-detail">
+                          {taskDetail.attempts.length === 0 ? (
+                            <small>No attempts recorded.</small>
+                          ) : (
+                            taskDetail.attempts.map((attempt) => (
+                              <div className="goal-attempt-row" key={attempt.id}>
+                                <div>
+                                  <strong>Attempt {attempt.attemptNumber}</strong>
+                                  <small>
+                                    {statusLabel(attempt.status)} · {shortId(attempt.id)}
+                                  </small>
+                                </div>
+                                {attempt.sessionId === undefined ? (
+                                  <span className="goal-reference-missing">
+                                    Session unavailable
+                                  </span>
+                                ) : (
+                                  <button
+                                    className="quiet-button quiet-button-small"
+                                    type="button"
+                                    onClick={() => {
+                                      setFocusedAttemptId(attempt.id);
+                                      onSelectSession(attempt.sessionId!);
+                                    }}
+                                  >
+                                    Open Session
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                          )}
+                          {taskDetail.verifications.length === 0 ? (
+                            <small>No verification runs recorded.</small>
+                          ) : (
+                            <div className="goal-verification-list">
+                              <span className="eyebrow">VERIFICATION</span>
+                              {taskDetail.verifications.map((verification) => (
+                                <div className="goal-verification-row" key={verification.id}>
+                                  <strong>{statusLabel(verification.status)}</strong>
+                                  <small>
+                                    {shortId(verification.id)} · {verification.reason}
+                                  </small>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ol>
               <div className="goal-event-list" aria-label="Goal event timeline">
                 <span className="eyebrow">EVENT TIMELINE</span>
@@ -1040,6 +1132,27 @@ function mergeGoals(
   return [...byId.values()].sort(
     (left, right) => right.updatedAt - left.updatedAt || right.id.localeCompare(left.id),
   );
+}
+
+function loadSelectionFromUrl(key: 'goal' | 'session' | 'task' | 'attempt'): string | undefined {
+  if (typeof globalThis.location === 'undefined') return undefined;
+  const value = new URLSearchParams(globalThis.location.search).get(key);
+  return value === null || value.length === 0 ? undefined : value;
+}
+
+function syncSelectionToUrl(
+  key: 'goal' | 'session' | 'task' | 'attempt',
+  value: string | undefined,
+): void {
+  if (typeof globalThis.history === 'undefined' || typeof globalThis.location === 'undefined') {
+    return;
+  }
+  const params = new URLSearchParams(globalThis.location.search);
+  if (value === undefined) params.delete(key);
+  else params.set(key, value);
+  const query = params.toString();
+  const next = `${globalThis.location.pathname}${query.length === 0 ? '' : `?${query}`}${globalThis.location.hash}`;
+  globalThis.history.replaceState(null, '', next);
 }
 
 function loadGoalHistoryFilter(): {
@@ -1534,7 +1647,7 @@ function SessionDetail({
   onSelectSession,
   onLoadMore,
 }: {
-  session: StoredSession;
+  session: DashboardSessionDetail;
   sessions: readonly StoredSession[];
   events: readonly StoredEvent[];
   turns: readonly StoredTurn[];
@@ -1600,6 +1713,7 @@ function SessionDetail({
         sessions={sessions}
         onSelectSession={onSelectSession}
       />
+      <SessionGoalReferences session={session} />
       <TurnList turns={turns} evidence={evidence} events={events} />
       <div className="evidence-card">
         <span className="eyebrow">ACTIVITY</span>
@@ -1683,6 +1797,26 @@ function SessionDetail({
         </ol>
       )}
     </>
+  );
+}
+
+function SessionGoalReferences({ session }: { session: DashboardSessionDetail }) {
+  const references = session.orchestrator?.references ?? [];
+  if (references.length === 0) return null;
+  return (
+    <div className="session-goal-references" aria-label="Orchestrator Goal references">
+      <span className="eyebrow">ORCHESTRATOR CONTEXT</span>
+      {references.map((reference) => (
+        <div className="session-goal-reference" key={reference.attemptId}>
+          <strong>Goal {shortId(reference.goalId)}</strong>
+          <small>
+            {statusLabel(reference.goalStatus)} · Task {shortId(reference.taskId)} ·{' '}
+            {reference.taskTitle} · Attempt {reference.attemptNumber} ·{' '}
+            {statusLabel(reference.attemptStatus)}
+          </small>
+        </div>
+      ))}
+    </div>
   );
 }
 

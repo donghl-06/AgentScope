@@ -1715,7 +1715,12 @@ export function createServer(options: ServerOptions): FastifyInstance {
     async (request, reply) => {
       try {
         const { id } = request.params as { id: string };
-        return reply.send(options.repository.getSession(id));
+        const session = options.repository.getSession(id);
+        const references = options.orchestratorRepository?.listSessionGoalReferences(id);
+        return reply.send({
+          ...session,
+          ...(references === undefined ? {} : { orchestrator: { references } }),
+        });
       } catch (error) {
         return sendError(reply, error);
       }

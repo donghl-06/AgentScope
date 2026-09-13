@@ -15,6 +15,7 @@ import type {
   StoredGoalMetricSnapshot,
   StoredOrchestratorNotification,
   OrchestratorNotificationPage,
+  StoredSessionGoalReference,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -50,6 +51,12 @@ export interface GoalDetail {
   readonly events: readonly StoredOrchestratorEvent[];
   readonly metrics?: readonly StoredGoalMetricSnapshot[];
   readonly notifications?: readonly StoredOrchestratorNotification[];
+}
+
+export interface SessionDetail extends StoredSession {
+  readonly orchestrator?: {
+    readonly references: readonly StoredSessionGoalReference[];
+  };
 }
 
 export interface DashboardLiveNotification {
@@ -207,8 +214,8 @@ export class DashboardApi {
     );
   }
 
-  getSession(sessionId: string): Promise<StoredSession> {
-    return this.get<StoredSession>(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  getSession(sessionId: string): Promise<SessionDetail> {
+    return this.get<SessionDetail>(`/api/sessions/${encodeURIComponent(sessionId)}`);
   }
 
   hideSession(sessionId: string): Promise<{ id: string; hidden: boolean }> {

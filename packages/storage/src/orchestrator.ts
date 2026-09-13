@@ -165,6 +165,18 @@ export interface StoredAttempt {
   readonly endedAt?: number;
 }
 
+/** Safe, non-content association shown when a Monitor Session came from a Goal Attempt. */
+export interface StoredSessionGoalReference {
+  readonly goalId: string;
+  readonly goalStatus: GoalStatus;
+  readonly taskId: string;
+  readonly taskTitle: string;
+  readonly taskStatus: TaskStatus;
+  readonly attemptId: string;
+  readonly attemptNumber: number;
+  readonly attemptStatus: AttemptStatus;
+}
+
 export interface StoredVerificationRun {
   readonly id: string;
   readonly taskId: string;
@@ -2506,6 +2518,28 @@ export class OrchestratorRepository {
     return rows.map(decodeAttempt);
   }
 
+  listSessionGoalReferences(sessionId: string): readonly StoredSessionGoalReference[] {
+    const rows = this.client
+      .prepare(
+        `SELECT
+           g.id AS goal_id,
+           g.status AS goal_status,
+           t.id AS task_id,
+           t.title AS task_title,
+           t.status AS task_status,
+           a.id AS attempt_id,
+           a.attempt_number,
+           a.status AS attempt_status
+         FROM task_attempts a
+         INNER JOIN tasks t ON t.id = a.task_id
+         INNER JOIN goals g ON g.id = t.goal_id
+         WHERE a.session_id = ?
+         ORDER BY a.created_at DESC, a.id DESC`,
+      )
+      .all(sessionId) as SessionGoalReferenceRow[];
+    return rows.map(decodeSessionGoalReference);
+  }
+
   updateAttempt(
     id: string,
     patch: {
@@ -2851,6 +2885,17 @@ interface NotificationRow {
   read_at: number | null;
 }
 
+interface SessionGoalReferenceRow {
+  goal_id: string;
+  goal_status: string;
+  task_id: string;
+  task_title: string;
+  task_status: string;
+  attempt_id: string;
+  attempt_number: number;
+  attempt_status: string;
+}
+
 interface CommandRow {
   id: string;
   goal_id: string;
@@ -3079,6 +3124,22 @@ function decodeNotification(row: NotificationRow): StoredOrchestratorNotificatio
     createdAt: row.created_at,
     ...(row.delivered_at === null ? {} : { deliveredAt: row.delivered_at }),
     ...(row.read_at === null ? {} : { readAt: row.read_at }),
+  };
+}
+
+function decodeSessionGoalReference(row: SessionGoalReferenceRow): StoredSessionGoalReference {
+  assertGoalStatus(row.goal_status);
+  assertTaskStatus(row.task_status);
+  assertAttemptStatus(row.attempt_status);
+  return {
+    goalId: row.goal_id,
+    goalStatus: row.goal_status,
+    taskId: row.task_id,
+    taskTitle: row.task_title,
+    taskStatus: row.task_status,
+    attemptId: row.attempt_id,
+    attemptNumber: row.attempt_number,
+    attemptStatus: row.attempt_status,
   };
 }
 

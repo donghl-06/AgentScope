@@ -378,6 +378,62 @@ h3 {
   outline: 2px solid rgb(104 177 255 / 25%);
   outline-offset: 1px;
 }
+.goal-history-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(120px, 0.7fr) minmax(120px, 0.8fr) minmax(
+      160px,
+      1.2fr
+    ) auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.goal-history-toolbar label:not(.visibility-toggle) {
+  display: grid;
+  gap: 4px;
+  color: #8fa8c6;
+  font-size: 10px;
+}
+.goal-history-toolbar input,
+.goal-history-toolbar select {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #334967;
+  border-radius: 8px;
+  background: #121f34;
+  color: #d7e5f6;
+  font: inherit;
+  font-size: 11px;
+}
+.goal-history-toolbar input:focus,
+.goal-history-toolbar select:focus {
+  border-color: #68b1ff;
+  outline: 2px solid rgb(104 177 255 / 25%);
+  outline-offset: 1px;
+}
+.goal-history-list {
+  display: grid;
+  gap: 16px;
+}
+.goal-history-list > section {
+  display: grid;
+  gap: 7px;
+}
+.goal-history-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.goal-history-section-heading .eyebrow {
+  margin-bottom: 0;
+}
+.goal-history-section-heading small {
+  color: #8299b7;
+  font-size: 10px;
+}
+.goal-history-load-more {
+  margin-top: 12px;
+}
 .goal-list {
   display: grid;
   gap: 9px;
@@ -502,13 +558,24 @@ h3 {
 }
 .goal-task-list li {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
+  gap: 6px;
   padding: 7px 0;
   border-top: 1px solid #223752;
 }
-.goal-task-list li > span {
+.goal-task-select {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.goal-task-select > span:first-child {
   display: grid;
   width: 22px;
   height: 22px;
@@ -518,24 +585,100 @@ h3 {
   color: #9bb7d6;
   font-size: 10px;
 }
-.goal-task-list li div {
+.goal-task-select > span:last-child {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
-.goal-task-list li strong,
-.goal-task-list li small {
+.goal-task-select strong,
+.goal-task-select small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.goal-task-list li strong {
+.goal-task-select strong {
   color: #cbdcf0;
   font-size: 11px;
 }
-.goal-task-list li small {
+.goal-task-select small {
   color: #8299b7;
   font-size: 10px;
+}
+.goal-task-focused {
+  padding-bottom: 10px;
+}
+.goal-task-detail {
+  display: grid;
+  gap: 7px;
+  margin-left: 32px;
+  padding: 8px 9px;
+  border-left: 2px solid #315276;
+  background: rgba(8, 19, 34, 0.25);
+}
+.goal-attempt-row,
+.goal-verification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.goal-attempt-row > div,
+.goal-verification-row {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.goal-attempt-row strong,
+.goal-verification-row strong {
+  color: #cbdcf0;
+  font-size: 10px;
+}
+.goal-attempt-row small,
+.goal-verification-row small,
+.goal-reference-missing {
+  overflow: hidden;
+  color: #8299b7;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goal-reference-missing {
+  color: #e8bd72;
+}
+.goal-verification-list {
+  display: grid;
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px solid #223752;
+}
+.goal-verification-list .eyebrow {
+  margin-bottom: 0;
+}
+.session-goal-references {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 2px solid #315276;
+  background: rgba(8, 19, 34, 0.25);
+}
+.session-goal-references .eyebrow {
+  margin-bottom: 0;
+}
+.session-goal-reference {
+  display: grid;
+  gap: 3px;
+}
+.session-goal-reference strong {
+  color: #cbdcf0;
+  font-size: 11px;
+}
+.session-goal-reference small {
+  overflow: hidden;
+  color: #8299b7;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .goal-event-list {
   display: grid;
@@ -1214,6 +1357,9 @@ h3 {
   .goal-form-prompt {
     grid-column: 1 / -1;
   }
+  .goal-history-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
   .notification-center-heading,
   .notification-row {
     align-items: flex-start;
@@ -1247,5 +1393,8 @@ h3 {
   .session-row-main .status-pill {
     grid-column: 2;
     justify-self: start;
+  }
+  .goal-history-toolbar {
+    grid-template-columns: 1fr;
   }
 }

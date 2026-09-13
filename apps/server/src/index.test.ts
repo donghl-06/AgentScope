@@ -265,6 +265,67 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('includes safe Goal, Task, and Attempt references on linked Monitor Sessions', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'session-reference-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Link this attempt to its Monitor Session.',
+      provider: 'mock',
+    });
+    const task = orchestratorRepository.createTask({
+      id: 'session-reference-task',
+      goalId: goal.id,
+      title: 'Linked task',
+      objective: 'Expose safe context.',
+      acceptanceCriteria: ['The context is visible.'],
+      sequence: 1,
+    });
+    const state = createInitialSessionState('session-reference-1', 1_700_000_000_000);
+    repository.createSession({
+      id: state.sessionId,
+      provider: 'mock',
+      adapter: 'mock',
+      startedAt: state.startedAt,
+      capabilities: {},
+      state,
+    });
+    orchestratorRepository.createAttempt({
+      id: 'session-reference-attempt',
+      taskId: task.id,
+      attemptNumber: 1,
+      provider: 'mock',
+      sessionId: state.sessionId,
+    });
+    const app = createServer({ repository, orchestratorRepository, recoverOnStart: false });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect((await app.inject(`/api/sessions/${state.sessionId}`)).json()).toMatchObject({
+      id: state.sessionId,
+      orchestrator: {
+        references: [
+          {
+            goalId: goal.id,
+            goalStatus: 'CREATED',
+            taskId: task.id,
+            taskTitle: task.title,
+            taskStatus: 'PENDING',
+            attemptId: 'session-reference-attempt',
+            attemptNumber: 1,
+            attemptStatus: 'CREATED',
+          },
+        ],
+      },
+    });
+  });
+
   it('lists and resolves approval requests through HTTP', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);
