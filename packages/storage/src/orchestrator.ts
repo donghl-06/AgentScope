@@ -1800,6 +1800,16 @@ export class OrchestratorRepository {
     return rows.map(decodeMemorySnapshot);
   }
 
+  getLatestMemorySnapshot(goalId: string): StoredMemorySnapshot | undefined {
+    this.getGoal(goalId);
+    const row = this.client
+      .prepare(
+        'SELECT * FROM memory_snapshots WHERE goal_id = ? ORDER BY revision DESC LIMIT 1',
+      )
+      .get(goalId) as MemorySnapshotRow | undefined;
+    return row === undefined ? undefined : decodeMemorySnapshot(row);
+  }
+
   createApprovalRequest(input: CreateApprovalRequestInput): StoredApprovalRequest {
     const goal = this.getGoal(input.goalId);
     if (input.taskId !== undefined) {

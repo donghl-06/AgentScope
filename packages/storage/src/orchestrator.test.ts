@@ -378,6 +378,10 @@ describe('OrchestratorRepository', () => {
       expect(repository.getMemorySnapshot(memory.id).sources).toEqual([
         { kind: 'instruction', id: instruction.id },
       ]);
+      expect(repository.getLatestMemorySnapshot('v1-control-goal')).toMatchObject({
+        id: memory.id,
+        revision: 1,
+      });
 
       const approval = repository.createApprovalRequest({
         id: 'v1-approval-1',

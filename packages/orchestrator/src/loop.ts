@@ -1211,7 +1211,7 @@ export class OrchestratorEngine {
     });
     repository.updateGoalDocuments(goal.id, { executionMemory: snapshot.memory }, this.now());
     const updatedGoal = repository.getGoal(goal.id);
-    const previousSnapshot = repository.listMemorySnapshots(goal.id, 500).at(-1);
+    const previousSnapshot = repository.getLatestMemorySnapshot(goal.id);
     const memoryRevision = (previousSnapshot?.revision ?? 0) + 1;
     const storedSnapshot = repository.createMemorySnapshot({
       id: `${goal.id}:memory:${updatedGoal.activeRevision}:${randomUUID()}`,
