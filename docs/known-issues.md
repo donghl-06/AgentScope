@@ -1,7 +1,9 @@
-# Known Issues and V0 Boundaries
+# Known Issues and V1 Boundaries
 
-This document records limitations that are known and intentional for the V0
-local-first release. They are not silently treated as supported behavior.
+This document records limitations that are known and intentional for the V1
+local-first release. They are not silently treated as supported behavior. The
+current capability and platform matrix is in [V1 验收矩阵](v1-acceptance.md),
+and repeatable measurements are in the [V1 performance baseline](findings/v1-performance-baseline.md).
 
 ## Windows console interruption
 
@@ -16,7 +18,7 @@ may remain `running` until:
 node .\apps\cli\bin\agent-scope.mjs recover
 ```
 
-The recovery command is the supported V0 fallback. It now also marks queued,
+The recovery command is the supported fallback. It now also marks queued,
 running, and waiting turns owned by the stale session as `interrupted` and
 stores a bounded recovery evidence record; explicitly blocked turns remain
 blocked. Fully atomic Ctrl+C and Ctrl+Break behavior across every
@@ -98,7 +100,7 @@ call, but Windows Ctrl+C caused the wrapper to exit with code 1 and persisted th
 isolated session as `failed` rather than `interrupted`. No Claude/sleep child was
 left behind. This confirms cleanup but not atomic terminal-status persistence;
 use `agent-scope recover` for stale sessions and do not treat direct Ctrl+C as a
-fully reliable V0 transition yet.
+fully atomic transition across every Windows console host.
 
 ## WSL2 prerequisite
 
@@ -121,7 +123,8 @@ installed; it is not a standalone production Dashboard bundle. Use
 
 ## Performance and scale
 
-V0 has a four-concurrent-Mock baseline, but does not promise a P95 latency,
+V1 has both a four-concurrent-Mock baseline and a short synthetic history
+baseline, but does not promise a P95 latency,
 CPU/memory ceiling, or maximum session/event count yet. These measurements
 remain release-hardening work.
 
@@ -132,6 +135,13 @@ measured event-to-WebSocket receipt at P50 219 ms/P95 397 ms and verified cursor
 recovery after a disconnect. These are repeatable diagnostic baselines; browser paint
 latency, multi-hour real-provider capacity, and a supported maximum session count are
 still not claimed.
+
+The 2026-09-13 V1 baseline additionally covered 180 Goals, 720 Tasks, 4520
+Events, paginated history, detail reads, 200 live broadcasts and a 120-cycle
+serial soak. The results are recorded in
+[`docs/findings/v1-performance-baseline.md`](findings/v1-performance-baseline.md);
+they remain machine-specific short measurements, not a production capacity
+claim.
 
 The server polls SQLite changes written by independent CLI processes at a bounded
 interval so Dashboard WebSocket updates do not depend on an in-process repository
@@ -144,4 +154,17 @@ catch-up. Browser paint latency and long-duration capacity are not yet claimed.
 
 Raw provider output is not persisted by default. A general-purpose raw-log
 opt-in, retention policy, and cleanup command are not yet exposed as a stable
-V0 feature.
+V1 feature.
+
+## V1 control-plane boundaries
+
+Goal Archive/Restore is implemented for PAUSED, NEEDS_HUMAN and terminal Goals
+and leaves all task, attempt, verification and event history intact. Active Goals
+cannot be archived. Session Hide/Delete remains a separate operation; Delete is
+irreversible and is refused while a Session is running.
+
+Human Instructions, roadmap revisions, approvals, leases, retries and recovery
+are persisted and audited, but V1 remains single-Worker and single-active-Goal.
+There is no parallel Worker, DAG scheduler, remote Worker, automatic merge, or
+cross-provider routing. A missing provider capability is rendered as
+`Unknown`/`Unavailable` rather than inferred.
