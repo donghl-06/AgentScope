@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13",
+  "profiles": [
+    {
+      "schemaVersion": 1,
+      "provider": "claude",
+      "adapter": "claude-code",
+      "cliVersion": "2.1.263",
+      "observedAt": "2026-09-13",
+      "capabilities": {
+        "structuredEvents": {
+          "status": "verified",
+          "evidence": "stream-json help and redacted adapter fixtures"
+        },
+        "sessionInfo": { "status": "verified", "evidence": "system init session id fixture" },
+        "tokenUsage": { "status": "verified", "evidence": "result usage fixture" },
+        "toolCalls": { "status": "verified", "evidence": "assistant tool-use fixture" },
+        "fileEvents": {
+          "status": "unavailable",
+          "evidence": "no native file event contract in observed stream",
+          "fallback": "filesystem observer"
+        },
+        "commandEvents": { "status": "verified", "evidence": "command lifecycle fixture" },
+        "milestones": {
+          "status": "observed",
+          "evidence": "provider event mapping when emitted",
+          "fallback": "activity and evidence projection"
+        },
+        "permissionRequests": {
+          "status": "observed",
+          "evidence": "interactive approval path",
+          "fallback": "manual provider prompt"
+        },
+        "interrupts": { "status": "observed", "evidence": "PTY Ctrl+C and signal handling" },
+        "tty": { "status": "verified", "evidence": "Windows PTY smoke" },
+        "resume": {
+          "status": "available",
+          "evidence": "--continue and --resume help",
+          "fallback": "independent AgentScope execution"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "provider": "claude",
+      "adapter": "claude-code-tty",
+      "cliVersion": "2.1.263",
+      "observedAt": "2026-09-13",
+      "capabilities": {
+        "structuredEvents": {
+          "status": "unavailable",
+          "evidence": "interactive TTY has no native JSONL side channel",
+          "fallback": "PTY/process/filesystem/Git observers"
+        },
+        "sessionInfo": {
+          "status": "available",
+          "evidence": "AgentScope execution identity",
+          "fallback": "provider session id when explicitly reported"
+        },
+        "tokenUsage": {
+          "status": "unavailable",
+          "evidence": "usage frames require structured print mode",
+          "fallback": "not estimated"
+        },
+        "toolCalls": {
+          "status": "unavailable",
+          "evidence": "private tool frames are not exposed by TTY",
+          "fallback": "process and filesystem evidence"
+        },
+        "fileEvents": { "status": "observed", "evidence": "scoped filesystem observer" },
+        "commandEvents": {
+          "status": "unavailable",
+          "evidence": "provider command text is not parsed from TTY",
+          "fallback": "process observer"
+        },
+        "milestones": {
+          "status": "unavailable",
+          "evidence": "no native milestone stream in TTY",
+          "fallback": "activity projection"
+        },
+        "permissionRequests": {
+          "status": "observed",
+          "evidence": "native interactive prompt remains in terminal",
+          "fallback": "manual confirmation"
+        },
+        "interrupts": { "status": "observed", "evidence": "PTY Ctrl+C forwarding and recovery" },
+        "tty": { "status": "verified", "evidence": "Windows PTY smoke" },
+        "resume": {
+          "status": "available",
+          "evidence": "explicit provider flags are preserved",
+          "fallback": "independent AgentScope execution"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "provider": "codex",
+      "adapter": "codex-cli",
+      "cliVersion": "0.153.4",
+      "observedAt": "2026-09-13",
+      "capabilities": {
+        "structuredEvents": {
+          "status": "verified",
+          "evidence": "exec --json help and redacted JSONL fixtures"
+        },
+        "sessionInfo": { "status": "verified", "evidence": "thread.started fixture" },
+        "tokenUsage": { "status": "verified", "evidence": "turn.completed usage fixture" },
+        "toolCalls": { "status": "verified", "evidence": "command_execution item fixture" },
+        "fileEvents": {
+          "status": "observed",
+          "evidence": "workspace observer and command item",
+          "fallback": "filesystem observer"
+        },
+        "commandEvents": { "status": "verified", "evidence": "command_execution item fixture" },
+        "milestones": {
+          "status": "unavailable",
+          "evidence": "no stable milestone event observed",
+          "fallback": "activity projection"
+        },
+        "permissionRequests": {
+          "status": "conservative",
+          "evidence": "non-interactive exec does not provide an approval UI",
+          "fallback": "TTY or human intervention"
+        },
+        "interrupts": { "status": "observed", "evidence": "process exit and recovery smoke" },
+        "tty": { "status": "verified", "evidence": "shared PTY wrapper smoke" },
+        "resume": {
+          "status": "available",
+          "evidence": "exec resume help",
+          "fallback": "independent AgentScope execution"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "provider": "codex",
+      "adapter": "codex-cli-tty",
+      "cliVersion": "0.153.4",
+      "observedAt": "2026-09-13",
+      "capabilities": {
+        "structuredEvents": {
+          "status": "unavailable",
+          "evidence": "interactive TTY has no JSONL side channel",
+          "fallback": "PTY/process/filesystem/Git observers"
+        },
+        "sessionInfo": {
+          "status": "available",
+          "evidence": "AgentScope execution identity",
+          "fallback": "provider id when explicitly reported"
+        },
+        "tokenUsage": {
+          "status": "unavailable",
+          "evidence": "usage is exposed by exec --json only",
+          "fallback": "not estimated"
+        },
+        "toolCalls": {
+          "status": "unavailable",
+          "evidence": "provider tool lifecycle is not exposed by TTY",
+          "fallback": "process and filesystem evidence"
+        },
+        "fileEvents": { "status": "observed", "evidence": "scoped filesystem observer" },
+        "commandEvents": {
+          "status": "unavailable",
+          "evidence": "provider command text is not parsed from TTY",
+          "fallback": "process observer"
+        },
+        "milestones": {
+          "status": "unavailable",
+          "evidence": "no native milestone stream in TTY",
+          "fallback": "activity projection"
+        },
+        "permissionRequests": {
+          "status": "observed",
+          "evidence": "native interactive approval stays in terminal",
+          "fallback": "manual confirmation"
+        },
+        "interrupts": { "status": "observed", "evidence": "PTY Ctrl+C forwarding and recovery" },
+        "tty": { "status": "verified", "evidence": "shared PTY wrapper smoke" },
+        "resume": {
+          "status": "available",
+          "evidence": "provider flags are preserved",
+          "fallback": "independent AgentScope execution"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "provider": "codex",
+      "adapter": "codex-app-server",
+      "cliVersion": "0.153.4",
+      "observedAt": "2026-09-13",
+      "capabilities": {
+        "structuredEvents": { "status": "verified", "evidence": "app-server JSON-RPC stdio probe" },
+        "sessionInfo": { "status": "verified", "evidence": "thread/start and thread/resume probe" },
+        "tokenUsage": { "status": "verified", "evidence": "tokenUsage notification fixture" },
+        "toolCalls": { "status": "verified", "evidence": "item lifecycle probe" },
+        "fileEvents": { "status": "verified", "evidence": "fileChange item probe" },
+        "commandEvents": { "status": "verified", "evidence": "commandExecution item probe" },
+        "milestones": {
+          "status": "observed",
+          "evidence": "turn plan notification when emitted",
+          "fallback": "activity projection"
+        },
+        "permissionRequests": {
+          "status": "conservative",
+          "evidence": "approval request is declined without an approval UI",
+          "fallback": "TTY or human intervention"
+        },
+        "interrupts": { "status": "verified", "evidence": "turn interrupt request probe" },
+        "tty": {
+          "status": "unavailable",
+          "evidence": "JSON-RPC stdio is not an interactive terminal",
+          "fallback": "codex-cli-tty"
+        },
+        "resume": {
+          "status": "verified",
+          "evidence": "thread/resume probe",
+          "fallback": "independent AgentScope execution"
+        }
+      }
+    }
+  ]
+}
