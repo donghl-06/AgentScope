@@ -410,6 +410,11 @@ export function App() {
         socket.addEventListener('open', () => {
           reconnectAttempt = 0;
           setConnectionState('connected');
+          // A reconnect can happen after the server missed one or more broadcasts.
+          // Reload the list projections as well as the selected detail so the UI
+          // converges without requiring a manual refresh.
+          void refreshSessions();
+          void refreshGoals();
           const selectedSessionId = selectedIdRef.current;
           if (selectedSessionId !== undefined) {
             void refreshDetail(
@@ -470,7 +475,12 @@ export function App() {
           <h1>AgentScope</h1>
           <p className="subtitle">A calm, evidence-based view of coding-agent work.</p>
         </div>
-        <div className={`connection connection-${connectionState}`}>
+        <div
+          className={`connection connection-${connectionState}`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <span className="connection-dot" />
           {connectionState === 'connected'
             ? 'Live updates connected'
@@ -486,7 +496,11 @@ export function App() {
         />
       </header>
 
-      {error !== undefined && <div className="banner banner-error">{error}</div>}
+      {error !== undefined && (
+        <div className="banner banner-error" role="alert">
+          {error}
+        </div>
+      )}
 
       <section className="stat-grid" aria-label="Session summary">
         <Stat label="Active" value={counts.active} tone="blue" />
@@ -631,6 +645,8 @@ function GoalPanel({
   const [selectedGoal, setSelectedGoal] = useState<GoalDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [goalError, setGoalError] = useState<string>();
+  const goalDetailHeadingRef = useRef<HTMLDivElement>(null);
+  const focusedGoalRef = useRef<string | undefined>(undefined);
   const [historyFilter, setHistoryFilter] = useState<GoalHistoryFilter>(() =>
     loadGoalHistoryFilter(),
   );
@@ -715,11 +731,24 @@ function GoalPanel({
       setSelectedGoal(await api.getGoal(goalId));
       setGoalError(undefined);
     } catch (cause) {
+      if (cause instanceof DashboardApiError && cause.status === 404) setSelectedGoal(undefined);
       setGoalError(cause instanceof Error ? cause.message : 'Unable to load Goal details.');
     } finally {
       setDetailLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (selectedGoalId === undefined) {
+      focusedGoalRef.current = undefined;
+      return;
+    }
+    if (selectedGoal?.goal.id !== selectedGoalId || focusedGoalRef.current === selectedGoalId) {
+      return;
+    }
+    focusedGoalRef.current = selectedGoalId;
+    goalDetailHeadingRef.current?.focus();
+  }, [selectedGoal, selectedGoalId]);
 
   useEffect(() => {
     syncSelectionToUrl('goal', selectedGoalId);
@@ -741,6 +770,13 @@ function GoalPanel({
 
   const controlGoal = async (action: 'pause' | 'abort' | 'continue') => {
     if (selectedGoalId === undefined) return;
+    if (
+      action === 'abort' &&
+      typeof globalThis.confirm === 'function' &&
+      !globalThis.confirm('Abort this Goal after its current safe boundary? This cannot be undone.')
+    ) {
+      return;
+    }
     setDetailLoading(true);
     try {
       if (action === 'pause') await api.pauseGoal(selectedGoalId);
@@ -894,7 +930,7 @@ function GoalPanel({
             <p className="empty-state">Loading Goal details…</p>
           ) : selectedGoal === undefined ? null : (
             <>
-              <div className="goal-detail-heading">
+              <div className="goal-detail-heading" ref={goalDetailHeadingRef} tabIndex={-1}>
                 <div>
                   <span className="eyebrow">GOAL DETAIL</span>
                   <strong>{statusLabel(selectedGoal.goal.status)}</strong>
