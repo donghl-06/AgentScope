@@ -16,6 +16,31 @@ describe('DashboardApi', () => {
     expect(request).toHaveBeenCalledWith('http://127.0.0.1:8787/api/goals?limit=20');
   });
 
+  it('loads paginated Goal history with server-side filters', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ id: 'goal-1' }], nextCursor: 'next' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(
+      api.listGoalPage({
+        status: 'FAILED',
+        provider: 'claude',
+        workspace: 'D:/workspace',
+        query: 'release',
+        includeArchived: true,
+        limit: 20,
+        cursor: 'page-1',
+      }),
+    ).resolves.toMatchObject({ items: [{ id: 'goal-1' }], nextCursor: 'next' });
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/goals/page?status=FAILED&provider=claude&workspace=D%3A%2Fworkspace&query=release&includeArchived=true&limit=20&cursor=page-1',
+    );
+  });
+
   it('submits an orchestrator goal without starting a provider in the browser', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ goalId: 'goal-1', goal: { id: 'goal-1' } }), {

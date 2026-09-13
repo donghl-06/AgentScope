@@ -595,6 +595,14 @@ function GoalPanel({
   onRefresh: () => void;
   onCreate: (input: CreateGoalRequest) => Promise<void>;
 }) {
+  type GoalStatusFilter = 'all' | StoredGoal['status'];
+  type GoalHistoryFilter = {
+    status: GoalStatusFilter;
+    provider: string;
+    workspace: string;
+    query: string;
+    includeArchived: boolean;
+  };
   const [workspace, setWorkspace] = useState('.');
   const [provider, setProvider] = useState<'claude' | 'codex' | 'codex-app-server'>('claude');
   const [prompt, setPrompt] = useState('');
@@ -602,6 +610,75 @@ function GoalPanel({
   const [selectedGoal, setSelectedGoal] = useState<GoalDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [goalError, setGoalError] = useState<string>();
+  const [historyFilter, setHistoryFilter] = useState<GoalHistoryFilter>(() =>
+    loadGoalHistoryFilter(),
+  );
+  const [historyGoals, setHistoryGoals] = useState<readonly StoredGoal[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string>();
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const historyRequestRef = useRef(0);
+
+  const loadGoalHistory = useCallback(
+    async (cursor?: string) => {
+      const requestId = ++historyRequestRef.current;
+      if (cursor === undefined) setHistoryLoading(true);
+      else setHistoryLoadingMore(true);
+      try {
+        const page = await api.listGoalPage({
+          limit: 50,
+          ...(historyFilter.status === 'all' ? {} : { status: historyFilter.status }),
+          ...(historyFilter.provider.trim() === ''
+            ? {}
+            : { provider: historyFilter.provider.trim() }),
+          ...(historyFilter.workspace.trim() === ''
+            ? {}
+            : { workspace: historyFilter.workspace.trim() }),
+          ...(historyFilter.query.trim() === '' ? {} : { query: historyFilter.query.trim() }),
+          ...(historyFilter.includeArchived ? { includeArchived: true } : {}),
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        if (requestId !== historyRequestRef.current) return;
+        setHistoryGoals((current) =>
+          cursor === undefined ? page.items : mergeGoals(current, page.items),
+        );
+        setHistoryCursor(page.nextCursor);
+      } catch (cause) {
+        if (requestId !== historyRequestRef.current) return;
+        setGoalError(cause instanceof Error ? cause.message : 'Unable to load Goal history.');
+        if (cursor === undefined) {
+          setHistoryGoals([]);
+          setHistoryCursor(undefined);
+        }
+      } finally {
+        if (requestId === historyRequestRef.current) {
+          if (cursor === undefined) setHistoryLoading(false);
+          else setHistoryLoadingMore(false);
+        }
+      }
+    },
+    [historyFilter],
+  );
+
+  useEffect(() => {
+    void loadGoalHistory();
+  }, [goals, loadGoalHistory]);
+
+  useEffect(() => {
+    syncGoalHistoryFilter(historyFilter);
+  }, [historyFilter]);
+
+  const updateHistoryFilter = <K extends keyof GoalHistoryFilter>(
+    key: K,
+    value: GoalHistoryFilter[K],
+  ) => {
+    setHistoryFilter((current) => ({ ...current, [key]: value }));
+  };
+
+  const refreshAllGoals = () => {
+    onRefresh();
+    void loadGoalHistory();
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -646,7 +723,12 @@ function GoalPanel({
           <p className="eyebrow">ORCHESTRATOR</p>
           <h2>Goals and evidence-gated work</h2>
         </div>
-        <button className="quiet-button quiet-button-small" type="button" onClick={onRefresh}>
+        <button
+          className="quiet-button quiet-button-small"
+          type="button"
+          onClick={refreshAllGoals}
+          disabled={historyLoading}
+        >
           Refresh
         </button>
       </div>
@@ -687,31 +769,84 @@ function GoalPanel({
         </button>
       </form>
       <NotificationCenter goals={goals} onSelectGoal={(goalId) => void inspectGoal(goalId)} />
-      {loading ? (
+      <div className="goal-history-toolbar" aria-label="Goal history filters">
+        <label className="goal-history-search">
+          <span>Search</span>
+          <input
+            value={historyFilter.query}
+            onChange={(event) => updateHistoryFilter('query', event.target.value)}
+            placeholder="Goal ID or prompt"
+          />
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            value={historyFilter.status}
+            onChange={(event) =>
+              updateHistoryFilter('status', event.target.value as 'all' | StoredGoal['status'])
+            }
+          >
+            <option value="all">All statuses</option>
+            <option value="CREATED">Created</option>
+            <option value="PLANNING">Planning</option>
+            <option value="RUNNING">Running</option>
+            <option value="VERIFYING">Verifying</option>
+            <option value="PAUSED">Paused</option>
+            <option value="NEEDS_HUMAN">Needs human</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="FAILED">Failed</option>
+            <option value="ABORTED">Aborted</option>
+          </select>
+        </label>
+        <label>
+          <span>Provider</span>
+          <input
+            value={historyFilter.provider}
+            onChange={(event) => updateHistoryFilter('provider', event.target.value)}
+            placeholder="Any provider"
+          />
+        </label>
+        <label className="goal-history-workspace">
+          <span>Workspace</span>
+          <input
+            value={historyFilter.workspace}
+            onChange={(event) => updateHistoryFilter('workspace', event.target.value)}
+            placeholder="Any workspace"
+          />
+        </label>
+        <label className="visibility-toggle">
+          <input
+            type="checkbox"
+            checked={historyFilter.includeArchived}
+            onChange={(event) => updateHistoryFilter('includeArchived', event.target.checked)}
+          />{' '}
+          Include archived
+        </label>
+      </div>
+      {historyLoading || (loading && historyGoals.length === 0) ? (
         <p className="empty-state">Loading goals…</p>
-      ) : goals.length === 0 ? (
-        <p className="empty-state">No orchestrator goals recorded yet.</p>
+      ) : historyGoals.length === 0 ? (
+        <p className="empty-state">
+          {historyFilter.includeArchived
+            ? 'No Goals match these history filters.'
+            : 'No active or historical Goals recorded yet.'}
+        </p>
       ) : (
-        <div className="goal-list">
-          {goals.map((goal) => (
-            <button
-              className={`goal-row ${selectedGoalId === goal.id ? 'goal-row-selected' : ''}`}
-              key={goal.id}
-              type="button"
-              onClick={() => void inspectGoal(goal.id)}
-            >
-              <div className="goal-row-copy">
-                <strong>{goal.prompt}</strong>
-                <small>
-                  {goal.provider} · {goal.workspace} · updated {formatTimestamp(goal.updatedAt)}
-                </small>
-              </div>
-              <span className={`goal-status goal-status-${goal.status.toLowerCase()}`}>
-                {statusLabel(goal.status)}
-              </span>
-            </button>
-          ))}
-        </div>
+        <GoalHistoryList
+          goals={historyGoals}
+          selectedGoalId={selectedGoalId}
+          onSelectGoal={(goalId) => void inspectGoal(goalId)}
+        />
+      )}
+      {historyCursor !== undefined && (
+        <button
+          className="quiet-button quiet-button-small goal-history-load-more"
+          type="button"
+          onClick={() => void loadGoalHistory(historyCursor)}
+          disabled={historyLoadingMore}
+        >
+          {historyLoadingMore ? 'Loading…' : 'Load more Goals'}
+        </button>
       )}
       {goalError !== undefined && <p className="goal-error">{goalError}</p>}
       {selectedGoalId !== undefined && (
@@ -823,6 +958,146 @@ function GoalPanel({
       )}
     </section>
   );
+}
+
+function GoalHistoryList({
+  goals,
+  selectedGoalId,
+  onSelectGoal,
+}: {
+  goals: readonly StoredGoal[];
+  selectedGoalId: string | undefined;
+  onSelectGoal: (goalId: string) => void;
+}) {
+  const groups = [
+    {
+      key: 'active',
+      label: 'Active',
+      items: goals.filter(
+        (goal) =>
+          goal.archivedAt === undefined &&
+          ['CREATED', 'PLANNING', 'RUNNING', 'VERIFYING', 'PAUSED', 'NEEDS_HUMAN'].includes(
+            goal.status,
+          ),
+      ),
+    },
+    {
+      key: 'history',
+      label: 'History',
+      items: goals.filter(
+        (goal) =>
+          goal.archivedAt === undefined && ['COMPLETED', 'FAILED', 'ABORTED'].includes(goal.status),
+      ),
+    },
+    {
+      key: 'archived',
+      label: 'Archived',
+      items: goals.filter((goal) => goal.archivedAt !== undefined),
+    },
+  ].filter((group) => group.items.length > 0);
+
+  return (
+    <div className="goal-history-list">
+      {groups.map((group) => (
+        <section key={group.key} aria-label={`${group.label} Goals`}>
+          <div className="goal-history-section-heading">
+            <span className="eyebrow">{group.label}</span>
+            <small>{group.items.length}</small>
+          </div>
+          <div className="goal-list">
+            {group.items.map((goal) => (
+              <button
+                className={`goal-row ${selectedGoalId === goal.id ? 'goal-row-selected' : ''}`}
+                key={goal.id}
+                type="button"
+                onClick={() => onSelectGoal(goal.id)}
+              >
+                <div className="goal-row-copy">
+                  <strong>{goal.prompt}</strong>
+                  <small>
+                    {goal.provider} · {goal.workspace} · updated {formatTimestamp(goal.updatedAt)}
+                    {goal.archivedAt === undefined ? '' : ' · archived'}
+                  </small>
+                </div>
+                <span className={`goal-status goal-status-${goal.status.toLowerCase()}`}>
+                  {statusLabel(goal.status)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function mergeGoals(
+  current: readonly StoredGoal[],
+  incoming: readonly StoredGoal[],
+): readonly StoredGoal[] {
+  const byId = new Map(current.map((goal) => [goal.id, goal]));
+  for (const goal of incoming) byId.set(goal.id, goal);
+  return [...byId.values()].sort(
+    (left, right) => right.updatedAt - left.updatedAt || right.id.localeCompare(left.id),
+  );
+}
+
+function loadGoalHistoryFilter(): {
+  status: 'all' | StoredGoal['status'];
+  provider: string;
+  workspace: string;
+  query: string;
+  includeArchived: boolean;
+} {
+  const params = new URLSearchParams(
+    typeof globalThis.location === 'undefined' ? '' : globalThis.location.search,
+  );
+  const statusValue = params.get('goalStatus');
+  const validStatuses = [
+    'CREATED',
+    'PLANNING',
+    'RUNNING',
+    'VERIFYING',
+    'PAUSED',
+    'NEEDS_HUMAN',
+    'COMPLETED',
+    'FAILED',
+    'ABORTED',
+  ] as const;
+  const status = validStatuses.includes(statusValue as (typeof validStatuses)[number])
+    ? (statusValue as StoredGoal['status'])
+    : 'all';
+  return {
+    status,
+    provider: params.get('goalProvider') ?? '',
+    workspace: params.get('goalWorkspace') ?? '',
+    query: params.get('goalQuery') ?? '',
+    includeArchived: params.get('goalArchived') === 'true',
+  };
+}
+
+function syncGoalHistoryFilter(filter: {
+  status: 'all' | StoredGoal['status'];
+  provider: string;
+  workspace: string;
+  query: string;
+  includeArchived: boolean;
+}): void {
+  if (typeof globalThis.history === 'undefined' || typeof globalThis.location === 'undefined') {
+    return;
+  }
+  const params = new URLSearchParams(globalThis.location.search);
+  for (const key of ['goalStatus', 'goalProvider', 'goalWorkspace', 'goalQuery', 'goalArchived']) {
+    params.delete(key);
+  }
+  if (filter.status !== 'all') params.set('goalStatus', filter.status);
+  if (filter.provider.trim() !== '') params.set('goalProvider', filter.provider.trim());
+  if (filter.workspace.trim() !== '') params.set('goalWorkspace', filter.workspace.trim());
+  if (filter.query.trim() !== '') params.set('goalQuery', filter.query.trim());
+  if (filter.includeArchived) params.set('goalArchived', 'true');
+  const query = params.toString();
+  const next = `${globalThis.location.pathname}${query.length === 0 ? '' : `?${query}`}${globalThis.location.hash}`;
+  globalThis.history.replaceState(null, '', next);
 }
 
 function NotificationCenter({

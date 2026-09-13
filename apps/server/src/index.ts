@@ -125,6 +125,15 @@ const DiagnosticsSchema = Type.Object({
 const GoalListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
+const GoalPageQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  provider: Type.Optional(Type.String({ minLength: 1 })),
+  workspace: Type.Optional(Type.String({ minLength: 1 })),
+  query: Type.Optional(Type.String({ minLength: 1 })),
+  includeArchived: Type.Optional(Type.Boolean()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+});
 const ReliabilityMetricsQuerySchema = Type.Object({
   provider: Type.Optional(Type.String({ minLength: 1 })),
   workspace: Type.Optional(Type.String({ minLength: 1 })),
@@ -549,6 +558,51 @@ export function createServer(options: ServerOptions): FastifyInstance {
       try {
         const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
         return reply.send(options.orchestratorRepository.listGoals(limit));
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/page',
+    {
+      schema: {
+        querystring: GoalPageQuerySchema,
+        response: {
+          200: Type.Object({
+            items: Type.Array(Type.Unknown()),
+            nextCursor: Type.Optional(Type.String()),
+          }),
+          400: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const query = request.query as Record<string, unknown>;
+        const status = query.status === undefined ? undefined : String(query.status);
+        const provider = query.provider === undefined ? undefined : String(query.provider);
+        const workspace = query.workspace === undefined ? undefined : String(query.workspace);
+        const search = query.query === undefined ? undefined : String(query.query);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(
+          options.orchestratorRepository.listGoalPage({
+            ...(status === undefined ? {} : { status: status as StoredGoal['status'] }),
+            ...(provider === undefined ? {} : { provider }),
+            ...(workspace === undefined ? {} : { workspace }),
+            ...(search === undefined ? {} : { query: search }),
+            ...(query.includeArchived === true ? { includeArchived: true } : {}),
+            limit,
+            ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+          }),
+        );
       } catch (error) {
         return sendError(reply, error);
       }

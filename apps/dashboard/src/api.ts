@@ -1,6 +1,8 @@
 import type { EtaResult } from '@agentscope/protocol';
 import type {
   EventPage,
+  GoalListFilter,
+  GoalPage,
   Page,
   SessionListFilter,
   StoredObserverEvidence,
@@ -121,6 +123,18 @@ export class DashboardApi {
   listGoals(limit = 100): Promise<readonly StoredGoal[]> {
     const query = new URLSearchParams({ limit: String(limit) });
     return this.get<readonly StoredGoal[]>('/api/goals', query);
+  }
+
+  listGoalPage(filter: GoalListFilter = {}): Promise<GoalPage> {
+    const query = new URLSearchParams();
+    if (filter.status !== undefined) query.set('status', filter.status);
+    if (filter.provider !== undefined) query.set('provider', filter.provider);
+    if (filter.workspace !== undefined) query.set('workspace', filter.workspace);
+    if (filter.query !== undefined) query.set('query', filter.query);
+    if (filter.includeArchived === true) query.set('includeArchived', 'true');
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
+    return this.get<GoalPage>('/api/goals/page', query);
   }
 
   createGoal(input: CreateGoalRequest): Promise<{ goalId: string; goal: StoredGoal }> {

@@ -71,6 +71,10 @@ describe('server HTTP API', () => {
     expect((await app.inject('/api/goals')).json()).toMatchObject([
       { id: goal.id, status: 'CREATED', provider: 'mock' },
     ]);
+    expect((await app.inject('/api/goals/page?status=CREATED&limit=1')).json()).toMatchObject({
+      items: [{ id: goal.id, status: 'CREATED' }],
+    });
+    expect((await app.inject('/api/goals/page?status=not-a-status')).statusCode).toBe(409);
     expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
       goal: { id: goal.id },
       tasks: [{ id: task.id, title: 'Inspect files' }],
