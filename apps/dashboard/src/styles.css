@@ -51,6 +51,21 @@ button {
   align-items: center;
   gap: 8px;
 }
+.notification-preference select {
+  max-width: 210px;
+  padding: 5px 24px 5px 8px;
+  border: 1px solid #334967;
+  border-radius: 8px;
+  background: #121f34;
+  color: #b6c8df;
+  font: inherit;
+  font-size: 11px;
+}
+.notification-preference select:focus {
+  border-color: #68b1ff;
+  outline: 2px solid rgb(104 177 255 / 25%);
+  outline-offset: 1px;
+}
 .notification-status-warning {
   color: #e8bd72;
 }

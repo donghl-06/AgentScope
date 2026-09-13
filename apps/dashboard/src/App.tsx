@@ -22,7 +22,9 @@ import { hasTimelineGap, lastTimelineSeq, mergeTimelineEvents } from './timeline
 
 const api = new DashboardApi();
 type NotificationState = NotificationPermission | 'unsupported' | 'requesting' | 'unavailable';
+type OrchestratorNotificationMode = 'all' | 'attention' | 'muted';
 const NOTIFIABLE_SESSION_STATUSES = new Set(['blocked', 'completed', 'failed', 'interrupted']);
+const ORCHESTRATOR_NOTIFICATION_PREFERENCE_KEY = 'agentscope.orchestrator-notifications';
 
 export function App() {
   const [sessions, setSessions] = useState<readonly StoredSession[]>([]);
@@ -49,16 +51,32 @@ export function App() {
       ? 'unsupported'
       : globalThis.Notification.permission,
   );
+  const [orchestratorNotificationMode, setOrchestratorNotificationMode] =
+    useState<OrchestratorNotificationMode>(() => loadOrchestratorNotificationMode());
   const selectedIdRef = useRef<string | undefined>(undefined);
   const lastSeqBySessionRef = useRef(new Map<string, number>());
   const notificationStateRef = useRef(notificationState);
   const notificationRequestRef = useRef(0);
   const notificationKeysRef = useRef(new Set<string>());
   const notificationBaselineReadyRef = useRef(false);
+  const orchestratorNotificationBaselineReadyRef = useRef(false);
+  const orchestratorNotificationModeRef = useRef(orchestratorNotificationMode);
 
   useEffect(() => {
     notificationStateRef.current = notificationState;
   }, [notificationState]);
+
+  useEffect(() => {
+    orchestratorNotificationModeRef.current = orchestratorNotificationMode;
+    try {
+      globalThis.localStorage?.setItem(
+        ORCHESTRATOR_NOTIFICATION_PREFERENCE_KEY,
+        orchestratorNotificationMode,
+      );
+    } catch {
+      // Browser storage may be unavailable in private or restricted contexts.
+    }
+  }, [orchestratorNotificationMode]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -84,7 +102,20 @@ export function App() {
 
   const refreshGoals = useCallback(async () => {
     try {
-      setGoals(await api.listGoals());
+      const nextGoals = await api.listGoals();
+      setGoals(nextGoals);
+      if (!orchestratorNotificationBaselineReadyRef.current) {
+        orchestratorNotificationBaselineReadyRef.current = true;
+        const baseline = await Promise.allSettled(
+          nextGoals.map((goal) => api.listGoalNotifications(goal.id, 100)),
+        );
+        for (const result of baseline) {
+          if (result.status !== 'fulfilled') continue;
+          for (const notification of result.value) {
+            notificationKeysRef.current.add(`goal-notification:${notification.id}`);
+          }
+        }
+      }
     } catch (cause) {
       // Keep the Monitor V0 dashboard usable against an older server that has
       // not enabled the Orchestrator API yet.
@@ -199,6 +230,37 @@ export function App() {
   }, []);
 
   const notifyLiveStatus = useCallback((message: DashboardLiveNotification) => {
+    if (
+      message.type === 'goal.notification.created' ||
+      message.type === 'goal.notification.updated'
+    ) {
+      const mode = orchestratorNotificationModeRef.current;
+      if (mode === 'muted') return;
+      const kind = message.payload?.kind;
+      if (mode === 'attention' && kind !== 'failed' && kind !== 'needs-human') return;
+      if (
+        notificationStateRef.current !== 'granted' ||
+        typeof globalThis.Notification === 'undefined'
+      ) {
+        return;
+      }
+      const notificationId = message.payload?.notificationId;
+      const id = typeof notificationId === 'string' ? notificationId : 'unknown-notification';
+      const key = `goal-notification:${id}`;
+      if (notificationKeysRef.current.has(key)) return;
+      notificationKeysRef.current.add(key);
+      const goalId = message.goalId ?? 'unknown-goal';
+      const label = typeof kind === 'string' ? kind.replaceAll('-', ' ') : 'attention required';
+      try {
+        new globalThis.Notification(`AgentScope · Goal ${label}`, {
+          body: `Goal ${goalId.slice(0, 8)} has a new actionable status.`,
+          tag: key,
+        });
+      } catch {
+        // Browser notification failures must never affect live monitoring.
+      }
+      return;
+    }
     const rawStatus = message.payload?.status;
     if (typeof rawStatus !== 'string') return;
     const isTurnWaiting = message.type === 'turn.updated' && rawStatus === 'waiting';
@@ -405,7 +467,12 @@ export function App() {
               ? 'Connecting to server'
               : 'Offline · retrying'}
         </div>
-        <NotificationControl state={notificationState} onEnable={enableNotifications} />
+        <NotificationControl
+          state={notificationState}
+          mode={orchestratorNotificationMode}
+          onEnable={enableNotifications}
+          onModeChange={setOrchestratorNotificationMode}
+        />
       </header>
 
       {error !== undefined && <div className="banner banner-error">{error}</div>}
@@ -758,17 +825,31 @@ function GoalPanel({
 
 function NotificationControl({
   state,
+  mode,
   onEnable,
+  onModeChange,
 }: {
   state: NotificationState;
+  mode: OrchestratorNotificationMode;
   onEnable: () => void;
+  onModeChange: (mode: OrchestratorNotificationMode) => void;
 }) {
   if (state === 'unsupported') return null;
   if (state === 'granted') {
-    return <span className="notification-status">Notifications enabled</span>;
+    return (
+      <div className="notification-control">
+        <span className="notification-status">Notifications enabled</span>
+        <NotificationModeSelect mode={mode} onChange={onModeChange} />
+      </div>
+    );
   }
   if (state === 'denied') {
-    return <span className="notification-status">Notifications blocked by browser</span>;
+    return (
+      <div className="notification-control">
+        <span className="notification-status">Notifications blocked by browser</span>
+        <NotificationModeSelect mode={mode} onChange={onModeChange} />
+      </div>
+    );
   }
   if (state === 'unavailable') {
     return (
@@ -784,19 +865,55 @@ function NotificationControl({
         >
           Retry
         </button>
+        <NotificationModeSelect mode={mode} onChange={onModeChange} />
       </div>
     );
   }
   return (
-    <button
-      className="quiet-button quiet-button-small"
-      type="button"
-      onClick={onEnable}
-      disabled={state === 'requesting'}
-    >
-      {state === 'requesting' ? 'Requesting…' : 'Enable notifications'}
-    </button>
+    <div className="notification-control">
+      <button
+        className="quiet-button quiet-button-small"
+        type="button"
+        onClick={onEnable}
+        disabled={state === 'requesting'}
+      >
+        {state === 'requesting' ? 'Requesting…' : 'Enable notifications'}
+      </button>
+      <NotificationModeSelect mode={mode} onChange={onModeChange} />
+    </div>
   );
+}
+
+function NotificationModeSelect({
+  mode,
+  onChange,
+}: {
+  mode: OrchestratorNotificationMode;
+  onChange: (mode: OrchestratorNotificationMode) => void;
+}) {
+  return (
+    <label className="notification-preference">
+      <span className="sr-only">Orchestrator notification preference</span>
+      <select
+        aria-label="Orchestrator notification preference"
+        value={mode}
+        onChange={(event) => onChange(event.target.value as OrchestratorNotificationMode)}
+      >
+        <option value="all">Orchestrator: all</option>
+        <option value="attention">Orchestrator: failures &amp; human</option>
+        <option value="muted">Orchestrator: muted</option>
+      </select>
+    </label>
+  );
+}
+
+function loadOrchestratorNotificationMode(): OrchestratorNotificationMode {
+  try {
+    const value = globalThis.localStorage?.getItem(ORCHESTRATOR_NOTIFICATION_PREFERENCE_KEY);
+    return value === 'attention' || value === 'muted' ? value : 'all';
+  } catch {
+    return 'all';
+  }
 }
 
 function isOrchestratorNotification(message: DashboardLiveNotification): boolean {
