@@ -9,3 +9,4 @@ V1 汇总文档：
 - [`v1-real-provider-acceptance.md`](v1-real-provider-acceptance.md)：隔离真实 Provider 验收；
 - [`v1-performance-baseline.md`](v1-performance-baseline.md)：批量历史、广播和短时 soak；
 - [`v1-monitor-platform-compatibility.md`](v1-monitor-platform-compatibility.md)：Monitor/跨平台回归。
+- [`v1-release-gate.md`](v1-release-gate.md)：最终门禁、专项验收和发布判断。

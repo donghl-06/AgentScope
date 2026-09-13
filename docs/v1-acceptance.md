@@ -6,7 +6,7 @@
 
 这份矩阵记录当前可以声明的能力边界。`Verified` 表示有自动化或用户确认的证据；`Conservative` 表示功能
 已实现，但故意不对 Provider 未报告的语义做推断；`Pending` 表示需要目标 Provider、目标平台或更长时间/
-更大规模实验后才能声明。最后一次完整 `pnpm release:check` 会在 Phase 12.4 结束后补入确切计数。
+更大规模实验后才能声明。完整 release gate 的计数见 [V1 Release Gate 记录](findings/v1-release-gate.md)。
 
 | 能力 | 状态 | 证据/边界 |
 | --- | --- | --- |
@@ -46,6 +46,7 @@
 
 ## Release gate 状态
 
-Phase 12.3 文档冻结时，定向回归、类型检查、Lint、格式检查、fixture 检查和各专项基线均已通过；完整
-`pnpm release:check` 将在 Phase 12.4 执行，并在发布提交中记录最终测试文件/用例计数。真实 Provider、
-浏览器绘制、macOS 和多小时容量不属于本地自动门禁。
+2026-09-13 的本地 `pnpm release:check` 已通过：88 个测试文件、478 项单元测试，5 个集成文件、17 项集成测试；
+fixture、Lint、全 workspace typecheck、build/manifest、生产依赖审计和 V1 专项验收也已通过。真实 Provider、浏览器
+绘制、macOS 和多小时容量不属于本地自动门禁，继续按上表保留边界。完整记录见
+[V1 Release Gate 记录](findings/v1-release-gate.md)。

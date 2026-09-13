@@ -1,7 +1,7 @@
 # AgentScope Orchestrator V1 发布说明
 
-**状态：** 本地 V1 release candidate（不自动推送远程）  
-**日期：** 2026-09-13  
+**状态：** 本地 V1 release candidate，release gate 已通过（不自动推送远程）
+**日期：** 2026-09-13
 **分支：** `codex/orchestrator-v1`
 
 AgentScope Orchestrator V1 把 V0 的单 Worker 执行链路升级为可干预、可恢复、可审计的本地 Agent Control
@@ -74,7 +74,9 @@ pnpm start
 
 ## 验证状态
 
-Phase 12.4 会运行 `pnpm release:check` 并在最终本地提交中记录完整计数。此前的专项证据包括：
+2026-09-13 的 `pnpm release:check` 已通过：88 个测试文件、478 项单元测试，5 个集成文件、17 项集成测试；fixture、
+Lint、全 workspace typecheck、build/manifest 和 `pnpm audit --prod` 也通过。完整记录见
+[V1 Release Gate](findings/v1-release-gate.md)。专项证据包括：
 
 - 真实 Claude/Codex 隔离安全任务与失败修复；
 - Progress/ETA 校准矩阵；
@@ -82,4 +84,5 @@ Phase 12.4 会运行 `pnpm release:check` 并在最终本地提交中记录完�
 - Windows 12 个 Monitor/Provider/Server 测试文件、91 项回归通过；
 - Goal Archive/Restore 存储、API 和幂等审计测试通过。
 
-Phase 12.4 完成前，本文档的“本地 V1 release candidate”不等同于远程发布或生产容量承诺。
+本文档的“本地 V1 release candidate”不等同于远程发布或生产容量承诺；macOS、多小时容量和完整 WSL2 真实 PTY
+仍按验收矩阵标记为未执行或保守支持。

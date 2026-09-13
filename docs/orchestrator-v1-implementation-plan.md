@@ -1,13 +1,13 @@
 # AgentScope Orchestrator V1 详细实施计划
 
-> 状态：待实施
+> 状态：实施完成（Phase 0–12 已完成；V1 本地 release gate 已通过）
 >
-> 基线分支：`orchestrator`
+> 基线分支：`codex/orchestrator-v1`
 >
 > 依据：`agentscope_orchestrator_codex_spec.md`、`agentscope_orchestrator_user_plan.md`、当前 V0 实现
 >
-> 本文用途：作为 V1 的工程规格、执行顺序、逐步验收清单和本地提交清单
-> 约束：本文只规划 V1，不在本次工作中修改运行代码
+> 本文用途：作为 V1 的工程规格、执行顺序、逐步验收清单、本地提交清单和最终实施记录
+> 约束：V1 实施按本文顺序完成；未进入 V1 的能力仍不得在实现或文档中包装成已支持
 
 ## 1. V1 定位
 
@@ -793,12 +793,12 @@ API 后集中完成，避免前端先行固化不可靠语义。
 - 测试：文档链接与示例校验。
 - 建议提交：`docs(orchestrator): publish v1 capabilities and known issues`
 
-#### Step 12.4 — 执行 V1 Release Gate
+#### Step 12.4 — 执行 V1 Release Gate（已完成）
 
 - 工作：运行 format、lint、typecheck、unit、integration、build、migration、fault injection、real-provider smoke 和安全审查。
-- 产物：最终本地验收记录和测试计数。
-- 验收：所有强制门禁通过；已知 flaky 必须解释并有稳定复现/隔离方案，不能直接忽略。
-- 测试：最终 `pnpm release:check` 加 V1 专用验收命令。
+- 产物：[`docs/findings/v1-release-gate.md`](findings/v1-release-gate.md) 最终本地验收记录和测试计数。
+- 验收：已通过；已知平台/容量边界均在矩阵中标记，未把未执行项当作通过。
+- 测试：`pnpm release:check` 通过（88 个测试文件/478 项单元测试、5 个集成文件/17 项集成测试），V1 专项验收和 `pnpm audit --prod` 通过。
 - 建议提交：`chore(orchestrator): prepare v1 release`
 
 ## 10. 每个 Step 的统一完成定义
@@ -916,6 +916,6 @@ Orchestrator V1 只有在以下条件全部满足时才算完成：
 
 ## 16. 开工顺序
 
-正式实施时从 **Step 0.1** 开始，严格按依赖顺序推进。每个功能点独立本地提交，不推送远程；遇到实现细节与当前
-架构冲突时先以只读方式核对真实代码，再选择最小兼容改动。只有出现会改变产品边界、需要不可逆操作、需要真实
-外部权限或文档无法给出安全默认值的情况，才停止并请求用户判断。
+本轮已从 **Step 0.1** 按依赖顺序推进至 Step 12.4。每个功能点均创建独立本地提交，未推送远程；实现细节与当前
+架构冲突时采用了最小兼容改动。真实 Provider、WSL2/macOS 和容量边界没有被自动猜测，按矩阵保留后续人工或目标机
+验收项。
