@@ -30,6 +30,7 @@ import {
   type StoredVerificationRun,
   type StoredApprovalRequest,
   type StoredGoal,
+  type StoredGoalMetricSnapshot,
   type StoredTask,
 } from '@agentscope/storage';
 
@@ -139,6 +140,9 @@ const GoalApprovalParamsSchema = Type.Object({
 });
 const GoalEventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const GoalMetricQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 const GoalRoadmapRevisionQuerySchema = Type.Object({
@@ -278,6 +282,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
   const observedAttempts = new Map<string, ObservedAttempt>();
   const observedVerifications = new Map<string, ObservedVerification>();
   const observedGoalEvents = new Map<string, number>();
+  const observedGoalMetrics = new Map<string, string>();
   hydrateObservedSessions(options.repository, observedSessions);
   hydrateObservedTurns(options.repository, observedTurns);
   if (options.orchestratorRepository !== undefined) {
@@ -288,6 +293,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
       observedAttempts,
       observedVerifications,
       observedGoalEvents,
+      observedGoalMetrics,
     );
   }
   const unsubscribeRepository = options.repository.subscribe((notification) => {
@@ -358,6 +364,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
       observedAttempts,
       observedVerifications,
       observedGoalEvents,
+      observedGoalMetrics,
     );
     publishOrchestratorNotification(liveHub, notification, options.orchestratorRepository);
   });
@@ -441,6 +448,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
           observedAttempts,
           observedVerifications,
           observedGoalEvents,
+          observedGoalMetrics,
         });
       }
     } finally {
@@ -593,7 +601,39 @@ export function createServer(options: ServerOptions): FastifyInstance {
             verifications: options.orchestratorRepository!.listVerificationRuns(task.id),
           })),
           events: options.orchestratorRepository.listEvents(id),
+          metrics: options.orchestratorRepository.listGoalMetricSnapshots(id),
         });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/metrics',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: GoalMetricQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(options.orchestratorRepository.listGoalMetricSnapshots(id, limit));
       } catch (error) {
         return sendError(reply, error);
       }
@@ -2023,6 +2063,7 @@ interface OrchestratorObservations {
   readonly observedAttempts: Map<string, ObservedAttempt>;
   readonly observedVerifications: Map<string, ObservedVerification>;
   readonly observedGoalEvents: Map<string, number>;
+  readonly observedGoalMetrics: Map<string, string>;
 }
 
 function publishOrchestratorNotification(
@@ -2055,8 +2096,25 @@ function publishOrchestratorNotification(
     publishOrchestratorVerification(liveHub, repository, notification.verification);
     return;
   }
+  if (notification.type === 'metric.created') {
+    publishOrchestratorMetric(liveHub, notification.metric);
+    return;
+  }
   if (notification.type !== 'event.appended') return;
   publishOrchestratorEvent(liveHub, notification.event);
+}
+
+function publishOrchestratorMetric(liveHub: LiveHub, metric: StoredGoalMetricSnapshot): void {
+  liveHub.publish({
+    type: 'goal.metrics.updated',
+    goalId: metric.goalId,
+    ...(metric.taskId === undefined ? {} : { taskId: metric.taskId }),
+    payload: {
+      progress: metric.progress,
+      confidence: metric.confidence,
+      capturedAt: metric.capturedAt,
+    },
+  });
 }
 
 function publishOrchestratorEvent(liveHub: LiveHub, event: StoredOrchestratorEvent): void {
@@ -2161,10 +2219,13 @@ function hydrateObservedOrchestrator(
   observedAttempts: Map<string, ObservedAttempt>,
   observedVerifications: Map<string, ObservedVerification>,
   observedGoalEvents: Map<string, number>,
+  observedGoalMetrics: Map<string, string>,
 ): void {
   for (const goal of repository.listGoals()) {
     observedGoals.set(goal.id, { updatedAt: goal.updatedAt, status: goal.status });
     observedGoalEvents.set(goal.id, findLastOrchestratorEventSeq(repository, goal.id));
+    const latestMetric = repository.listGoalMetricSnapshots(goal.id, 1)[0];
+    if (latestMetric !== undefined) observedGoalMetrics.set(goal.id, latestMetric.id);
     for (const task of repository.listTasks(goal.id)) {
       observedTasks.set(task.id, {
         goalId: task.goalId,
@@ -2261,6 +2322,7 @@ function rememberOrchestratorNotification(
   observedAttempts: Map<string, ObservedAttempt>,
   observedVerifications: Map<string, ObservedVerification>,
   observedGoalEvents: Map<string, number>,
+  observedGoalMetrics: Map<string, string>,
 ): void {
   if (notification.type === 'goal.created' || notification.type === 'goal.updated') {
     observedGoals.set(notification.goal.id, {
@@ -2291,6 +2353,10 @@ function rememberOrchestratorNotification(
       updatedAt: notification.verification.updatedAt,
       status: notification.verification.status,
     });
+    return;
+  }
+  if (notification.type === 'metric.created') {
+    observedGoalMetrics.set(notification.metric.goalId, notification.metric.id);
     return;
   }
   if (notification.type !== 'event.appended') return;
@@ -2327,6 +2393,15 @@ function pollExternalOrchestratorChanges(
     for (const event of events) publishOrchestratorEvent(liveHub, event);
     const lastEvent = events.at(-1);
     if (lastEvent !== undefined) observations.observedGoalEvents.set(goal.id, lastEvent.seq);
+
+    const latestMetric = repository.listGoalMetricSnapshots(goal.id, 1)[0];
+    if (
+      latestMetric !== undefined &&
+      observations.observedGoalMetrics.get(goal.id) !== latestMetric.id
+    ) {
+      publishOrchestratorMetric(liveHub, latestMetric);
+      observations.observedGoalMetrics.set(goal.id, latestMetric.id);
+    }
 
     for (const task of repository.listTasks(goal.id)) {
       const observedTask = observations.observedTasks.get(task.id);

@@ -80,6 +80,19 @@ describe('server HTTP API', () => {
     expect((await app.inject(`/api/goals/${goal.id}/tasks`)).json()).toMatchObject([
       { id: task.id, sequence: 1 },
     ]);
+    const metric = orchestratorRepository.createGoalMetricSnapshot({
+      id: 'goal-api-1:metric:goal:1',
+      goalId: goal.id,
+      progress: 0.35,
+      eta: { minSeconds: 10, maxSeconds: 20, confidence: 0.2 },
+      confidence: 0.4,
+      reasons: [{ code: 'running', message: 'The Goal is running.' }],
+      capturedAt: 1_700_000_000_003,
+    });
+    expect((await app.inject(`/api/goals/${goal.id}/metrics?limit=1`)).json()).toEqual([metric]);
+    expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
+      metrics: [expect.objectContaining({ id: metric.id, progress: 0.35 })],
+    });
     expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
       expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
     ]);
@@ -310,6 +323,14 @@ describe('server HTTP API', () => {
       type: 'external.event',
       confidence: 1,
     });
+    writer.createGoalMetricSnapshot({
+      id: 'external-goal:metric:goal:1',
+      goalId: 'external-goal',
+      progress: 0.35,
+      confidence: 0.4,
+      reasons: [{ code: 'running', message: 'External metric.' }],
+      capturedAt: 1_700_000_000_300,
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     const notifications = socket.messages.slice(1).map((message) => JSON.parse(message));
@@ -318,8 +339,22 @@ describe('server HTTP API', () => {
         expect.objectContaining({ type: 'goal.created', goalId: 'external-goal' }),
         expect.objectContaining({ type: 'task.created', taskId: task.id }),
         expect.objectContaining({ type: 'event.appended', goalId: 'external-goal', seq: 1 }),
+        expect.objectContaining({
+          type: 'goal.metrics.updated',
+          goalId: 'external-goal',
+          payload: { progress: 0.35, confidence: 0.4, capturedAt: 1_700_000_000_300 },
+        }),
       ]),
     );
+    const metricNotificationCount = notifications.filter(
+      (notification) => notification.type === 'goal.metrics.updated',
+    ).length;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(
+      socket.messages
+        .map((message) => JSON.parse(message))
+        .filter((notification) => notification.type === 'goal.metrics.updated'),
+    ).toHaveLength(metricNotificationCount);
   });
 
   it('accepts a Goal submission only through the configured engine', async () => {

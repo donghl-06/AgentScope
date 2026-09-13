@@ -75,6 +75,23 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('loads durable Goal metric snapshots through the server DTO', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([{ id: 'metric-1', goalId: 'goal-1', progress: 0.5 }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(api.listGoalMetrics('goal/1', 20)).resolves.toMatchObject([
+      { id: 'metric-1', progress: 0.5 },
+    ]);
+    expect(request).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/goals/goal%2F1/metrics?limit=20',
+    );
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {

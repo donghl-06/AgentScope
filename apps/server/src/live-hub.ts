@@ -21,7 +21,8 @@ export interface LiveNotification {
     | 'task.updated'
     | 'attempt.created'
     | 'attempt.updated'
-    | 'verification.created';
+    | 'verification.created'
+    | 'goal.metrics.updated';
   readonly sessionId?: string;
   readonly projectId?: string;
   readonly goalId?: string;
