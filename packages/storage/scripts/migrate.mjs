@@ -36,6 +36,26 @@ const migrations = [
     url: new URL('../src/migrations/0005_session_visibility.sql', import.meta.url),
   },
   {
+    id: '0006_orchestrator',
+    url: new URL('../src/migrations/0006_orchestrator.sql', import.meta.url),
+  },
+  {
+    id: '0007_orchestrator_single_active_goal',
+    url: new URL('../src/migrations/0007_orchestrator_single_active_goal.sql', import.meta.url),
+  },
+  {
+    id: '0008_orchestrator_v1_control',
+    url: new URL('../src/migrations/0008_orchestrator_v1_control.sql', import.meta.url),
+  },
+  {
+    id: '0009_orchestrator_commands',
+    url: new URL('../src/migrations/0009_orchestrator_commands.sql', import.meta.url),
+  },
+  {
+    id: '0010_instruction_source',
+    url: new URL('../src/migrations/0010_instruction_source.sql', import.meta.url),
+  },
+  {
     id: '0011_observer_evidence_attempt',
     url: new URL('../src/migrations/0011_observer_evidence_attempt.sql', import.meta.url),
   },
