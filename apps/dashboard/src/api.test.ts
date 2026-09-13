@@ -137,6 +137,64 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('loads and submits Goal instructions with revision guards', async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: 'instruction-1', status: 'PENDING' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            goalId: 'goal-1',
+            instruction: { id: 'instruction-1', status: 'PENDING' },
+            idempotencyKey: 'instruction-request-1',
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(
+      api.listGoalInstructions('goal/1', { status: 'PENDING', limit: 20 }),
+    ).resolves.toMatchObject([{ id: 'instruction-1', status: 'PENDING' }]);
+    await expect(
+      api.submitGoalInstruction('goal/1', {
+        kind: 'constraint',
+        content: 'Keep the migration backwards compatible.\nDo not change the public API.',
+        baseRevision: 3,
+        expectedRevision: 3,
+        idempotencyKey: 'instruction-request-1',
+      }),
+    ).resolves.toMatchObject({ goalId: 'goal-1', instruction: { id: 'instruction-1' } });
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/instructions?status=PENDING&limit=20',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/instructions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'constraint',
+          content: 'Keep the migration backwards compatible.\nDo not change the public API.',
+          baseRevision: 3,
+          expectedRevision: 3,
+          idempotencyKey: 'instruction-request-1',
+        }),
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+  });
+
   it('loads the notification center page and updates read or dismissed state', async () => {
     const request = vi
       .fn<typeof fetch>()

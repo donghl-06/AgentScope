@@ -265,6 +265,93 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('serves and submits Goal instructions with safe revision metadata', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'instruction-api-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Apply a user instruction at a safe boundary.',
+      provider: 'mock',
+    });
+    let received: unknown;
+    const engine = {
+      submitInstruction: (goalId: string, draft: unknown, options: unknown) => {
+        received = { goalId, draft, options };
+        const input = draft as {
+          readonly id?: string;
+          readonly kind:
+            'clarification' | 'constraint' | 'priority' | 'approval-context' | 'general';
+          readonly content: string;
+          readonly baseRevision?: number;
+        };
+        return orchestratorRepository.createInstruction({
+          id: input.id ?? 'instruction-api-1',
+          goalId,
+          kind: input.kind,
+          content: input.content,
+          ...(input.baseRevision === undefined ? {} : { baseRevision: input.baseRevision }),
+        });
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect((await app.inject(`/api/goals/${goal.id}/instructions`)).json()).toEqual([]);
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/goals/${goal.id}/instructions`,
+      payload: {
+        kind: 'constraint',
+        content: 'Keep the public API backwards compatible.\nDo not change existing routes.',
+        baseRevision: goal.activeRevision,
+        expectedRevision: goal.activeRevision,
+        idempotencyKey: 'instruction-api-request-1',
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      goalId: goal.id,
+      idempotencyKey: 'instruction-api-request-1',
+      instruction: {
+        id: 'instruction-api-1',
+        goalId: goal.id,
+        kind: 'constraint',
+        status: 'PENDING',
+        baseRevision: goal.activeRevision,
+      },
+    });
+    expect(received).toEqual({
+      goalId: goal.id,
+      draft: {
+        kind: 'constraint',
+        content: 'Keep the public API backwards compatible.\nDo not change existing routes.',
+        baseRevision: goal.activeRevision,
+      },
+      options: {
+        idempotencyKey: 'instruction-api-request-1',
+        expectedRevision: goal.activeRevision,
+      },
+    });
+    expect((await app.inject(`/api/goals/${goal.id}/instructions?status=PENDING`)).json()).toEqual([
+      expect.objectContaining({ id: 'instruction-api-1', status: 'PENDING' }),
+    ]);
+    expect((await app.inject(`/api/goals/${goal.id}`)).json()).toMatchObject({
+      instructions: [expect.objectContaining({ id: 'instruction-api-1', kind: 'constraint' })],
+    });
+  });
+
   it('includes safe Goal, Task, and Attempt references on linked Monitor Sessions', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

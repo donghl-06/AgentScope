@@ -16,6 +16,9 @@ import type {
   StoredOrchestratorNotification,
   OrchestratorNotificationPage,
   StoredSessionGoalReference,
+  InstructionKind,
+  InstructionStatus,
+  StoredGoalInstruction,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -40,6 +43,21 @@ export interface OrchestratorNotificationFilter {
   readonly cursor?: string;
 }
 
+export interface CreateGoalInstructionRequest {
+  readonly kind: InstructionKind;
+  readonly content: string;
+  readonly baseRevision?: number;
+  readonly expectedRevision?: number;
+  readonly id?: string;
+  readonly idempotencyKey?: string;
+}
+
+export interface CreateGoalInstructionResponse {
+  readonly goalId: string;
+  readonly instruction: StoredGoalInstruction;
+  readonly idempotencyKey?: string;
+}
+
 export interface GoalDetail {
   readonly goal: StoredGoal;
   readonly tasks: readonly StoredTask[];
@@ -51,6 +69,7 @@ export interface GoalDetail {
   readonly events: readonly StoredOrchestratorEvent[];
   readonly metrics?: readonly StoredGoalMetricSnapshot[];
   readonly notifications?: readonly StoredOrchestratorNotification[];
+  readonly instructions?: readonly StoredGoalInstruction[];
 }
 
 export interface SessionDetail extends StoredSession {
@@ -168,6 +187,31 @@ export class DashboardApi {
     return this.get<readonly StoredOrchestratorNotification[]>(
       `/api/goals/${encodeURIComponent(goalId)}/notifications`,
       query,
+    );
+  }
+
+  listGoalInstructions(
+    goalId: string,
+    options: { readonly status?: InstructionStatus; readonly limit?: number } = {},
+  ): Promise<readonly StoredGoalInstruction[]> {
+    const query = new URLSearchParams();
+    if (options.status !== undefined) query.set('status', options.status);
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    return this.get<readonly StoredGoalInstruction[]>(
+      `/api/goals/${encodeURIComponent(goalId)}/instructions`,
+      query,
+    );
+  }
+
+  submitGoalInstruction(
+    goalId: string,
+    input: CreateGoalInstructionRequest,
+  ): Promise<CreateGoalInstructionResponse> {
+    return this.requestJson<CreateGoalInstructionResponse>(
+      `/api/goals/${encodeURIComponent(goalId)}/instructions`,
+      'POST',
+      undefined,
+      input,
     );
   }
 
