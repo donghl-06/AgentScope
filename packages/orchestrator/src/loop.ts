@@ -2073,12 +2073,19 @@ export class OrchestratorEngine {
       workerResult,
     });
     assertLease();
+    const effectiveVerification =
+      workerFailure !== undefined || workerResult.status === 'failed'
+        ? downgradeVerificationAfterWorkerFailure(
+            verification,
+            workerFailure?.summary ?? workerResult.summary,
+          )
+        : verification;
     return this.handleVerification(
       goal,
       task,
       attempt.id,
       attemptNumber,
-      verification,
+      effectiveVerification,
       workerResult.changedFiles,
       assertLease,
     );
@@ -2335,7 +2342,6 @@ export class OrchestratorEngine {
       );
     }
     for (const task of tasks) {
-      if (task.status !== 'NEEDS_HUMAN') continue;
       const taskAttempts = repository.listAttempts(task.id);
       const activeAttempt = taskAttempts.find((attempt) =>
         ['CREATED', 'RUNNING'].includes(attempt.status),
@@ -2346,6 +2352,22 @@ export class OrchestratorEngine {
           `Task ${task.id} still has an active Attempt; inspect it before resuming.`,
         );
       }
+      if (task.status === 'VERIFYING') {
+        repository.transitionTask(task.id, 'NEEDS_HUMAN', this.now());
+        repository.appendEvent({
+          id: `${goalId}:recovery:verification:${task.id}:${randomUUID()}`,
+          goalId,
+          taskId: task.id,
+          type: 'orchestrator.recovery.verification_fenced',
+          payload: {
+            reason:
+              'The host stopped while verification was in progress; the verification boundary must be replayed.',
+          },
+          confidence: 1,
+          timestamp: this.now(),
+        });
+      }
+      if (task.status !== 'NEEDS_HUMAN' && task.status !== 'VERIFYING') continue;
       const latestAttempt = [...taskAttempts].sort(
         (left, right) => right.attemptNumber - left.attemptNumber,
       )[0];
@@ -2629,6 +2651,31 @@ function failedWorkerVerification(reason: string): VerificationResult {
     deterministicChecks: [],
     evidence: [{ kind: 'worker', status: 'failed', reason }],
     reason,
+  };
+}
+
+function downgradeVerificationAfterWorkerFailure(
+  verification: VerificationResult,
+  workerReason: string,
+): VerificationResult {
+  if (verification.status !== 'PASS') return verification;
+  return {
+    ...verification,
+    status: 'FAIL',
+    criteria: verification.criteria.map((criterion) =>
+      criterion.status === 'PASS'
+        ? {
+            ...criterion,
+            status: 'FAIL' as const,
+            reason: `Worker failed before the verification boundary: ${workerReason}`,
+          }
+        : criterion,
+    ),
+    evidence: [
+      ...verification.evidence,
+      { kind: 'worker', status: 'failed', reason: workerReason },
+    ],
+    reason: `Worker failed before the verification boundary: ${workerReason}`,
   };
 }
 
