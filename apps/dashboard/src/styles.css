@@ -1075,6 +1075,92 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.orchestrator-explanation {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #2b4565;
+  border-radius: 9px;
+  background: rgba(10, 25, 43, 0.52);
+}
+.orchestrator-explanation details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.orchestrator-explanation details > summary::-webkit-details-marker {
+  display: none;
+}
+.orchestrator-explanation details > summary::before {
+  content: '▸';
+  color: #7f9dc4;
+  font-size: 12px;
+}
+.orchestrator-explanation details[open] > summary::before {
+  content: '▾';
+}
+.orchestrator-explanation details > summary .eyebrow {
+  margin-bottom: 0;
+}
+.orchestrator-explanation details > summary strong {
+  color: #dbe8f7;
+  font-size: 12px;
+}
+.orchestrator-explanation-revision {
+  margin-left: auto;
+  color: #8299b7;
+  font-size: 10px;
+}
+.orchestrator-metric-grid,
+.orchestrator-explanation-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 11px;
+}
+.orchestrator-metric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.orchestrator-metric-card,
+.orchestrator-explanation-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid #28405e;
+  border-radius: 7px;
+  background: #10243c;
+}
+.orchestrator-metric-card > span {
+  color: #8fa8c6;
+  font-size: 10px;
+}
+.orchestrator-metric-card > strong {
+  color: #dbe8f7;
+  font-size: 17px;
+}
+.orchestrator-metric-card > small,
+.orchestrator-explanation-grid small,
+.orchestrator-explanation-grid li {
+  color: #8299b7;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.orchestrator-explanation-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.orchestrator-explanation-grid .eyebrow {
+  margin-bottom: 0;
+}
+.orchestrator-explanation-grid ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+}
+.orchestrator-explanation-grid li strong {
+  color: #b6c8df;
+  font-size: 9px;
+}
 .goal-task-list li {
   display: grid;
   gap: 6px;
@@ -1901,6 +1987,9 @@ h3 {
   .recovery-approval-actions {
     flex-wrap: wrap;
   }
+  .orchestrator-explanation-grid {
+    grid-template-columns: 1fr;
+  }
   .notification-center-heading,
   .notification-row {
     align-items: flex-start;
@@ -1948,6 +2037,12 @@ h3 {
   }
   .recovery-panel-status,
   .roadmap-editor-revision {
+    margin-left: 0;
+  }
+  .orchestrator-metric-grid {
+    grid-template-columns: 1fr;
+  }
+  .orchestrator-explanation-revision {
     margin-left: 0;
   }
 }

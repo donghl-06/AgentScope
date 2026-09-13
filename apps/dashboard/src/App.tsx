@@ -966,6 +966,7 @@ function GoalPanel({
                 onRefresh={onRefresh}
                 onReload={() => inspectGoal(selectedGoal.goal.id)}
               />
+              <OrchestratorExplanationPanel detail={selectedGoal} />
               <ol className="goal-task-list">
                 {selectedGoal.tasks.map((task) => {
                   const taskDetail = selectedGoal.taskDetails?.find(
@@ -2170,6 +2171,135 @@ function RecoveryPanel({
   );
 }
 
+function OrchestratorExplanationPanel({ detail }: { detail: GoalDetail }) {
+  const latestMetric = (detail.metrics ?? [])
+    .filter((metric) => metric.taskId === undefined)
+    .slice()
+    .sort(
+      (left, right) => right.capturedAt - left.capturedAt || right.id.localeCompare(left.id),
+    )[0];
+  const progress =
+    detail.goal.status === 'COMPLETED'
+      ? 1
+      : latestMetric === undefined
+        ? undefined
+        : clampUnitNumber(latestMetric.progress);
+  const progressConfidence = latestMetric?.confidence ?? (progress === undefined ? 0 : 1);
+  const eta = readEtaSnapshot(latestMetric?.eta);
+  const reasons = (latestMetric?.reasons ?? [])
+    .map((reason) =>
+      isRecord(reason) && typeof reason.message === 'string' ? reason.message : undefined,
+    )
+    .filter((reason): reason is string => reason !== undefined)
+    .slice(0, 4);
+  const memory = detail.goal.executionMemory;
+  const decisions = readRecords(memory.decisions)
+    .filter((decision) => typeof decision.summary === 'string')
+    .slice()
+    .sort((left, right) => readNumber(right.recordedAt) - readNumber(left.recordedAt))
+    .slice(0, 5);
+  const openIssues = readRecords(memory.issues).filter((issue) => issue.status === 'OPEN').length;
+  const openQuestions = readRecords(memory.questions).filter(
+    (question) => question.status === 'OPEN',
+  ).length;
+  const latestRevision = (detail.roadmapRevisions ?? [])
+    .slice()
+    .sort((left, right) => right.revision - left.revision || right.id.localeCompare(left.id))[0];
+
+  return (
+    <section className="orchestrator-explanation" aria-label="Orchestrator progress and decisions">
+      <details open>
+        <summary>
+          <span className="eyebrow">PROGRESS &amp; DECISIONS</span>
+          <strong>Why the Orchestrator shows this state</strong>
+          <span className="orchestrator-explanation-revision">
+            {latestMetric === undefined
+              ? 'No metric snapshot'
+              : formatTimestamp(latestMetric.capturedAt)}
+          </span>
+        </summary>
+        <div className="orchestrator-metric-grid">
+          <div className="orchestrator-metric-card">
+            <span>Goal progress</span>
+            <strong>
+              {progress === undefined ? 'Unavailable' : `${Math.round(progress * 100)}%`}
+            </strong>
+            <small>
+              {progress === undefined
+                ? 'No durable progress evidence has been captured yet.'
+                : latestMetric?.reasons[0] &&
+                    isRecord(latestMetric.reasons[0]) &&
+                    typeof latestMetric.reasons[0].message === 'string'
+                  ? latestMetric.reasons[0].message
+                  : 'Progress is bounded by Task and verification evidence.'}{' '}
+              · confidence {Math.round(progressConfidence * 100)}%
+            </small>
+          </div>
+          <div className="orchestrator-metric-card">
+            <span>Remaining ETA</span>
+            <strong>
+              {detail.goal.status === 'COMPLETED'
+                ? 'Complete'
+                : eta === undefined
+                  ? 'Unavailable'
+                  : formatEta(eta.minSeconds, eta.maxSeconds)}
+            </strong>
+            <small>
+              {eta === undefined
+                ? 'A range is shown only when an ETA snapshot is available.'
+                : `${eta.sampleCount === undefined ? 'No' : eta.sampleCount} comparable sample(s) · confidence ${Math.round((eta.confidence ?? 0) * 100)}%`}
+            </small>
+          </div>
+        </div>
+        <div className="orchestrator-explanation-grid">
+          <div>
+            <span className="eyebrow">EVIDENCE REASONS</span>
+            {reasons.length === 0 ? (
+              <small>No additional metric reasons are available.</small>
+            ) : (
+              <ul>
+                {reasons.map((reason, index) => (
+                  <li key={`${reason}-${index}`}>{reason}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <span className="eyebrow">EXECUTION MEMORY</span>
+            <small>
+              {decisions.length} recent decision(s) · {openIssues} open issue(s) · {openQuestions}{' '}
+              open question(s)
+            </small>
+            {decisions.length > 0 && (
+              <ul>
+                {decisions.map((decision, index) => (
+                  <li key={`${String(decision.id ?? index)}-${index}`}>
+                    <strong>
+                      {typeof decision.status === 'string' ? decision.status : 'Decision'}
+                    </strong>{' '}
+                    {String(decision.summary)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <span className="eyebrow">LATEST ROADMAP REVISION</span>
+            {latestRevision === undefined ? (
+              <small>No roadmap revision is available yet.</small>
+            ) : (
+              <small>
+                Revision {latestRevision.revision} · {latestRevision.reason} ·{' '}
+                {latestRevision.items.length} item change(s)
+              </small>
+            )}
+          </div>
+        </div>
+      </details>
+    </section>
+  );
+}
+
 function GoalHistoryList({
   goals,
   selectedGoalId,
@@ -2610,6 +2740,56 @@ function goalRecoveryReason(detail: GoalDetail): string {
     return 'A Task Attempt failed or was interrupted and can be reviewed.';
   }
   return 'Recovery controls are available when a Goal reaches a recoverable boundary.';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readRecords(value: unknown): readonly Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function readNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function clampUnitNumber(value: number): number {
+  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+function readEtaSnapshot(
+  value: unknown,
+):
+  | {
+      readonly minSeconds: number;
+      readonly maxSeconds: number;
+      readonly confidence?: number;
+      readonly sampleCount?: number;
+    }
+  | undefined {
+  if (!isRecord(value)) return undefined;
+  const minSeconds = readNumber(value.minSeconds);
+  const maxSeconds = readNumber(value.maxSeconds);
+  if (minSeconds < 0 || maxSeconds < minSeconds || (minSeconds === 0 && maxSeconds === 0)) {
+    return undefined;
+  }
+  const confidence =
+    typeof value.confidence === 'number' && Number.isFinite(value.confidence)
+      ? clampUnitNumber(value.confidence)
+      : undefined;
+  const sampleCount =
+    typeof value.sampleCount === 'number' &&
+    Number.isInteger(value.sampleCount) &&
+    value.sampleCount >= 0
+      ? value.sampleCount
+      : undefined;
+  return {
+    minSeconds,
+    maxSeconds,
+    ...(confidence === undefined ? {} : { confidence }),
+    ...(sampleCount === undefined ? {} : { sampleCount }),
+  };
 }
 
 function notificationStatusLabel(status: StoredOrchestratorNotification['status']): string {

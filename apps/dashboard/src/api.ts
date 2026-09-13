@@ -119,6 +119,7 @@ export interface GoalDetail {
   readonly notifications?: readonly StoredOrchestratorNotification[];
   readonly instructions?: readonly StoredGoalInstruction[];
   readonly approvals?: readonly StoredApprovalRequest[];
+  readonly roadmapRevisions?: readonly StoredRoadmapRevision[];
 }
 
 export interface SessionDetail extends StoredSession {
