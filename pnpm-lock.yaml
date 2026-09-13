@@ -217,6 +217,9 @@ importers:
 
   packages/orchestrator:
     dependencies:
+      '@agentscope/eta':
+        specifier: workspace:*
+        version: link:../eta
       '@agentscope/observer-git':
         specifier: workspace:*
         version: link:../observers/git

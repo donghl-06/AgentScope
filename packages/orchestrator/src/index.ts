@@ -385,3 +385,4 @@ export * from './approval.js';
 export * from './provider-capabilities.js';
 export * from './goal-progress.js';
 export * from './task-progress.js';
+export * from './orchestrator-eta.js';

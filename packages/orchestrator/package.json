@@ -12,6 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@agentscope/eta": "workspace:*",
     "@agentscope/observer-git": "workspace:*",
     "@agentscope/storage": "workspace:*"
   }
