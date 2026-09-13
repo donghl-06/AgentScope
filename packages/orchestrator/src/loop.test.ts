@@ -251,6 +251,15 @@ describe('OrchestratorEngine', () => {
       expect(repository.getGoal('goal-pass').roadmap).toMatchObject([
         { id: 'goal-pass:task:1', status: 'COMPLETED' },
       ]);
+      expect(
+        repository.listEvents('goal-pass').find((event) => event.type === 'goal.rolling_plan'),
+      ).toMatchObject({
+        payload: {
+          auditVersion: 1,
+          input: { schemaVersion: 1, goal: { id: 'goal-pass' } },
+          output: { schemaVersion: 1, action: expect.any(String) },
+        },
+      });
     });
   });
 

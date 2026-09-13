@@ -36,6 +36,7 @@ import {
 import { buildMemorySnapshot, compactExecutionMemory, rememberTaskOutcome } from './memory.js';
 import { maintainWorkingSet } from './working-set.js';
 import { ConservativePlanner, type Planner } from './planner.js';
+import { buildPlannerAuditInput, buildPlannerAuditOutput } from './planner-audit.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
 import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
@@ -1365,6 +1366,14 @@ export class OrchestratorEngine {
     executionMemory: BootstrapContext['executionMemory'],
     workingSet: WorkingSet,
   ): ReturnType<Planner['planRolling']> {
+    const auditInput = buildPlannerAuditInput({
+      goal,
+      tasks,
+      ...(latestVerification === undefined ? {} : { latestVerification }),
+      projectState,
+      executionMemory,
+      workingSet,
+    });
     try {
       const plan = this.planner.planRolling({
         goal,
@@ -1374,30 +1383,34 @@ export class OrchestratorEngine {
         executionMemory,
         workingSet,
       });
+      const auditOutput = buildPlannerAuditOutput(plan, tasks);
       this.options.repository.appendEvent({
         id: `${goal.id}:rolling-plan:${randomUUID()}`,
         goalId: goal.id,
         type: 'goal.rolling_plan',
-        payload: { action: plan.action, rationale: plan.rationale, nextTaskId: plan.nextTask?.id },
-        confidence: 1,
+        payload: { auditVersion: 1, input: auditInput, output: auditOutput },
+        confidence: auditOutput.confidence,
         timestamp: this.now(),
       });
       return plan;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      const fallbackPlan = {
+        goalId: goal.id,
+        action: 'NEEDS_HUMAN' as const,
+        rationale: `Rolling Planner failed safely: ${reason}`,
+        confidence: 1,
+      };
+      const auditOutput = buildPlannerAuditOutput(fallbackPlan, tasks);
       this.options.repository.appendEvent({
         id: `${goal.id}:rolling-plan-failed:${randomUUID()}`,
         goalId: goal.id,
         type: 'goal.rolling_plan_failed',
-        payload: { reason },
-        confidence: 1,
+        payload: { auditVersion: 1, input: auditInput, output: auditOutput, reason },
+        confidence: auditOutput.confidence,
         timestamp: this.now(),
       });
-      return {
-        goalId: goal.id,
-        action: 'NEEDS_HUMAN',
-        rationale: `Rolling Planner failed safely: ${reason}`,
-      };
+      return fallbackPlan;
     }
   }
 

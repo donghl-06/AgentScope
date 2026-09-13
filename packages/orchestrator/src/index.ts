@@ -378,3 +378,4 @@ export * from './retry.js';
 export * from './instructions.js';
 export * from './memory.js';
 export * from './working-set.js';
+export * from './planner-audit.js';

@@ -46,6 +46,8 @@ export interface RollingPlan {
   readonly action: RollingPlannerAction;
   readonly nextTask?: PlannerTaskDraft;
   readonly rationale: string;
+  /** Optional provider confidence; deterministic planners use a safe default. */
+  readonly confidence?: number;
 }
 
 export interface Planner {
