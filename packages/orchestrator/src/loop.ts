@@ -744,7 +744,7 @@ export class OrchestratorEngine {
       workspace: goal.workspace,
       goalPrompt: goal.prompt,
     });
-    const projectState = context.projectState;
+    let projectState = context.projectState;
     let executionMemory = mergeExecutionMemory(context.executionMemory, goal.executionMemory);
     let workingSet = mergeWorkingSet(context.workingSet, goal.workingSet);
     let tasks = repository.listTasks(goal.id);
@@ -895,6 +895,19 @@ export class OrchestratorEngine {
             repository.listTasks(goal.id),
             instructionApplication.blockedReason,
           );
+        }
+        if (!this.controlRequests.has(goal.id)) {
+          const refreshedAfterAttempt = await this.refreshProjectContext(
+            goal,
+            projectState,
+            executionMemory,
+            workingSet,
+            'after-attempt',
+          );
+          goal = refreshedAfterAttempt.goal;
+          projectState = refreshedAfterAttempt.projectState;
+          executionMemory = refreshedAfterAttempt.executionMemory;
+          workingSet = refreshedAfterAttempt.workingSet;
         }
         const completedTask = repository.getTask(activeTask.id);
         const latestVerification = repository.listVerificationRuns(activeTask.id).at(-1);
@@ -1236,6 +1249,80 @@ export class OrchestratorEngine {
       timestamp: this.now(),
     });
     return updatedGoal;
+  }
+
+  private async refreshProjectContext(
+    goal: StoredGoal,
+    previousProjectState: ProjectState,
+    executionMemory: ExecutionMemory,
+    workingSet: WorkingSet,
+    boundary: 'before-attempt' | 'after-attempt' | 'resume',
+  ): Promise<{
+    readonly goal: StoredGoal;
+    readonly projectState: ProjectState;
+    readonly executionMemory: ExecutionMemory;
+    readonly workingSet: WorkingSet;
+  }> {
+    const repository = this.options.repository;
+    let refreshed: BootstrapContext;
+    try {
+      refreshed = await this.contextProvider({
+        workspace: goal.workspace,
+        goalPrompt: goal.prompt,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      repository.appendEvent({
+        id: `${goal.id}:project-state-refresh-failed:${randomUUID()}`,
+        goalId: goal.id,
+        type: 'goal.project_state.refresh_failed',
+        payload: { boundary, reason },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      throw new OrchestratorCommandError(
+        `Project State refresh failed at ${boundary}: ${reason}`,
+        'project_state_refresh_failed',
+      );
+    }
+    const nextProjectState = refreshed.projectState;
+    const nextExecutionMemory = mergeExecutionMemory(
+      refreshed.executionMemory,
+      asJsonObject(executionMemory),
+    );
+    const nextWorkingSet = mergeWorkingSet(refreshed.workingSet, asJsonObject(workingSet));
+    const changes = summarizeProjectStateChanges(previousProjectState, nextProjectState);
+    repository.updateGoalDocuments(
+      goal.id,
+      {
+        projectState: asJsonObject(nextProjectState),
+        executionMemory: asJsonObject(nextExecutionMemory),
+        workingSet: asJsonObject(nextWorkingSet),
+      },
+      this.now(),
+    );
+    const updatedGoal = repository.getGoal(goal.id);
+    repository.appendEvent({
+      id: `${goal.id}:project-state-refresh:${randomUUID()}`,
+      goalId: goal.id,
+      type: 'goal.project_state.refreshed',
+      payload: {
+        boundary,
+        capturedAt: nextProjectState.capturedAt,
+        changed: changes.changed,
+        changedFields: changes.changedFields,
+        addedRelevantFiles: changes.addedRelevantFiles,
+        removedRelevantFiles: changes.removedRelevantFiles,
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
+    return {
+      goal: updatedGoal,
+      projectState: nextProjectState,
+      executionMemory: nextExecutionMemory,
+      workingSet: nextWorkingSet,
+    };
   }
 
   private planRolling(
@@ -1921,6 +2008,40 @@ async function defaultGoalVerifier(input: {
 
 function asJsonObject(value: unknown): JsonObject {
   return value as JsonObject;
+}
+
+function summarizeProjectStateChanges(
+  previous: ProjectState,
+  next: ProjectState,
+): {
+  readonly changed: boolean;
+  readonly changedFields: readonly string[];
+  readonly addedRelevantFiles: readonly string[];
+  readonly removedRelevantFiles: readonly string[];
+} {
+  const changedFields = [
+    'git',
+    'packageManager',
+    'manifests',
+    'readmePath',
+    'techStack',
+    'topLevelDirectories',
+    'discoverableVerification',
+    'recentCommits',
+    'relevantFiles',
+  ].filter((field) => {
+    const left = previous[field as keyof ProjectState];
+    const right = next[field as keyof ProjectState];
+    return JSON.stringify(left) !== JSON.stringify(right);
+  });
+  const previousFiles = new Set(previous.relevantFiles);
+  const nextFiles = new Set(next.relevantFiles);
+  return {
+    changed: changedFields.length > 0,
+    changedFields,
+    addedRelevantFiles: next.relevantFiles.filter((file) => !previousFiles.has(file)),
+    removedRelevantFiles: previous.relevantFiles.filter((file) => !nextFiles.has(file)),
+  };
 }
 
 /**

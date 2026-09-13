@@ -175,6 +175,50 @@ async function withEngine(
 }
 
 describe('OrchestratorEngine', () => {
+  it('refreshes Project State after an Attempt boundary before final planning', async () => {
+    let contextCalls = 0;
+    const refreshedContext: BootstrapContext = {
+      ...context,
+      projectState: {
+        ...projectState,
+        capturedAt: 2,
+        relevantFiles: ['src/changed.ts'],
+      },
+      workingSet: {
+        ...workingSet,
+        files: ['src/changed.ts'],
+        updatedAt: 2,
+      },
+    };
+    await withEngine(
+      'PASS',
+      async (engine, repository) => {
+        const result = await engine.createGoalAndRun({
+          id: 'goal-context-refresh',
+          workspace: projectState.workspace,
+          prompt: 'Refresh project state between boundaries.',
+          provider: 'mock',
+        });
+        expect(result.status).toBe('COMPLETED');
+        expect(contextCalls).toBeGreaterThan(1);
+        expect(repository.getGoal('goal-context-refresh').projectState).toMatchObject({
+          capturedAt: 2,
+          relevantFiles: ['src/changed.ts'],
+        });
+        expect(
+          repository
+            .listEvents('goal-context-refresh')
+            .filter((event) => event.type === 'goal.project_state.refreshed'),
+        ).not.toHaveLength(0);
+      },
+      'PASS',
+      async () => {
+        contextCalls += 1;
+        return contextCalls === 1 ? context : refreshedContext;
+      },
+    );
+  });
+
   it('runs one serial Task and completes only after final verification', async () => {
     await withEngine('PASS', async (engine, repository) => {
       const result = await engine.createGoalAndRun({
