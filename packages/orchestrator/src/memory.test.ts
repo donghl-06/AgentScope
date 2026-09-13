@@ -4,6 +4,7 @@ import type { StoredGoal, StoredTask, StoredVerificationRun } from '@agentscope/
 
 import {
   buildMemorySnapshot,
+  compactExecutionMemory,
   normalizeExecutionMemory,
   rememberTaskOutcome,
   type ExecutionMemory,
@@ -149,5 +150,94 @@ describe('execution memory snapshots', () => {
     );
     expect(normalized.completedTaskIds).toEqual(['task:1']);
     expect(normalized.issues).toMatchObject([{ id: 'valid', status: 'OPEN' }]);
+  });
+
+  it('compacts reconstructible history while retaining locked and unresolved context', () => {
+    const memory: ExecutionMemory = {
+      decisions: [
+        {
+          id: 'locked-boundary',
+          summary: 'The worker remains serial.',
+          status: 'LOCKED',
+          source: 'user',
+          recordedAt: 1,
+          sourceRefs: [{ kind: 'instruction', id: 'instruction:serial' }],
+        },
+        ...Array.from({ length: 45 }, (_, index) => ({
+          id: `tentative:${index}`,
+          summary: `Tentative decision ${index}`,
+          status: 'TENTATIVE' as const,
+          source: 'planner' as const,
+          recordedAt: index + 2,
+        })),
+      ],
+      completedTaskIds: ['task:old', 'task:new'],
+      completedTaskSummaries: Array.from({ length: 25 }, (_, index) => ({
+        taskId: `task:${index}`,
+        title: `Task ${index}`,
+        summary: `Task ${index} passed`,
+        verificationStatus: 'PASS' as const,
+        recordedAt: index + 1,
+        sourceRefs: [{ kind: 'task' as const, id: `task:${index}` }],
+      })),
+      failedApproaches: ['The first approach failed.'],
+      issues: [
+        {
+          id: 'issue:open',
+          summary: 'Keep the open issue.',
+          status: 'OPEN',
+          recordedAt: 1,
+          sourceRefs: [{ kind: 'task', id: 'task:old' }],
+        },
+        ...Array.from({ length: 25 }, (_, index) => ({
+          id: `issue:resolved:${index}`,
+          summary: `Resolved issue ${index}`,
+          status: 'RESOLVED' as const,
+          recordedAt: index + 2,
+          sourceRefs: [{ kind: 'event' as const, id: `event:${index}` }],
+        })),
+      ],
+      questions: [
+        {
+          id: 'question:open',
+          question: 'Keep this open question.',
+          status: 'OPEN',
+          recordedAt: 1,
+          sourceRefs: [{ kind: 'goal', id: goal.id }],
+        },
+        ...Array.from({ length: 25 }, (_, index) => ({
+          id: `question:answered:${index}`,
+          question: `Answered question ${index}`,
+          status: 'ANSWERED' as const,
+          recordedAt: index + 2,
+          sourceRefs: [{ kind: 'event' as const, id: `question-event:${index}` }],
+        })),
+      ],
+      notes: [],
+    };
+    const result = compactExecutionMemory(memory, {
+      decisionLimit: 10,
+      completedTaskSummaryLimit: 5,
+      resolvedIssueLimit: 3,
+      answeredQuestionLimit: 3,
+      now: 100,
+    });
+    expect(result.compacted).toBe(true);
+    expect(result.memory.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'locked-boundary', status: 'LOCKED' }),
+      ]),
+    );
+    expect(result.memory.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'issue:open', status: 'OPEN' })]),
+    );
+    expect(result.memory.questions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'question:open', status: 'OPEN' })]),
+    );
+    expect(result.memory.completedTaskSummaries).toHaveLength(5);
+    expect(result.memory.sourceRefs).toEqual(
+      expect.arrayContaining([{ kind: 'task', id: 'task:0' }]),
+    );
+    expect(result.memory.notes.at(-1)).toContain('Compacted');
   });
 });

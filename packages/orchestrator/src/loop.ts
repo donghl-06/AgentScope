@@ -33,7 +33,7 @@ import {
   type ProjectState,
   type WorkingSet,
 } from './index.js';
-import { buildMemorySnapshot, rememberTaskOutcome } from './memory.js';
+import { buildMemorySnapshot, compactExecutionMemory, rememberTaskOutcome } from './memory.js';
 import { maintainWorkingSet } from './working-set.js';
 import { ConservativePlanner, type Planner } from './planner.js';
 import { decideRepair } from './repair.js';
@@ -927,6 +927,19 @@ export class OrchestratorEngine {
           result.reason,
           this.now(),
         );
+        const compaction = compactExecutionMemory(executionMemory, { now: this.now() });
+        executionMemory = compaction.memory;
+        if (compaction.compacted) {
+          repository.appendEvent({
+            id: `${goal.id}:memory:compacted:${randomUUID()}`,
+            goalId: goal.id,
+            taskId: activeTask.id,
+            type: 'goal.memory.compacted',
+            payload: { summary: compaction.summary ?? 'Execution memory compacted.' },
+            confidence: 1,
+            timestamp: this.now(),
+          });
+        }
         goal = this.persistMemorySnapshot(
           repository.getGoal(goal.id),
           repository.listTasks(goal.id),

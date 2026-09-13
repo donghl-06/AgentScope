@@ -37,6 +37,20 @@ export interface MemorySnapshotBuildResult {
   readonly sources: readonly JsonObject[];
 }
 
+export interface MemoryCompactionOptions {
+  readonly decisionLimit?: number;
+  readonly completedTaskSummaryLimit?: number;
+  readonly resolvedIssueLimit?: number;
+  readonly answeredQuestionLimit?: number;
+  readonly now?: number;
+}
+
+export interface MemoryCompactionResult {
+  readonly memory: ExecutionMemory;
+  readonly compacted: boolean;
+  readonly summary?: string;
+}
+
 /**
  * Build the durable, bounded memory representation used at a safe boundary.
  * Only known fields are copied and free-form text is redacted before it is
@@ -111,6 +125,62 @@ export function normalizeExecutionMemory(memory: ExecutionMemory, now: number): 
   };
 }
 
+/**
+ * Compact only reconstructible history. Locked decisions, open issues and
+ * questions, failed approaches, and every source reference associated with
+ * compacted entries remain durable so a later Planner cannot drift from the
+ * user's constraints.
+ */
+export function compactExecutionMemory(
+  memory: ExecutionMemory,
+  options: MemoryCompactionOptions = {},
+): MemoryCompactionResult {
+  const now = options.now ?? Date.now();
+  const normalized = normalizeExecutionMemory(memory, now);
+  const decisionLimit = Math.max(1, options.decisionLimit ?? 40);
+  const completedTaskSummaryLimit = Math.max(1, options.completedTaskSummaryLimit ?? 20);
+  const resolvedIssueLimit = Math.max(0, options.resolvedIssueLimit ?? 20);
+  const answeredQuestionLimit = Math.max(0, options.answeredQuestionLimit ?? 20);
+  const lockedDecisions = normalized.decisions.filter((decision) => decision.status === 'LOCKED');
+  const otherDecisions = normalized.decisions.filter((decision) => decision.status !== 'LOCKED');
+  const keptOtherDecisions = otherDecisions.slice(
+    -Math.max(0, decisionLimit - lockedDecisions.length),
+  );
+  const decisions = [...lockedDecisions, ...keptOtherDecisions].sort(
+    (left, right) => left.recordedAt - right.recordedAt || left.id.localeCompare(right.id),
+  );
+  const summaries = normalized.completedTaskSummaries ?? [];
+  const completedTaskSummaries = summaries.slice(-completedTaskSummaryLimit);
+  const compactedSummaryCount = summaries.length - completedTaskSummaries.length;
+  const issues = compactResolvedEntries(normalized.issues ?? [], resolvedIssueLimit);
+  const questions = compactAnsweredEntries(normalized.questions ?? [], answeredQuestionLimit);
+  const droppedDecisionCount = normalized.decisions.length - decisions.length;
+  const compacted =
+    droppedDecisionCount > 0 ||
+    compactedSummaryCount > 0 ||
+    issues.dropped > 0 ||
+    questions.dropped > 0;
+  if (!compacted) return { memory: normalized, compacted: false };
+  const compactedRefs = summaries
+    .slice(0, compactedSummaryCount)
+    .flatMap((summary) => summary.sourceRefs);
+  const summary = `Compacted ${droppedDecisionCount} non-locked decision(s), ${compactedSummaryCount} completed Task summary/summaries, ${issues.dropped} resolved issue(s), and ${questions.dropped} answered question(s); source references were retained.`;
+  return {
+    compacted: true,
+    summary,
+    memory: {
+      ...normalized,
+      decisions,
+      completedTaskSummaries,
+      issues: issues.values,
+      questions: questions.values,
+      sourceRefs: uniqueSourceRefs([...(normalized.sourceRefs ?? []), ...compactedRefs]),
+      notes: [...normalized.notes, redactText(summary, MAX_TEXT_LENGTH)].slice(-MAX_NOTES),
+      updatedAt: now,
+    },
+  };
+}
+
 /** Record a verified task outcome while preserving prior memory fields. */
 export function rememberTaskOutcome(
   memory: ExecutionMemory,
@@ -181,6 +251,26 @@ function mergeCompletedTaskSummaries(
     });
   }
   return [...byTask.values()].slice(-MAX_COMPLETED_TASKS);
+}
+
+function compactResolvedEntries(
+  values: readonly ExecutionIssue[],
+  limit: number,
+): { readonly values: readonly ExecutionIssue[]; readonly dropped: number } {
+  const open = values.filter((value) => value.status === 'OPEN');
+  const resolved = values.filter((value) => value.status === 'RESOLVED');
+  const keptResolved = resolved.slice(-limit);
+  return { values: [...open, ...keptResolved], dropped: resolved.length - keptResolved.length };
+}
+
+function compactAnsweredEntries(
+  values: readonly ExecutionQuestion[],
+  limit: number,
+): { readonly values: readonly ExecutionQuestion[]; readonly dropped: number } {
+  const open = values.filter((value) => value.status === 'OPEN');
+  const answered = values.filter((value) => value.status === 'ANSWERED');
+  const keptAnswered = answered.slice(-limit);
+  return { values: [...open, ...keptAnswered], dropped: answered.length - keptAnswered.length };
 }
 
 function normalizeDecisions(value: readonly ExecutionDecision[]): readonly ExecutionDecision[] {
