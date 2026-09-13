@@ -69,6 +69,85 @@ button {
 .notification-status-warning {
   color: #e8bd72;
 }
+.notification-center {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 20px;
+  padding: 14px;
+  border: 1px solid #2b4565;
+  border-radius: 10px;
+  background: rgba(8, 19, 34, 0.38);
+}
+.notification-center-heading,
+.notification-center-actions,
+.notification-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notification-center-heading {
+  justify-content: space-between;
+}
+.notification-center-heading > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.notification-center-heading strong {
+  color: #dbe8f7;
+  font-size: 13px;
+}
+.notification-center-heading small,
+.notification-center-error {
+  color: #8299b7;
+  font-size: 11px;
+}
+.notification-center-error {
+  margin: 0;
+  color: #ffacb9;
+}
+.notification-list {
+  display: grid;
+  gap: 6px;
+}
+.notification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-left: 2px solid #365b84;
+  background: #10243c;
+}
+.notification-row-pending,
+.notification-row-delivered {
+  border-left-color: #e2b65e;
+}
+.notification-row-dismissed {
+  opacity: 0.68;
+}
+.notification-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.notification-row-copy strong {
+  color: #dbe8f7;
+  font-size: 11px;
+}
+.notification-row-copy small,
+.notification-row-copy span {
+  overflow: hidden;
+  color: #8299b7;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-row-copy span {
+  color: #9bb7d6;
+}
+.notification-load-more {
+  justify-self: start;
+}
 .panel-actions,
 .timeline-actions {
   display: flex;
@@ -1134,6 +1213,15 @@ h3 {
   }
   .goal-form-prompt {
     grid-column: 1 / -1;
+  }
+  .notification-center-heading,
+  .notification-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .notification-center-actions,
+  .notification-row-actions {
+    flex-wrap: wrap;
   }
   .panel {
     min-height: auto;

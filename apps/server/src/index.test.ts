@@ -105,6 +105,41 @@ describe('server HTTP API', () => {
       metrics: [expect.objectContaining({ id: metric.id, progress: 0.35 })],
       notifications: [expect.objectContaining({ id: notification.id, kind: 'completed' })],
     });
+    expect((await app.inject(`/api/orchestrator/notifications?limit=1`)).json()).toMatchObject({
+      items: [expect.objectContaining({ id: notification.id })],
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/orchestrator/notifications/${notification.id}/read`,
+        })
+      ).json(),
+    ).toMatchObject({ id: notification.id, status: 'READ' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/orchestrator/notifications/${notification.id}/read`,
+        })
+      ).json(),
+    ).toMatchObject({ id: notification.id, status: 'READ' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/orchestrator/notifications/${notification.id}/dismiss`,
+        })
+      ).json(),
+    ).toMatchObject({ id: notification.id, status: 'DISMISSED' });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/orchestrator/notifications/missing/read',
+        })
+      ).statusCode,
+    ).toBe(404);
     expect((await app.inject(`/api/goals/${goal.id}/events?after=0&limit=1`)).json()).toEqual([
       expect.objectContaining({ id: 'goal-api-1:event:1', seq: 1 }),
     ]);

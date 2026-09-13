@@ -112,6 +112,45 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('loads the notification center page and updates read or dismissed state', async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [{ id: 'notification-1' }], nextCursor: 'next' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: 'notification-1', status: 'READ' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await expect(
+      api.listOrchestratorNotifications({ status: 'PENDING', limit: 20, cursor: 'page-1' }),
+    ).resolves.toMatchObject({ items: [{ id: 'notification-1' }], nextCursor: 'next' });
+    await api.markOrchestratorNotificationRead('notification-1');
+    await api.dismissOrchestratorNotification('notification-1');
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/orchestrator/notifications?status=PENDING&limit=20&cursor=page-1',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/orchestrator/notifications/notification-1/read',
+      { method: 'POST' },
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      'http://127.0.0.1:8787/api/orchestrator/notifications/notification-1/dismiss',
+      { method: 'POST' },
+    );
+  });
+
   it('builds typed session requests with filters', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], nextCursor: 'next' }), {

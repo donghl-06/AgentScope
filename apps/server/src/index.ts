@@ -32,6 +32,8 @@ import {
   type StoredGoal,
   type StoredGoalMetricSnapshot,
   type StoredOrchestratorNotification,
+  type OrchestratorNotificationPage,
+  type NotificationStatus,
   type StoredTask,
 } from '@agentscope/storage';
 
@@ -150,6 +152,13 @@ const GoalNotificationQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
+const OrchestratorNotificationListQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  includeArchived: Type.Optional(Type.Boolean()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+});
+const NotificationParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }) });
 const GoalRoadmapRevisionQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
@@ -715,6 +724,84 @@ export function createServer(options: ServerOptions): FastifyInstance {
       }
     },
   );
+
+  app.get(
+    '/api/orchestrator/notifications',
+    {
+      schema: {
+        querystring: OrchestratorNotificationListQuerySchema,
+        response: {
+          200: Type.Object({
+            items: Type.Array(Type.Unknown()),
+            nextCursor: Type.Optional(Type.String()),
+          }),
+          400: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const query = request.query as Record<string, unknown>;
+        const status =
+          query.status === undefined ? undefined : (String(query.status) as NotificationStatus);
+        const limit = query.limit === undefined ? 50 : parsePositiveInteger(query.limit);
+        const page: OrchestratorNotificationPage =
+          options.orchestratorRepository.listOrchestratorNotificationPage({
+            ...(status === undefined ? {} : { status }),
+            ...(query.includeArchived === true ? { includeArchived: true } : {}),
+            limit,
+            ...(typeof query.cursor === 'string' ? { cursor: query.cursor } : {}),
+          });
+        return reply.send(page);
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  for (const [action, status] of [
+    ['read', 'READ'],
+    ['dismiss', 'DISMISSED'],
+  ] as const) {
+    app.post(
+      `/api/orchestrator/notifications/:id/${action}`,
+      {
+        schema: {
+          params: NotificationParamsSchema,
+          response: {
+            200: Type.Unknown(),
+            404: ErrorResponseSchema,
+            409: ErrorResponseSchema,
+            503: ErrorResponseSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        if (options.orchestratorRepository === undefined) {
+          return reply.code(503).send({
+            error: {
+              code: 'orchestrator_unavailable',
+              message: 'Orchestrator is not configured.',
+            },
+          });
+        }
+        try {
+          const { id } = request.params as { id: string };
+          return reply.send(
+            options.orchestratorRepository.transitionOrchestratorNotification(id, status),
+          );
+        } catch (error) {
+          return sendError(reply, error);
+        }
+      },
+    );
+  }
 
   app.post(
     '/api/goals/:id/tasks',

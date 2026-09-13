@@ -3,6 +3,7 @@ import type {
   StoredGoal,
   StoredEvent,
   StoredObserverEvidence,
+  StoredOrchestratorNotification,
   StoredSession,
   StoredTurn,
 } from '@agentscope/storage';
@@ -685,6 +686,7 @@ function GoalPanel({
           {actionBusy ? 'Starting…' : 'Start goal'}
         </button>
       </form>
+      <NotificationCenter goals={goals} onSelectGoal={(goalId) => void inspectGoal(goalId)} />
       {loading ? (
         <p className="empty-state">Loading goals…</p>
       ) : goals.length === 0 ? (
@@ -821,6 +823,249 @@ function GoalPanel({
       )}
     </section>
   );
+}
+
+function NotificationCenter({
+  goals,
+  onSelectGoal,
+}: {
+  goals: readonly StoredGoal[];
+  onSelectGoal: (goalId: string) => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | StoredOrchestratorNotification['status']
+  >('all');
+  const [notifications, setNotifications] = useState<readonly StoredOrchestratorNotification[]>([]);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [actionId, setActionId] = useState<string>();
+  const [error, setError] = useState<string>();
+  const requestIdRef = useRef(0);
+
+  const load = useCallback(
+    async (cursor?: string) => {
+      const requestId = ++requestIdRef.current;
+      if (cursor === undefined) setLoading(true);
+      else setLoadingMore(true);
+      try {
+        const page = await api.listOrchestratorNotifications({
+          limit: 20,
+          ...(statusFilter === 'all' ? {} : { status: statusFilter }),
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        if (requestId !== requestIdRef.current) return;
+        setNotifications((current) =>
+          cursor === undefined ? page.items : mergeNotifications(current, page.items),
+        );
+        setNextCursor(page.nextCursor);
+        setError(undefined);
+      } catch (cause) {
+        if (requestId !== requestIdRef.current) return;
+        setError(
+          cause instanceof Error ? cause.message : 'Unable to load orchestrator notifications.',
+        );
+        if (cursor === undefined) setNotifications([]);
+      } finally {
+        if (requestId === requestIdRef.current) {
+          if (cursor === undefined) setLoading(false);
+          else setLoadingMore(false);
+        }
+      }
+    },
+    [statusFilter],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [goals, load]);
+
+  const transition = async (
+    notification: StoredOrchestratorNotification,
+    status: 'READ' | 'DISMISSED',
+  ) => {
+    setActionId(notification.id);
+    try {
+      const updated =
+        status === 'READ'
+          ? await api.markOrchestratorNotificationRead(notification.id)
+          : await api.dismissOrchestratorNotification(notification.id);
+      setNotifications((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to update notification.');
+    } finally {
+      setActionId(undefined);
+    }
+  };
+
+  const unreadCount = notifications.filter(
+    (notification) => notification.status === 'PENDING' || notification.status === 'DELIVERED',
+  ).length;
+
+  return (
+    <section className="notification-center" aria-label="Orchestrator notification center">
+      <div className="notification-center-heading">
+        <div>
+          <span className="eyebrow">NOTIFICATIONS</span>
+          <strong>Recent Orchestrator alerts</strong>
+          <small>
+            {unreadCount > 0 ? `${unreadCount} unread in the loaded history` : 'No unread alerts'}
+          </small>
+        </div>
+        <div className="notification-center-actions">
+          <label className="filter-label">
+            <span className="sr-only">Filter orchestrator notifications</span>
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as 'all' | StoredOrchestratorNotification['status'],
+                )
+              }
+            >
+              <option value="all">All</option>
+              <option value="PENDING">Unread</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="READ">Read</option>
+              <option value="DISMISSED">Dismissed</option>
+            </select>
+          </label>
+          <button
+            className="quiet-button quiet-button-small"
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      {error !== undefined && <p className="notification-center-error">{error}</p>}
+      {loading ? (
+        <p className="empty-state">Loading notifications…</p>
+      ) : notifications.length === 0 ? (
+        <p className="empty-state">No notifications in this view.</p>
+      ) : (
+        <div className="notification-list">
+          {notifications.map((notification) => {
+            const goal = goals.find((item) => item.id === notification.goalId);
+            const taskId =
+              typeof notification.payload.taskId === 'string' &&
+              notification.payload.taskId.length > 0
+                ? notification.payload.taskId
+                : undefined;
+            const hasTask = taskId !== undefined;
+            const goalAvailable = goal !== undefined && goal.archivedAt === undefined;
+            return (
+              <article
+                className={`notification-row notification-row-${notification.status.toLowerCase()}`}
+                key={notification.id}
+              >
+                <div className="notification-row-copy">
+                  <strong>{notificationKindLabel(notification.kind)}</strong>
+                  <small>
+                    Goal {shortId(notification.goalId)}
+                    {hasTask ? ` · Task ${shortId(taskId)}` : ''} ·{' '}
+                    {formatTimestamp(notification.createdAt)}
+                  </small>
+                  <span>{notificationStatusLabel(notification.status)}</span>
+                </div>
+                <div className="notification-row-actions">
+                  <button
+                    className="quiet-button quiet-button-small"
+                    type="button"
+                    onClick={() => onSelectGoal(notification.goalId)}
+                    disabled={!goalAvailable}
+                    title={
+                      goalAvailable
+                        ? 'Open the related Goal'
+                        : 'This Goal is archived or no longer available'
+                    }
+                  >
+                    {goalAvailable ? 'Open Goal' : 'Unavailable'}
+                  </button>
+                  {notification.status !== 'READ' && notification.status !== 'DISMISSED' && (
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => void transition(notification, 'READ')}
+                      disabled={actionId === notification.id}
+                    >
+                      Mark read
+                    </button>
+                  )}
+                  {notification.status !== 'DISMISSED' && (
+                    <button
+                      className="quiet-button quiet-button-small quiet-button-danger"
+                      type="button"
+                      onClick={() => void transition(notification, 'DISMISSED')}
+                      disabled={actionId === notification.id}
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      {nextCursor !== undefined && (
+        <button
+          className="quiet-button quiet-button-small notification-load-more"
+          type="button"
+          onClick={() => void load(nextCursor)}
+          disabled={loadingMore}
+        >
+          {loadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function mergeNotifications(
+  current: readonly StoredOrchestratorNotification[],
+  incoming: readonly StoredOrchestratorNotification[],
+): readonly StoredOrchestratorNotification[] {
+  const byId = new Map(current.map((notification) => [notification.id, notification]));
+  for (const notification of incoming) byId.set(notification.id, notification);
+  return [...byId.values()].sort(
+    (left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id),
+  );
+}
+
+function notificationKindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    'needs-human': 'Needs human attention',
+    approval: 'Approval requested',
+    'budget-warning': 'Budget warning',
+    'budget-exceeded': 'Budget exceeded',
+    completed: 'Goal completed',
+    failed: 'Goal failed',
+    'recovery-failed': 'Recovery failed',
+  };
+  return labels[kind] ?? 'Orchestrator alert';
+}
+
+function notificationStatusLabel(status: StoredOrchestratorNotification['status']): string {
+  switch (status) {
+    case 'PENDING':
+      return 'Unread';
+    case 'DELIVERED':
+      return 'Delivered';
+    case 'READ':
+      return 'Read';
+    case 'DISMISSED':
+      return 'Dismissed';
+  }
+}
+
+function shortId(identifier: string): string {
+  return identifier.length > 18 ? `${identifier.slice(0, 8)}…${identifier.slice(-6)}` : identifier;
 }
 
 function NotificationControl({

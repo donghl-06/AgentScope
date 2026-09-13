@@ -12,6 +12,7 @@ import type {
   StoredVerificationRun,
   StoredGoalMetricSnapshot,
   StoredOrchestratorNotification,
+  OrchestratorNotificationPage,
   StoredTurn,
   TurnListFilter,
   EvidenceListFilter,
@@ -27,6 +28,13 @@ export interface CreateGoalRequest {
   readonly workspace: string;
   readonly prompt: string;
   readonly provider: string;
+}
+
+export interface OrchestratorNotificationFilter {
+  readonly status?: StoredOrchestratorNotification['status'];
+  readonly includeArchived?: boolean;
+  readonly limit?: number;
+  readonly cursor?: string;
 }
 
 export interface GoalDetail {
@@ -139,6 +147,31 @@ export class DashboardApi {
     return this.get<readonly StoredOrchestratorNotification[]>(
       `/api/goals/${encodeURIComponent(goalId)}/notifications`,
       query,
+    );
+  }
+
+  listOrchestratorNotifications(
+    filter: OrchestratorNotificationFilter = {},
+  ): Promise<OrchestratorNotificationPage> {
+    const query = new URLSearchParams();
+    if (filter.status !== undefined) query.set('status', filter.status);
+    if (filter.includeArchived === true) query.set('includeArchived', 'true');
+    if (filter.limit !== undefined) query.set('limit', String(filter.limit));
+    if (filter.cursor !== undefined) query.set('cursor', filter.cursor);
+    return this.get<OrchestratorNotificationPage>('/api/orchestrator/notifications', query);
+  }
+
+  markOrchestratorNotificationRead(
+    notificationId: string,
+  ): Promise<StoredOrchestratorNotification> {
+    return this.mutate<StoredOrchestratorNotification>(
+      `/api/orchestrator/notifications/${encodeURIComponent(notificationId)}/read`,
+    );
+  }
+
+  dismissOrchestratorNotification(notificationId: string): Promise<StoredOrchestratorNotification> {
+    return this.mutate<StoredOrchestratorNotification>(
+      `/api/orchestrator/notifications/${encodeURIComponent(notificationId)}/dismiss`,
     );
   }
 

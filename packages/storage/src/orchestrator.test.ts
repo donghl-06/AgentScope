@@ -472,6 +472,67 @@ describe('OrchestratorRepository', () => {
     });
   });
 
+  it('lists recent notifications with cursor pagination and hides archived Goals by default', () => {
+    withRepository((repository) => {
+      repository.createGoal({
+        id: 'notification-live-goal',
+        workspace: 'D:/workspace/notifications',
+        prompt: 'Keep the live notification visible.',
+        provider: 'mock',
+        now: 200,
+      });
+      repository.createGoal({
+        id: 'notification-archived-goal',
+        workspace: 'D:/workspace/notifications',
+        prompt: 'Keep archived notification out of the default center.',
+        provider: 'mock',
+        now: 201,
+      });
+      repository.transitionGoal('notification-archived-goal', 'PAUSED', 202);
+      repository.archiveGoal('notification-archived-goal', 203);
+      const archived = repository.createOrchestratorNotification({
+        id: 'notification-archived',
+        goalId: 'notification-archived-goal',
+        eventKey: 'archived:event',
+        kind: 'needs-human',
+        payload: { reason: 'Archived detail must not be in the default list.' },
+        now: 204,
+      });
+      const first = repository.createOrchestratorNotification({
+        id: 'notification-live-first',
+        goalId: 'notification-live-goal',
+        eventKey: 'live:first',
+        kind: 'approval',
+        payload: { approvalId: 'approval-1' },
+        now: 205,
+      });
+      const second = repository.createOrchestratorNotification({
+        id: 'notification-live-second',
+        goalId: 'notification-live-goal',
+        eventKey: 'live:second',
+        kind: 'failed',
+        payload: { status: 'FAILED' },
+        now: 206,
+      });
+
+      const page = repository.listOrchestratorNotificationPage({ limit: 1 });
+      expect(page.items).toEqual([second]);
+      expect(page.nextCursor).toBeDefined();
+      expect(
+        repository.listOrchestratorNotificationPage({ limit: 1, cursor: page.nextCursor! }).items,
+      ).toEqual([first]);
+      expect(
+        repository.listOrchestratorNotificationPage({
+          limit: 10,
+          includeArchived: true,
+        }).items,
+      ).toEqual([second, first, archived]);
+      expect(() => repository.listOrchestratorNotificationPage({ cursor: 'not-a-cursor' })).toThrow(
+        'Invalid notification cursor',
+      );
+    });
+  });
+
   it('atomically applies an instruction with context and audit evidence', () => {
     withRepository((repository) => {
       repository.createGoal({

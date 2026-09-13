@@ -286,6 +286,19 @@ export interface StoredOrchestratorNotification {
   readonly readAt?: number;
 }
 
+export interface OrchestratorNotificationListFilter {
+  readonly status?: NotificationStatus;
+  /** Archived Goals are excluded unless explicitly requested by an operator. */
+  readonly includeArchived?: boolean;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface OrchestratorNotificationPage {
+  readonly items: readonly StoredOrchestratorNotification[];
+  readonly nextCursor?: string;
+}
+
 export interface StoredOrchestratorCommand {
   readonly id: string;
   readonly goalId: string;
@@ -2184,6 +2197,41 @@ export class OrchestratorRepository {
     return rows.map(decodeNotification);
   }
 
+  listOrchestratorNotificationPage(
+    filter: OrchestratorNotificationListFilter = {},
+  ): OrchestratorNotificationPage {
+    const clauses: string[] = [];
+    const parameters: Array<string | number> = [];
+    const limit = validateLimit(filter.limit ?? 50, 'Notification limit', 500);
+    if (filter.includeArchived !== true) clauses.push('g.archived_at IS NULL');
+    if (filter.status !== undefined) {
+      assertNotificationStatus(filter.status);
+      clauses.push('n.status = ?');
+      parameters.push(filter.status);
+    }
+    if (filter.cursor !== undefined) {
+      const cursor = decodeNotificationCursor(filter.cursor);
+      clauses.push('(n.created_at < ? OR (n.created_at = ? AND n.id < ?))');
+      parameters.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const where = clauses.length === 0 ? '' : `WHERE ${clauses.join(' AND ')}`;
+    const rows = this.client
+      .prepare(
+        `SELECT n.* FROM orchestrator_notifications n
+         INNER JOIN goals g ON g.id = n.goal_id
+         ${where}
+         ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
+      )
+      .all(...parameters, limit + 1) as NotificationRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeNotification),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeNotificationCursor(pageRows.at(-1)!) }
+        : {}),
+    };
+  }
+
   transitionOrchestratorNotification(
     id: string,
     status: NotificationStatus,
@@ -3426,6 +3474,33 @@ function decodeGoalCursor(cursor: string): { updatedAt: number; id: string } {
     return { updatedAt: value.updatedAt, id: value.id };
   } catch (error) {
     throw new StorageError('Invalid Goal cursor.', 'invalid_query', { cause: error });
+  }
+}
+
+function encodeNotificationCursor(row: NotificationRow): string {
+  return Buffer.from(JSON.stringify({ createdAt: row.created_at, id: row.id })).toString(
+    'base64url',
+  );
+}
+
+function decodeNotificationCursor(cursor: string): { createdAt: number; id: string } {
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+    if (
+      typeof value.createdAt !== 'number' ||
+      !Number.isFinite(value.createdAt) ||
+      value.createdAt < 0 ||
+      typeof value.id !== 'string' ||
+      value.id.length === 0
+    ) {
+      throw new Error('invalid');
+    }
+    return { createdAt: value.createdAt, id: value.id };
+  } catch (error) {
+    throw new StorageError('Invalid notification cursor.', 'invalid_query', { cause: error });
   }
 }
 
