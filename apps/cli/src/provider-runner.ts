@@ -13,7 +13,11 @@ import {
   ObserverRuntime,
   type ObserverEvidence,
 } from '@agentscope/observer-runtime';
-import { createInitialSessionState, type SessionState } from '@agentscope/protocol';
+import {
+  createInitialSessionState,
+  type AgentEvent,
+  type SessionState,
+} from '@agentscope/protocol';
 import { computeProgress } from '@agentscope/progress';
 import { openStorage, StorageRepository } from '@agentscope/storage';
 
@@ -28,6 +32,8 @@ export interface ProviderRunOptions {
   readonly workspacePath: string;
   readonly executable?: string;
   readonly sessionId?: string;
+  /** Optional Orchestrator Attempt correlation for observer evidence. */
+  readonly attemptId?: string;
   readonly writeStdout?: (chunk: string) => void;
   readonly writeStderr?: (chunk: string) => void;
   readonly onObserverEvidence?: (evidence: ObserverEvidence) => void;
@@ -119,6 +125,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   let attached: Awaited<ReturnType<NonNullable<(typeof adapter)['start']>>> | undefined;
   let observerRuntime: ObserverRuntime | undefined;
   const activeCommandIds: string[] = [];
+  let terminalEventPersisted = false;
   const observerSource = {
     provider: options.adapter === 'claude' ? 'claude' : 'codex',
     client: adapter.id,
@@ -150,6 +157,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
         repository.saveObserverEvidence({
           id: evidence.id,
           sessionId,
+          ...(options.attemptId === undefined ? {} : { attemptId: options.attemptId }),
           key: evidence.key,
           timestamp: evidence.timestamp,
           source: evidence.source,
@@ -240,11 +248,15 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
         }),
       };
       repository.appendEvent(event, state, event.timestamp);
+      if (event.type === 'session_finished') terminalEventPersisted = true;
       if (state.eta !== undefined && shouldPersistEtaSnapshot(event.type, lastEtaSnapshot)) {
         repository.saveEtaSnapshot(sessionId, state.eta, event.timestamp);
         lastEtaSnapshot = state.eta;
       }
       eventCount += 1;
+    }
+    if (!terminalEventPersisted) {
+      throw new Error('Provider stream ended before a terminal session event.');
     }
     const exitCode = state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1;
     const failure = classifyWorkerFailure({
@@ -263,6 +275,68 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
       sessionId,
       status: state.status,
       exitCode,
+      eventCount,
+      ...(failure === undefined ? {} : { failure }),
+    };
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    const failure = classifyWorkerFailure({
+      provider: options.adapter,
+      status: 'failed',
+      exitCode: 1,
+      ...(providerErrorCode === undefined ? {} : { errorCode: providerErrorCode }),
+      diagnostic,
+    });
+    if (!terminalEventPersisted) {
+      const timestamp = now();
+      const errorEvent: AgentEvent = {
+        id: randomUUID(),
+        sessionId,
+        timestamp,
+        source: observerSource,
+        type: 'error',
+        payload: {
+          code: failure?.code ?? 'unknown',
+          message: failure?.summary ?? 'Worker execution failed.',
+        },
+        confidence: 0.95,
+      };
+      state = reduceSessionState(state, errorEvent);
+      state = {
+        ...state,
+        progress: computeProgress({
+          state,
+          capabilities: adapter.capabilities(),
+          now: timestamp,
+          lastSignalAt: timestamp,
+        }),
+        eta: estimateEta({
+          state,
+          progress: state.progress,
+          elapsedSeconds: Math.max(0, (timestamp - startedAt) / 1_000),
+          history: etaHistory,
+        }),
+      };
+      repository.appendEvent(errorEvent, state, timestamp);
+      eventCount += 1;
+
+      const finishedEvent: AgentEvent = {
+        id: randomUUID(),
+        sessionId,
+        timestamp: now(),
+        source: observerSource,
+        type: 'session_finished',
+        payload: { reason: 'failed', exitCode: 1 },
+        confidence: 0.95,
+      };
+      state = reduceSessionState(state, finishedEvent);
+      repository.appendEvent(finishedEvent, state, finishedEvent.timestamp);
+      eventCount += 1;
+    }
+    return {
+      sessionId,
+      status: state.status,
+      exitCode: state.status === 'interrupted' ? 130 : state.status === 'completed' ? 0 : 1,
       eventCount,
       ...(failure === undefined ? {} : { failure }),
     };

@@ -211,6 +211,18 @@ describe('StorageRepository', () => {
         status: 'active',
         startedAt: 1_700_000_000_150,
       });
+      repository.saveObserverEvidence({
+        id: 'attempt-evidence-1',
+        sessionId: 'session-1',
+        attemptId: 'attempt-evidence-1',
+        key: 'attempt:evidence',
+        timestamp: 1_700_000_000_180,
+        source: 'process',
+        kind: 'lifecycle',
+        confidence: 0.9,
+        reason: 'Attempt-linked process evidence',
+        payload: { pid: 42 },
+      });
       repository.saveEtaSnapshot('session-1', {
         minSeconds: 5,
         maxSeconds: 10,
@@ -227,6 +239,13 @@ describe('StorageRepository', () => {
       );
       expect(repository.listMilestones('session-1')).toMatchObject([
         { id: 'm1', status: 'active' },
+      ]);
+      expect(repository.listObserverEvidenceForAttempt('attempt-evidence-1')).toEqual([
+        expect.objectContaining({
+          id: 'attempt-evidence-1',
+          sessionId: 'session-1',
+          attemptId: 'attempt-evidence-1',
+        }),
       ]);
       expect(repository.listEtaSnapshots('session-1')[0]).toMatchObject({
         minSeconds: 5,

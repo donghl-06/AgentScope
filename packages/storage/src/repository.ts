@@ -114,6 +114,7 @@ export interface StoredEvent {
 export interface ObserverEvidenceInput {
   readonly id: string;
   readonly sessionId: string;
+  readonly attemptId?: string;
   readonly turnId?: string;
   readonly key: string;
   readonly timestamp: number;
@@ -803,10 +804,11 @@ export class StorageRepository {
       this.client
         .prepare(
           `INSERT INTO observer_evidence
-            (id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, session_id, attempt_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(session_id, evidence_key) DO UPDATE SET
              id = excluded.id,
+             attempt_id = excluded.attempt_id,
              turn_id = excluded.turn_id,
              timestamp = excluded.timestamp,
              source = excluded.source,
@@ -819,6 +821,7 @@ export class StorageRepository {
         .run(
           input.id,
           input.sessionId,
+          input.attemptId ?? null,
           input.turnId ?? null,
           input.key,
           input.timestamp,
@@ -838,6 +841,41 @@ export class StorageRepository {
     return this.listObserverEvidencePage(sessionId, { limit }).items;
   }
 
+  listObserverEvidenceForAttempt(
+    attemptId: string,
+    limit = 100,
+  ): readonly StoredObserverEvidence[] {
+    return this.listObserverEvidenceForAttemptPage(attemptId, { limit }).items;
+  }
+
+  listObserverEvidenceForAttemptPage(
+    attemptId: string,
+    filter: EvidenceListFilter = {},
+  ): Page<StoredObserverEvidence> {
+    const cursor = filter.cursor === undefined ? undefined : decodeEvidenceCursor(filter.cursor);
+    const parameters: Array<string | number> = [attemptId];
+    const cursorClause =
+      cursor === undefined ? '' : 'AND (timestamp > ? OR (timestamp = ? AND evidence_key > ?))';
+    if (cursor !== undefined) parameters.push(cursor.timestamp, cursor.timestamp, cursor.key);
+    const limit = clampObserverEvidenceLimit(filter.limit);
+    const rows = this.client
+      .prepare(
+        `SELECT id, session_id, attempt_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+         FROM observer_evidence
+         WHERE attempt_id = ? ${cursorClause}
+         ORDER BY timestamp, evidence_key
+         LIMIT ?`,
+      )
+      .all(...parameters, limit + 1) as ObserverEvidenceRow[];
+    const pageRows = rows.slice(0, limit);
+    return {
+      items: pageRows.map(decodeObserverEvidence),
+      ...(rows.length > limit && pageRows.length > 0
+        ? { nextCursor: encodeEvidenceCursor(pageRows.at(-1)!) }
+        : {}),
+    };
+  }
+
   listObserverEvidencePage(
     sessionId: string,
     filter: EvidenceListFilter = {},
@@ -851,7 +889,7 @@ export class StorageRepository {
     const limit = clampObserverEvidenceLimit(filter.limit);
     const rows = this.client
       .prepare(
-        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+        `SELECT id, session_id, attempt_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
          WHERE session_id = ? ${cursorClause}
          ORDER BY timestamp, evidence_key
@@ -884,7 +922,7 @@ export class StorageRepository {
     const limit = clampObserverEvidenceLimit(filter.limit);
     const rows = this.client
       .prepare(
-        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+        `SELECT id, session_id, attempt_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
          WHERE turn_id = ? ${cursorClause}
          ORDER BY timestamp, evidence_key
@@ -903,7 +941,7 @@ export class StorageRepository {
   private getObserverEvidence(sessionId: string, key: string): StoredObserverEvidence {
     const row = this.client
       .prepare(
-        `SELECT id, session_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
+        `SELECT id, session_id, attempt_id, turn_id, evidence_key, timestamp, source, kind, confidence, reason, payload_json
          FROM observer_evidence
          WHERE session_id = ? AND evidence_key = ?`,
       )
@@ -1081,6 +1119,7 @@ interface EtaRow {
 interface ObserverEvidenceRow {
   id: string;
   session_id: string;
+  attempt_id: string | null;
   turn_id: string | null;
   evidence_key: string;
   timestamp: number;
@@ -1161,6 +1200,7 @@ function decodeObserverEvidence(row: ObserverEvidenceRow): StoredObserverEvidenc
   return {
     id: row.id,
     sessionId: row.session_id,
+    ...(row.attempt_id === null ? {} : { attemptId: row.attempt_id }),
     ...(row.turn_id === null ? {} : { turnId: row.turn_id }),
     key: row.evidence_key,
     timestamp: row.timestamp,

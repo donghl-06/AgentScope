@@ -114,13 +114,18 @@ describe('provider runner', () => {
         filename,
         workspacePath,
         sessionId: 'codex-session-1',
+        attemptId: 'codex-attempt-1',
       });
       const storage = openStorage({ filename, migrate: false });
       const repository = new StorageRepository(storage.client);
       expect(repository.getSession('codex-session-1').provider).toBe('codex');
       expect(repository.listObserverEvidence('codex-session-1')).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ source: 'process', key: expect.stringContaining('process:') }),
+          expect.objectContaining({
+            source: 'process',
+            key: expect.stringContaining('process:'),
+            attemptId: 'codex-attempt-1',
+          }),
           expect.objectContaining({ source: 'git', kind: 'workspace' }),
         ]),
       );

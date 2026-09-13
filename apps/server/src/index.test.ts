@@ -386,6 +386,31 @@ describe('server HTTP API', () => {
       provider: 'mock',
       sessionId: state.sessionId,
     });
+    repository.saveObserverEvidence({
+      id: 'session-reference-evidence',
+      sessionId: state.sessionId,
+      attemptId: 'session-reference-attempt',
+      key: 'attempt:process',
+      timestamp: state.startedAt + 1,
+      source: 'process',
+      kind: 'lifecycle',
+      confidence: 1,
+      reason: 'Attempt correlation evidence',
+      payload: { pid: 1234 },
+    });
+    repository.appendEvent(
+      {
+        id: 'session-reference-event',
+        sessionId: state.sessionId,
+        timestamp: state.startedAt + 2,
+        source,
+        type: 'provider_event',
+        payload: { providerEventType: 'test' },
+        confidence: 1,
+      },
+      state,
+      state.startedAt + 2,
+    );
     const app = createServer({ repository, orchestratorRepository, recoverOnStart: false });
     openApps.push({
       close: async () => {
@@ -407,6 +432,8 @@ describe('server HTTP API', () => {
             attemptId: 'session-reference-attempt',
             attemptNumber: 1,
             attemptStatus: 'CREATED',
+            evidenceCount: 1,
+            eventCount: 1,
           },
         ],
       },

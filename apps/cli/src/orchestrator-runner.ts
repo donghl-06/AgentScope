@@ -66,12 +66,15 @@ export function createCliOrchestratorEngine(
     worker: new SerialWorkerRuntime({
       launch: async (request) => {
         const provider = toOrchestratorProvider(request.provider);
+        const sessionId = `${request.attemptId}:session`;
         try {
           const result = await runProvider({
             adapter: provider,
             args: providerArgs(provider, request.prompt),
             filename: options.filename,
             workspacePath: request.workspace,
+            sessionId,
+            attemptId: request.attemptId,
             ...(provider === 'claude'
               ? options.claudeExecutable === undefined
                 ? {}
@@ -88,7 +91,7 @@ export function createCliOrchestratorEngine(
             exitCode: 1,
             diagnostic: error instanceof Error ? error.message : String(error),
           });
-          return failedWorkerResult(request, failure);
+          return failedWorkerResult(request, sessionId, failure);
         }
       },
     }),
@@ -138,9 +141,11 @@ function workerResult(
 
 function failedWorkerResult(
   request: WorkerLaunchRequest,
+  sessionId: string,
   failure: WorkerFailure | undefined,
 ): {
   readonly attemptId: string;
+  readonly sessionId: string;
   readonly status: 'failed';
   readonly exitCode: number;
   readonly summary: string;
@@ -150,6 +155,7 @@ function failedWorkerResult(
 } {
   return {
     attemptId: request.attemptId,
+    sessionId,
     status: 'failed',
     exitCode: failure?.exitCode ?? 1,
     summary: failure?.summary ?? 'Worker execution failed.',

@@ -199,6 +199,8 @@ export interface StoredSessionGoalReference {
   readonly attemptId: string;
   readonly attemptNumber: number;
   readonly attemptStatus: AttemptStatus;
+  readonly evidenceCount: number;
+  readonly eventCount: number;
 }
 
 export interface StoredVerificationRun {
@@ -2553,7 +2555,12 @@ export class OrchestratorRepository {
            t.status AS task_status,
            a.id AS attempt_id,
            a.attempt_number,
-           a.status AS attempt_status
+           a.status AS attempt_status,
+           (SELECT COUNT(*)
+              FROM observer_evidence oe
+             WHERE oe.attempt_id = a.id
+                OR (oe.attempt_id IS NULL AND oe.session_id = a.session_id)) AS evidence_count,
+           (SELECT COUNT(*) FROM events se WHERE se.session_id = a.session_id) AS event_count
          FROM task_attempts a
          INNER JOIN tasks t ON t.id = a.task_id
          INNER JOIN goals g ON g.id = t.goal_id
@@ -2918,6 +2925,8 @@ interface SessionGoalReferenceRow {
   attempt_id: string;
   attempt_number: number;
   attempt_status: string;
+  evidence_count: number;
+  event_count: number;
 }
 
 interface CommandRow {
@@ -3164,6 +3173,8 @@ function decodeSessionGoalReference(row: SessionGoalReferenceRow): StoredSession
     attemptId: row.attempt_id,
     attemptNumber: row.attempt_number,
     attemptStatus: row.attempt_status,
+    evidenceCount: row.evidence_count,
+    eventCount: row.event_count,
   };
 }
 

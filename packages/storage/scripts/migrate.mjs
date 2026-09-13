@@ -35,6 +35,10 @@ const migrations = [
     id: '0005_session_visibility',
     url: new URL('../src/migrations/0005_session_visibility.sql', import.meta.url),
   },
+  {
+    id: '0011_observer_evidence_attempt',
+    url: new URL('../src/migrations/0011_observer_evidence_attempt.sql', import.meta.url),
+  },
 ];
 for (const migration of migrations) {
   const applied = client
