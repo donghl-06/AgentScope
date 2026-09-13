@@ -2758,9 +2758,7 @@ function clampUnitNumber(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
-function readEtaSnapshot(
-  value: unknown,
-):
+function readEtaSnapshot(value: unknown):
   | {
       readonly minSeconds: number;
       readonly maxSeconds: number;
