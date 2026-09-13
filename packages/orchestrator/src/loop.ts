@@ -47,6 +47,7 @@ import {
 } from './approval.js';
 import { classifyTaskRisk } from './risk.js';
 import { evaluateBudget, type BudgetEvaluation, type BudgetUsage } from './budget.js';
+import { preflightProviderTask, providerPreflightJson } from './provider-capabilities.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
 import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
@@ -1611,6 +1612,7 @@ export class OrchestratorEngine {
   ): { readonly allowed: boolean; readonly reason: string } {
     const repository = this.options.repository;
     const assessment = classifyTaskRisk(task);
+    const preflight = preflightProviderTask({ provider: goal.provider, task });
     if (!assessment.requiresApproval) {
       return { allowed: true, reason: 'Task risk is within the conservative local policy.' };
     }
@@ -1667,6 +1669,7 @@ export class OrchestratorEngine {
         riskLevel: assessment.level,
         categories: assessment.categories,
         reason: assessment.reasons.join(' '),
+        providerPreflight: providerPreflightJson(preflight),
       },
       confidence: 1,
       timestamp: this.now(),
