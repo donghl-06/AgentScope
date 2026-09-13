@@ -384,3 +384,4 @@ export * from './budget.js';
 export * from './approval.js';
 export * from './provider-capabilities.js';
 export * from './goal-progress.js';
+export * from './task-progress.js';
