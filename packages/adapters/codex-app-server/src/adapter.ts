@@ -209,6 +209,8 @@ class CodexAppServerAttachedSession implements AttachedSession {
   private terminal = false;
   private detached = false;
   private stopRequested = false;
+  private invalidOutput = false;
+  private validCompletionObserved = false;
   private closed = false;
 
   get pid(): number | undefined {
@@ -312,9 +314,25 @@ class CodexAppServerAttachedSession implements AttachedSession {
 
   private handleParseResult(result: CodexAppServerParseResult): void {
     const message = result.message;
+    if (result.malformed) {
+      this.invalidOutput = true;
+      this.publish({
+        id: randomUUID(),
+        sessionId: this.sessionId,
+        timestamp: this.now(),
+        source: SOURCE,
+        type: 'error',
+        payload: {
+          code: 'invalid_output',
+          message: 'Codex app-server emitted malformed JSON-RPC output.',
+        },
+        confidence: 0.95,
+      });
+    }
     if (message !== undefined) this.handleMessage(message);
     for (const event of result.events) this.publish(event);
     if (message?.method === 'turn/completed') {
+      this.validCompletionObserved = true;
       const params = recordValue(message.params);
       const turn = recordValue(params?.turn);
       const status = stringValue(turn?.status);
@@ -457,13 +475,17 @@ class CodexAppServerAttachedSession implements AttachedSession {
   private finish(reason: 'completed' | 'failed' | 'interrupted'): void {
     if (this.terminal || this.closed || this.detached) return;
     this.terminal = true;
+    const finalReason =
+      reason === 'completed' && this.invalidOutput && !this.validCompletionObserved
+        ? 'failed'
+        : reason;
     this.publish({
       id: randomUUID(),
       sessionId: this.sessionId,
       timestamp: this.now(),
       source: SOURCE,
       type: 'session_finished',
-      payload: { reason },
+      payload: { reason: finalReason },
       confidence: 0.95,
     });
     this.closeQueue();

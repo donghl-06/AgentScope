@@ -386,8 +386,20 @@ export function reduceSessionState(state: SessionState, event: AgentEvent): Sess
     }
     case 'unblocked':
       return state.status === 'blocked' ? { ...state, status: 'running' } : state;
-    case 'error':
+    case 'error': {
+      const payload = event.payload as { code?: unknown };
+      // A malformed line can be recovered when a valid terminal record follows.
+      // Keep it as observable evidence without making the session terminal; the
+      // adapter will emit a failed session_finished event if recovery never
+      // happens.
+      if (payload.code === 'invalid_output') {
+        return {
+          ...state,
+          currentActivity: activity('implementation', 'provider output warning', event),
+        };
+      }
       return { ...state, status: 'failed', endedAt: event.timestamp };
+    }
     case 'session_finished':
       return finishState(state, event);
     default:

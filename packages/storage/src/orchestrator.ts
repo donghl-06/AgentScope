@@ -97,6 +97,30 @@ export interface WorkerResult {
   readonly reportedVerification: JsonObject;
   /** Provider-reported usage only; absent means the provider did not report it. */
   readonly usage?: WorkerUsage;
+  /** Normalized provider/process failure; raw diagnostics are never persisted. */
+  readonly failure?: WorkerFailure;
+}
+
+export const WORKER_FAILURE_CODES = [
+  'provider_exit',
+  'auth',
+  'rate_limit',
+  'network',
+  'permission',
+  'invalid_output',
+  'user_interrupt',
+  'spawn_error',
+  'unknown',
+] as const;
+
+export type WorkerFailureCode = (typeof WORKER_FAILURE_CODES)[number];
+
+export interface WorkerFailure {
+  readonly code: WorkerFailureCode;
+  readonly retryable: boolean;
+  readonly summary: string;
+  readonly diagnosticRef: string;
+  readonly exitCode?: number;
 }
 
 export interface WorkerUsage {

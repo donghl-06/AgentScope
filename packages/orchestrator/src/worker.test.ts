@@ -6,6 +6,7 @@ import {
   SerialWorkerRuntime,
   WorkerBusyError,
   buildWorkerPrompt,
+  classifyWorkerFailure,
   type ProjectState,
   type WorkingSet,
 } from './index.js';
@@ -39,6 +40,45 @@ const task: StoredTask = {
 };
 
 describe('SerialWorkerRuntime', () => {
+  it.each([
+    ['rate limit provider-token-123', 'rate_limit', true],
+    ['ECONNREFUSED provider-token-123', 'network', true],
+    ['Not logged in · provider-token-123', 'auth', false],
+    ['permission denied by provider-token-123', 'permission', false],
+    ['malformed JSON provider-token-123', 'invalid_output', true],
+  ] as const)('classifies %s as %s', (diagnostic, code, retryable) => {
+    const failure = classifyWorkerFailure({
+      provider: 'claude',
+      status: 'failed',
+      exitCode: 1,
+      diagnostic,
+    });
+    expect(failure).toMatchObject({ code, retryable });
+    expect(failure?.summary).not.toContain('provider-token-123');
+    expect(failure?.diagnosticRef).toMatch(/^worker:claude:/u);
+  });
+
+  it('distinguishes user interruption and successful completion', () => {
+    expect(
+      classifyWorkerFailure({ provider: 'codex', status: 'interrupted', exitCode: 130 }),
+    ).toMatchObject({ code: 'user_interrupt', retryable: false, exitCode: 130 });
+    expect(
+      classifyWorkerFailure({ provider: 'codex', status: 'completed', exitCode: 0 }),
+    ).toBeUndefined();
+  });
+
+  it('honors a normalized provider error code without retaining its diagnostic', () => {
+    expect(
+      classifyWorkerFailure({
+        provider: 'codex-app-server',
+        status: 'failed',
+        exitCode: 1,
+        errorCode: 'invalid_output',
+        diagnostic: 'provider-token-456',
+      }),
+    ).toMatchObject({ code: 'invalid_output', retryable: true });
+  });
+
   it('builds a constrained task prompt and prevents parallel launches', async () => {
     let release: (() => void) | undefined;
     const runtime = new SerialWorkerRuntime({

@@ -185,6 +185,7 @@ class CodexAttachedSession implements AttachedSession {
   private started = false;
   private terminalEvent: AgentEvent | undefined;
   private commandFailed = false;
+  private invalidOutput = false;
   private closed = false;
 
   get pid(): number | undefined {
@@ -257,6 +258,26 @@ class CodexAttachedSession implements AttachedSession {
   }
 
   private publishResult(result: CodexParseResult): void {
+    if (result.malformed) {
+      this.invalidOutput = true;
+      this.publish({
+        id: randomUUID(),
+        sessionId: this.sessionId,
+        timestamp: this.now(),
+        source: {
+          provider: 'codex',
+          client: 'codex-cli',
+          environment: process.platform,
+          adapter: 'codex-cli',
+        },
+        type: 'error',
+        payload: {
+          code: 'invalid_output',
+          message: 'Codex emitted malformed structured output.',
+        },
+        confidence: 0.9,
+      });
+    }
     for (const event of result.events) this.publish(event);
   }
 
@@ -304,7 +325,9 @@ class CodexAttachedSession implements AttachedSession {
             reason:
               signal !== null || this.stopRequested
                 ? 'interrupted'
-                : exitCode === 0 && !this.commandFailed
+                : exitCode === 0 &&
+                    !this.commandFailed &&
+                    (this.terminalEvent !== undefined || !this.invalidOutput)
                   ? 'completed'
                   : 'failed',
             ...(exitCode === null ? {} : { exitCode }),

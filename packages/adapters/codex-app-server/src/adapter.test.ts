@@ -190,4 +190,44 @@ describe('Codex app-server adapter', () => {
     expect(stderr).toContain('"threadId":"thread-stop"');
     expect(stderr).toContain('"turnId":"turn-stop"');
   });
+
+  it('records malformed JSON-RPC output while preserving a later valid completion', async () => {
+    const server = `
+      let buffer = '';
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (chunk) => {
+        buffer += chunk;
+        const lines = buffer.split('\\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const message = JSON.parse(line);
+          if (message.id === 1) {
+            process.stdout.write('this is not JSON\\n');
+            process.stdout.write(JSON.stringify({ id: 1, result: {} }) + '\\n');
+          } else if (message.method === 'thread/start') {
+            process.stdout.write(JSON.stringify({ id: message.id, result: { thread: { id: 'thread-malformed' } } }) + '\\n');
+          } else if (message.method === 'turn/start') {
+            process.stdout.write(JSON.stringify({ id: message.id, result: { turn: { id: 'turn-malformed' } } }) + '\\n');
+            process.stdout.write(JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn-malformed', status: 'completed' } } }) + '\\n');
+          }
+        }
+      });
+    `;
+    const attached = await new CodexAppServerAdapter({
+      executable: process.execPath,
+      commandPrefix: ['-e', server],
+    }).start({
+      sessionId: 'session-malformed',
+      workspacePath: process.cwd(),
+      args: ['Malformed output test'],
+    });
+    const events = [];
+    for await (const event of attached.events()) events.push(event);
+
+    expect(events.find((event) => event.type === 'error')?.payload).toMatchObject({
+      code: 'invalid_output',
+    });
+    expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
+  });
 });

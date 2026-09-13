@@ -52,7 +52,13 @@ import { evaluateBudget, type BudgetEvaluation, type BudgetUsage } from './budge
 import { preflightProviderTask, providerPreflightJson } from './provider-capabilities.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
-import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
+import {
+  classifyWorkerFailure,
+  type SerialWorkerRuntime,
+  type WorkerExecutionResult,
+  type WorkerFailure,
+  type WorkerRetryContext,
+} from './worker.js';
 import { GoalRunLeaseManager, type GoalRunLeaseHandle } from './lease.js';
 import { classifyGoalRecovery } from './recovery.js';
 import { beginTaskRetry, type RetryTaskPlan } from './retry.js';
@@ -1952,15 +1958,23 @@ export class OrchestratorEngine {
     } catch (error) {
       assertLease();
       const reason = error instanceof Error ? error.message : String(error);
+      const failure = classifyWorkerFailure({
+        provider: goal.provider,
+        status: 'failed',
+        exitCode: 1,
+        diagnostic: reason,
+      });
       repository.updateAttempt(
         attempt.id,
         {
-          status: 'FAILED',
+          status:
+            failure !== undefined && isHumanRequiredFailure(failure) ? 'NEEDS_HUMAN' : 'FAILED',
           workerResult: {
             claimedStatus: 'failed',
-            summary: reason,
+            summary: failure?.summary ?? 'Worker execution failed.',
             changedFiles: [],
             reportedVerification: {},
+            ...(failure === undefined ? {} : { failure }),
           },
         },
         this.now(),
@@ -1970,14 +1984,19 @@ export class OrchestratorEngine {
         task,
         attempt.id,
         attemptNumber,
-        failedWorkerVerification(reason),
+        failedWorkerVerification(failure?.summary ?? reason),
         [],
         assertLease,
+        failure,
       );
     }
     assertLease();
-    const attemptStatus =
-      workerResult.status === 'completed'
+    const workerFailure = workerResult.failure;
+    const humanRequiredFailure =
+      workerFailure !== undefined && isHumanRequiredFailure(workerFailure);
+    const attemptStatus = humanRequiredFailure
+      ? 'NEEDS_HUMAN'
+      : workerResult.status === 'completed'
         ? 'COMPLETED'
         : workerResult.status === 'interrupted'
           ? 'INTERRUPTED'
@@ -1991,6 +2010,18 @@ export class OrchestratorEngine {
       },
       this.now(),
     );
+    if (workerFailure !== undefined && isHumanRequiredFailure(workerFailure)) {
+      return this.handleVerification(
+        goal,
+        task,
+        attempt.id,
+        attemptNumber,
+        failedWorkerVerification(workerFailure.summary),
+        workerResult.changedFiles,
+        assertLease,
+        workerFailure,
+      );
+    }
     if (workerResult.status === 'interrupted') {
       return {
         next: 'HUMAN',
@@ -2027,6 +2058,7 @@ export class OrchestratorEngine {
     verification: VerificationResult,
     changedFiles: readonly string[],
     assertLease: () => void,
+    workerFailure?: WorkerFailure,
   ): {
     readonly next: 'CONTINUE' | 'HUMAN';
     readonly verification: VerificationResult;
@@ -2056,6 +2088,15 @@ export class OrchestratorEngine {
       confidence: verification.status === 'PASS' ? 1 : 0.5,
       timestamp: this.now(),
     });
+    if (workerFailure !== undefined && isHumanRequiredFailure(workerFailure)) {
+      repository.transitionTask(task.id, 'NEEDS_HUMAN', this.now());
+      return {
+        next: 'HUMAN',
+        verification,
+        reason: workerFailure.summary,
+        changedFiles,
+      };
+    }
     const decision = decideRepair(task, attemptNumber, {
       status: verification.status,
       reason: verification.reason,
@@ -2379,16 +2420,23 @@ function isAppliedInstructionContext(value: unknown): value is AppliedInstructio
 function toWorkerClaim(result: WorkerExecutionResult): WorkerResult {
   return {
     claimedStatus:
-      result.status === 'completed'
-        ? 'completed'
-        : result.status === 'interrupted'
-          ? 'blocked'
-          : 'failed',
+      result.failure !== undefined && isHumanRequiredFailure(result.failure)
+        ? 'blocked'
+        : result.status === 'completed'
+          ? 'completed'
+          : result.status === 'interrupted'
+            ? 'blocked'
+            : 'failed',
     summary: result.summary,
     changedFiles: result.changedFiles,
     reportedVerification: result.reportedVerification,
     ...(result.usage === undefined ? {} : { usage: result.usage }),
+    ...(result.failure === undefined ? {} : { failure: result.failure }),
   };
+}
+
+function isHumanRequiredFailure(failure: WorkerFailure): boolean {
+  return failure.code === 'auth' || failure.code === 'permission' || failure.code === 'spawn_error';
 }
 
 function aggregateAttemptUsage(

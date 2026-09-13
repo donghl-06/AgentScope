@@ -58,4 +58,33 @@ describe('Codex CLI adapter', () => {
       fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
+
+  it('records malformed structured output while preserving a later valid completion', async () => {
+    const output = [
+      'this is not JSON',
+      JSON.stringify({ type: 'thread.started', thread_id: 'provider-malformed' }),
+      JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }),
+    ].join('\n');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agentscope-codex-malformed-'));
+    try {
+      fs.writeFileSync(
+        path.join(directory, 'exec'),
+        `process.stdout.write(${JSON.stringify(`${output}\n`)});`,
+      );
+      const session = await new CodexCliAdapter({ executable: process.execPath }).start({
+        sessionId: 'malformed',
+        workspacePath: directory,
+        args: ['exec'],
+      });
+      const events = [];
+      for await (const event of session.events()) events.push(event);
+
+      expect(events.find((event) => event.type === 'error')?.payload).toMatchObject({
+        code: 'invalid_output',
+      });
+      expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  });
 });

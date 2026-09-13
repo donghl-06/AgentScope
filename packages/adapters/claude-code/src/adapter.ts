@@ -151,6 +151,7 @@ class ClaudeAttachedSession implements AttachedSession {
   private started = false;
   private terminalEvent: AgentEvent | undefined;
   private toolFailed = false;
+  private invalidOutput = false;
   private closed = false;
 
   get pid(): number | undefined {
@@ -211,6 +212,15 @@ class ClaudeAttachedSession implements AttachedSession {
   }
 
   private publishResult(result: ReturnType<typeof parseClaudeStreamLine>): void {
+    if (result.malformed) {
+      this.invalidOutput = true;
+      this.publish(
+        createEvent('error', this.sessionId, this.now(), {
+          code: 'invalid_output',
+          message: 'Claude emitted malformed structured output.',
+        }),
+      );
+    }
     for (const event of result.events) this.publish(event);
   }
 
@@ -248,7 +258,9 @@ class ClaudeAttachedSession implements AttachedSession {
             reason:
               signal !== null || this.stopRequested
                 ? 'interrupted'
-                : exitCode === 0 && !this.toolFailed
+                : exitCode === 0 &&
+                    !this.toolFailed &&
+                    (this.terminalEvent !== undefined || !this.invalidOutput)
                   ? 'completed'
                   : 'failed',
             ...(exitCode === null ? {} : { exitCode }),

@@ -88,6 +88,26 @@ describe('reduceSessionState', () => {
     expect(interrupted).toMatchObject({ status: 'interrupted', endedAt: 1_700_000_001_000 });
   });
 
+  it('keeps recoverable malformed output non-terminal until the provider finishes', () => {
+    const warning = reduceSessionState(
+      reduceSessionState(base, event('session_started', {})),
+      event('error', { code: 'invalid_output', message: 'safe warning' }),
+    );
+    const completed = reduceSessionState(
+      warning,
+      event('session_finished', { reason: 'completed', exitCode: 0 }, 1_700_000_001_000),
+    );
+    const failed = reduceSessionState(
+      warning,
+      event('session_finished', { reason: 'failed', exitCode: 1 }, 1_700_000_001_000),
+    );
+
+    expect(warning.status).toBe('running');
+    expect(warning.currentActivity).toMatchObject({ label: 'provider output warning' });
+    expect(completed.status).toBe('completed');
+    expect(failed.status).toBe('failed');
+  });
+
   it('tracks milestones and command verification', () => {
     const active = reduceSessionState(
       base,

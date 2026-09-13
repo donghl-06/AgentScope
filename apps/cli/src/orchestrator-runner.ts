@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  classifyWorkerFailure,
   OrchestratorEngine,
   SerialWorkerRuntime,
   type GoalRunResult,
+  type WorkerFailure,
   type WorkerLaunchRequest,
 } from '@agentscope/orchestrator';
 import { openStorage, OrchestratorRepository, type CreateGoalInput } from '@agentscope/storage';
@@ -64,20 +66,30 @@ export function createCliOrchestratorEngine(
     worker: new SerialWorkerRuntime({
       launch: async (request) => {
         const provider = toOrchestratorProvider(request.provider);
-        const result = await runProvider({
-          adapter: provider,
-          args: providerArgs(provider, request.prompt),
-          filename: options.filename,
-          workspacePath: request.workspace,
-          ...(provider === 'claude'
-            ? options.claudeExecutable === undefined
-              ? {}
-              : { executable: options.claudeExecutable }
-            : options.codexExecutable === undefined
-              ? {}
-              : { executable: options.codexExecutable }),
-        });
-        return workerResult(request, result);
+        try {
+          const result = await runProvider({
+            adapter: provider,
+            args: providerArgs(provider, request.prompt),
+            filename: options.filename,
+            workspacePath: request.workspace,
+            ...(provider === 'claude'
+              ? options.claudeExecutable === undefined
+                ? {}
+                : { executable: options.claudeExecutable }
+              : options.codexExecutable === undefined
+                ? {}
+                : { executable: options.codexExecutable }),
+          });
+          return workerResult(request, result);
+        } catch (error) {
+          const failure = classifyWorkerFailure({
+            provider,
+            status: 'failed',
+            exitCode: 1,
+            diagnostic: error instanceof Error ? error.message : String(error),
+          });
+          return failedWorkerResult(request, failure);
+        }
       },
     }),
     ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
@@ -102,6 +114,7 @@ function workerResult(
   readonly summary: string;
   readonly changedFiles: readonly string[];
   readonly reportedVerification: Readonly<Record<string, unknown>>;
+  readonly failure?: WorkerFailure;
 } {
   return {
     attemptId: request.attemptId,
@@ -119,6 +132,30 @@ function workerResult(
       providerExitCode: result.exitCode,
       normalizedEventCount: result.eventCount,
     },
+    ...(result.failure === undefined ? {} : { failure: result.failure }),
+  };
+}
+
+function failedWorkerResult(
+  request: WorkerLaunchRequest,
+  failure: WorkerFailure | undefined,
+): {
+  readonly attemptId: string;
+  readonly status: 'failed';
+  readonly exitCode: number;
+  readonly summary: string;
+  readonly changedFiles: readonly string[];
+  readonly reportedVerification: Readonly<Record<string, unknown>>;
+  readonly failure?: WorkerFailure;
+} {
+  return {
+    attemptId: request.attemptId,
+    status: 'failed',
+    exitCode: failure?.exitCode ?? 1,
+    summary: failure?.summary ?? 'Worker execution failed.',
+    changedFiles: [],
+    reportedVerification: {},
+    ...(failure === undefined ? {} : { failure }),
   };
 }
 

@@ -7,6 +7,7 @@ import { CodexCliAdapter } from '@agentscope/adapter-codex-cli';
 import { CodexAppServerAdapter } from '@agentscope/adapter-codex-app-server';
 import { ClaudeCodeAdapter } from '@agentscope/adapter-claude-code';
 import { estimateEta } from '@agentscope/eta';
+import { classifyWorkerFailure, type WorkerFailure } from '@agentscope/orchestrator';
 import {
   classifyVerificationCommand,
   ObserverRuntime,
@@ -44,6 +45,7 @@ export interface ProviderRunResult {
   readonly status: SessionState['status'];
   readonly exitCode: number;
   readonly eventCount: number;
+  readonly failure?: WorkerFailure;
 }
 
 export async function runProvider(options: ProviderRunOptions): Promise<ProviderRunResult> {
@@ -51,6 +53,12 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
   const now = options.now ?? Date.now;
   const sessionId = options.sessionId ?? randomUUID();
   const startedAt = now();
+  const stderrChunks: string[] = [];
+  let providerErrorCode: string | undefined;
+  const writeProviderStderr = (chunk: string): void => {
+    if (stderrChunks.length < 32) stderrChunks.push(chunk.slice(0, 4_096));
+    options.writeStderr?.(chunk);
+  };
   const storage = openStorage({ filename: options.filename, migrate: true });
   const repository = new StorageRepository(storage.client);
   let state = applyContinuation(
@@ -63,14 +71,14 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
           ...(options.executable === undefined ? {} : { executable: options.executable }),
           now,
           ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
-          ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+          onStderr: writeProviderStderr,
         })
       : options.adapter === 'codex'
         ? new CodexCliAdapter({
             ...(options.executable === undefined ? {} : { executable: options.executable }),
             now,
             ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
-            ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+            onStderr: writeProviderStderr,
             classifyCommand: (commandName) => {
               const kind = classifyVerificationCommand(commandName).kind;
               return kind === 'unknown' ? 'command' : kind;
@@ -80,7 +88,7 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
             ...(options.executable === undefined ? {} : { executable: options.executable }),
             now,
             ...(options.writeStdout === undefined ? {} : { onStdout: options.writeStdout }),
-            ...(options.writeStderr === undefined ? {} : { onStderr: options.writeStderr }),
+            onStderr: writeProviderStderr,
             classifyCommand: (commandName) => {
               const kind = classifyVerificationCommand(commandName).kind;
               return kind === 'unknown' ? 'command' : kind;
@@ -184,6 +192,10 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
     });
     await observerRuntime.start();
     for await (const event of attached.events()) {
+      if (event.type === 'error') {
+        const payload = event.payload as { code?: unknown };
+        if (typeof payload.code === 'string') providerErrorCode = payload.code;
+      }
       if (event.type === 'command_started') {
         const payload = event.payload as { commandKind?: string; commandName?: string };
         const commandId = event.id;
@@ -234,11 +246,25 @@ export async function runProvider(options: ProviderRunOptions): Promise<Provider
       }
       eventCount += 1;
     }
+    const exitCode = state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1;
+    const failure = classifyWorkerFailure({
+      provider: options.adapter,
+      status:
+        state.status === 'completed'
+          ? 'completed'
+          : state.status === 'interrupted'
+            ? 'interrupted'
+            : 'failed',
+      exitCode,
+      ...(providerErrorCode === undefined ? {} : { errorCode: providerErrorCode }),
+      diagnostic: stderrChunks.join('\n'),
+    });
     return {
       sessionId,
       status: state.status,
-      exitCode: state.status === 'completed' ? 0 : state.status === 'interrupted' ? 130 : 1,
+      exitCode,
       eventCount,
+      ...(failure === undefined ? {} : { failure }),
     };
   } finally {
     signals.removeListener('SIGINT', handleSignal);

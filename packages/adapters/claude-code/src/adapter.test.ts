@@ -99,4 +99,26 @@ describe('Claude Code adapter lifecycle', () => {
     await collecting;
     expect(interruptedEvents.at(-1)?.payload).toMatchObject({ reason: 'interrupted' });
   });
+
+  it('records malformed structured output while preserving a later valid completion', async () => {
+    const session = await new ClaudeCodeAdapter({ executable: process.execPath }).start({
+      sessionId: 'malformed',
+      workspacePath,
+      args: [
+        '-e',
+        nodeScript([
+          'this is not JSON',
+          '{"type":"system","subtype":"init","session_id":"provider-malformed"}',
+          '{"type":"result","subtype":"success","is_error":false}',
+        ]),
+      ],
+    });
+    const events = [];
+    for await (const event of session.events()) events.push(event);
+
+    expect(events.find((event) => event.type === 'error')?.payload).toMatchObject({
+      code: 'invalid_output',
+    });
+    expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
+  });
 });
