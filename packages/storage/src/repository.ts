@@ -12,6 +12,7 @@ import {
   assertTurnState,
   type TurnState,
 } from '@agentscope/protocol';
+import { redactSecretText, redactSensitiveValue } from './redaction.js';
 
 export interface SessionCapabilities {
   readonly [key: string]: boolean;
@@ -316,8 +317,8 @@ export class StorageRepository {
           input.state.submittedAt,
           input.state.startedAt ?? null,
           input.state.endedAt ?? null,
-          input.state.title ?? null,
-          input.state.prompt ?? null,
+          input.state.title === undefined ? null : redactSecretText(input.state.title),
+          input.state.prompt === undefined ? null : redactSecretText(input.state.prompt),
           input.state.providerTurnId ?? null,
           stringifyJson(input.state),
           now,
@@ -391,8 +392,8 @@ export class StorageRepository {
         state.submittedAt,
         state.startedAt ?? null,
         state.endedAt ?? null,
-        state.title ?? null,
-        state.prompt ?? null,
+        state.title === undefined ? null : redactSecretText(state.title),
+        state.prompt === undefined ? null : redactSecretText(state.prompt),
         state.providerTurnId ?? null,
         stringifyJson(state),
         now,
@@ -824,7 +825,7 @@ export class StorageRepository {
           input.source,
           input.kind,
           input.confidence,
-          input.reason,
+          redactSecretText(input.reason),
           payloadJson,
         );
     } catch (error) {
@@ -1173,7 +1174,7 @@ function decodeObserverEvidence(row: ObserverEvidenceRow): StoredObserverEvidenc
 
 function stringifyJson(value: unknown): string {
   try {
-    const serialized = JSON.stringify(value);
+    const serialized = JSON.stringify(redactSensitiveValue(value));
     if (serialized === undefined) throw new Error('Value is not JSON serializable.');
     return serialized;
   } catch (error) {

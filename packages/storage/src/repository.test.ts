@@ -65,6 +65,84 @@ function withRepository(
 }
 
 describe('StorageRepository', () => {
+  it('redacts secrets from turn projections, events, and observer evidence at persistence boundaries', () => {
+    withRepository((repository, client) => {
+      repository.createSession({
+        id: 'session-redaction',
+        provider: 'mock',
+        adapter: 'mock',
+        startedAt: 1_700_000_000_000,
+        capabilities: {},
+        state: state('session-redaction'),
+      });
+
+      const turnState = createInitialTurnState(
+        'turn-redaction',
+        'session-redaction',
+        1,
+        1_700_000_000_010,
+        {
+          title: 'apiKey=turn-secret',
+          prompt: 'Authorization: Bearer turn-token',
+        },
+      );
+      repository.createTurn({ state: turnState });
+      repository.appendEvent(
+        {
+          id: 'event-redaction',
+          sessionId: 'session-redaction',
+          timestamp: 1_700_000_000_020,
+          source: {
+            provider: 'mock',
+            client: 'apiKey=source-secret',
+            environment: 'test',
+            adapter: 'mock',
+          },
+          type: 'planning',
+          payload: { summary: 'Bearer event-token; sk-test-1234567890123456' },
+          confidence: 1,
+        },
+        state('session-redaction', 'running'),
+      );
+      repository.saveObserverEvidence({
+        id: 'evidence-redaction',
+        sessionId: 'session-redaction',
+        turnId: 'turn-redaction',
+        key: 'redaction',
+        timestamp: 1_700_000_000_030,
+        source: 'test',
+        kind: 'command',
+        confidence: 1,
+        reason: 'token=evidence-secret',
+        payload: { authorization: 'Bearer evidence-token', safe: 'ok' },
+      });
+
+      const turn = repository.getTurn('turn-redaction');
+      expect(turn.title).toBe('apiKey=[REDACTED]');
+      expect(turn.prompt).toBe('Authorization: Bearer [REDACTED]');
+      const event = repository.listEvents('session-redaction').items[0]!.event;
+      expect(JSON.stringify(event)).not.toContain('source-secret');
+      expect(JSON.stringify(event)).not.toContain('event-token');
+      expect(JSON.stringify(event)).not.toContain('sk-test-1234567890123456');
+      const evidence = repository.listObserverEvidence('session-redaction')[0]!;
+      expect(evidence.reason).toBe('token=[REDACTED]');
+      expect(evidence.payload).toEqual({
+        authorization: '[REDACTED]',
+        safe: 'ok',
+      });
+
+      const raw = client
+        .prepare(
+          `SELECT title, prompt, source_json, payload_json FROM turns
+           LEFT JOIN events ON events.session_id = turns.session_id
+           WHERE turns.id = ?`,
+        )
+        .get('turn-redaction') as Record<string, string | null>;
+      expect(JSON.stringify(raw)).not.toContain('turn-secret');
+      expect(JSON.stringify(raw)).not.toContain('source-secret');
+    });
+  });
+
   it('creates, updates, lists, and preserves turn projections', () => {
     withRepository((repository) => {
       repository.createSession({

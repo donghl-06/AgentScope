@@ -8,6 +8,7 @@ import {
   StorageError,
   StorageNotFoundError,
 } from './repository.js';
+import { redactSensitiveValue, redactSecretText } from './redaction.js';
 
 export const GOAL_STATUSES = [
   'CREATED',
@@ -711,13 +712,13 @@ export class OrchestratorRepository {
       .run(
         input.id,
         input.workspace,
-        input.prompt,
+        redactSecretText(input.prompt),
         input.provider,
-        stringifyJson(input.constraints ?? {}),
-        stringifyJson(input.roadmap ?? []),
-        stringifyJson(input.projectState ?? {}),
-        stringifyJson(input.executionMemory ?? {}),
-        stringifyJson(input.workingSet ?? {}),
+        stringifyJson(redactSensitiveValue(input.constraints ?? {})),
+        stringifyJson(redactSensitiveValue(input.roadmap ?? [])),
+        stringifyJson(redactSensitiveValue(input.projectState ?? {})),
+        stringifyJson(redactSensitiveValue(input.executionMemory ?? {})),
+        stringifyJson(redactSensitiveValue(input.workingSet ?? {})),
         now,
         now,
       );
@@ -835,7 +836,16 @@ export class OrchestratorRepository {
           (id, goal_id, kind, content, source, status, base_revision, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)`,
       )
-      .run(input.id, input.goalId, input.kind, input.content, source, baseRevision, now, now);
+      .run(
+        input.id,
+        input.goalId,
+        input.kind,
+        redactSecretText(input.content),
+        source,
+        baseRevision,
+        now,
+        now,
+      );
     const instruction = this.getInstruction(input.id);
     this.notify({ type: 'instruction.created', instruction });
     return instruction;
@@ -1223,7 +1233,7 @@ export class OrchestratorRepository {
       goalId: goal.id,
       parentRevision: goal.activeRevision,
       source: input.source ?? 'user',
-      reason: input.reason,
+      reason: redactSecretText(input.reason),
       items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks),
       roadmap: nextRoadmap,
       expectedActiveRevision: goal.activeRevision,
@@ -1235,7 +1245,7 @@ export class OrchestratorRepository {
       goalId: goal.id,
       taskId: task.id,
       type: 'goal.roadmap.task_contract_updated',
-      payload: { taskId: task.id, revision, reason: input.reason },
+      payload: { taskId: task.id, revision, reason: redactSecretText(input.reason) },
       confidence: 1,
       timestamp: now,
     };
@@ -1351,11 +1361,11 @@ export class OrchestratorRepository {
     const insertedTask: StoredTask = {
       id: input.taskId,
       goalId: goal.id,
-      title: input.title.trim(),
-      objective: input.objective.trim(),
-      acceptanceCriteria: input.acceptanceCriteria,
-      verification: input.verification ?? {},
-      constraints: input.constraints ?? {},
+      title: redactSecretText(input.title.trim()),
+      objective: redactSecretText(input.objective.trim()),
+      acceptanceCriteria: input.acceptanceCriteria.map((criterion) => redactSecretText(criterion)),
+      verification: redactSensitiveValue(input.verification ?? {}) as JsonObject,
+      constraints: redactSensitiveValue(input.constraints ?? {}) as JsonObject,
       maxAttempts: input.maxAttempts ?? 3,
       status: 'PENDING',
       sequence,
@@ -1379,7 +1389,7 @@ export class OrchestratorRepository {
       goalId: goal.id,
       parentRevision: goal.activeRevision,
       source: input.source ?? 'user',
-      reason: input.reason,
+      reason: redactSecretText(input.reason),
       items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks, existingTasks),
       roadmap: nextRoadmap,
       expectedActiveRevision: goal.activeRevision,
@@ -1391,7 +1401,12 @@ export class OrchestratorRepository {
       goalId: goal.id,
       taskId: insertedTask.id,
       type: 'goal.roadmap.task_inserted',
-      payload: { taskId: insertedTask.id, sequence, revision, reason: input.reason },
+      payload: {
+        taskId: insertedTask.id,
+        sequence,
+        revision,
+        reason: redactSecretText(input.reason),
+      },
       confidence: 1,
       timestamp: now,
     };
@@ -1511,7 +1526,7 @@ export class OrchestratorRepository {
       goalId: goal.id,
       parentRevision: goal.activeRevision,
       source: input.source ?? 'user',
-      reason: input.reason,
+      reason: redactSecretText(input.reason),
       items: roadmapRevisionItemsFromStoredTasks(
         goal.roadmap,
         nextTasks,
@@ -1531,7 +1546,7 @@ export class OrchestratorRepository {
       payload: {
         taskId: task.id,
         revision,
-        reason: input.reason,
+        reason: redactSecretText(input.reason),
         requirementImpact: 'requires-final-verification',
       },
       confidence: 1,
@@ -1648,7 +1663,7 @@ export class OrchestratorRepository {
       goalId: goal.id,
       parentRevision: goal.activeRevision,
       source: input.source ?? 'user',
-      reason: input.reason,
+      reason: redactSecretText(input.reason),
       items: roadmapRevisionItemsFromStoredTasks(goal.roadmap, nextTasks, tasks),
       roadmap: nextRoadmap,
       expectedActiveRevision: goal.activeRevision,
@@ -1659,7 +1674,11 @@ export class OrchestratorRepository {
       id: eventId,
       goalId: goal.id,
       type: 'goal.roadmap.reordered',
-      payload: { taskIds: input.taskIds, revision, reason: input.reason },
+      payload: {
+        taskIds: input.taskIds,
+        revision,
+        reason: redactSecretText(input.reason),
+      },
       confidence: 1,
       timestamp: now,
     };
@@ -1719,7 +1738,7 @@ export class OrchestratorRepository {
         revision,
         parentRevision === 0 ? null : parentRevision,
         input.source,
-        input.reason,
+        redactSecretText(input.reason),
         now,
       );
     const insertItem = this.client.prepare(
@@ -1812,9 +1831,7 @@ export class OrchestratorRepository {
   getLatestMemorySnapshot(goalId: string): StoredMemorySnapshot | undefined {
     this.getGoal(goalId);
     const row = this.client
-      .prepare(
-        'SELECT * FROM memory_snapshots WHERE goal_id = ? ORDER BY revision DESC LIMIT 1',
-      )
+      .prepare('SELECT * FROM memory_snapshots WHERE goal_id = ? ORDER BY revision DESC LIMIT 1')
       .get(goalId) as MemorySnapshotRow | undefined;
     return row === undefined ? undefined : decodeMemorySnapshot(row);
   }
@@ -1852,7 +1869,7 @@ export class OrchestratorRepository {
         input.taskId ?? null,
         input.attemptId ?? null,
         input.riskLevel,
-        input.action,
+        redactSecretText(input.action),
         stringifyJson(input.scope ?? {}),
         input.expiresAt ?? null,
         now,
@@ -1910,7 +1927,11 @@ export class OrchestratorRepository {
       )
       .run(
         status,
-        decisionReason === undefined ? (existing.decisionReason ?? null) : (decisionReason ?? null),
+        decisionReason === undefined
+          ? (existing.decisionReason ?? null)
+          : decisionReason === null
+            ? null
+            : redactSecretText(decisionReason),
         now,
         decidedAt ?? null,
         id,
@@ -2303,7 +2324,7 @@ export class OrchestratorRepository {
          SET status = 'REJECTED', error_code = ?, error_message = ?, updated_at = ?
          WHERE id = ? AND status = 'PENDING'`,
       )
-      .run(errorCode, errorMessage, now, id);
+      .run(errorCode, redactSecretText(errorMessage), now, id);
     const command = this.getOrchestratorCommand(id);
     this.notify({ type: 'command.updated', command });
     return command;
@@ -2323,8 +2344,8 @@ export class OrchestratorRepository {
       .run(
         input.id,
         input.goalId,
-        input.title,
-        input.objective,
+        redactSecretText(input.title),
+        redactSecretText(input.objective),
         stringifyJson(input.acceptanceCriteria),
         stringifyJson(input.verification ?? {}),
         stringifyJson(input.constraints ?? {}),
@@ -2479,7 +2500,7 @@ export class OrchestratorRepository {
         stringifyJson(input.criteria),
         stringifyJson(input.deterministicChecks),
         stringifyJson(input.evidence),
-        input.reason,
+        redactSecretText(input.reason),
         now,
         now,
       );
@@ -3097,17 +3118,22 @@ function applyTaskContractPatch(task: StoredTask, patch: TaskContractPatch): Sto
       'invalid_request',
     );
   }
-  const nextTitle = patch.title === undefined ? task.title : patch.title.trim();
-  const nextObjective = patch.objective === undefined ? task.objective : patch.objective.trim();
+  const nextTitle = patch.title === undefined ? task.title : redactSecretText(patch.title.trim());
+  const nextObjective =
+    patch.objective === undefined ? task.objective : redactSecretText(patch.objective.trim());
   assertBoundedText(nextTitle, 'Task title', 200);
   assertBoundedText(nextObjective, 'Task objective', 16_000);
 
   const nextAcceptanceCriteria =
-    patch.acceptanceCriteria === undefined ? task.acceptanceCriteria : patch.acceptanceCriteria;
+    patch.acceptanceCriteria === undefined
+      ? task.acceptanceCriteria
+      : patch.acceptanceCriteria.map((criterion) => redactSecretText(criterion));
   assertAcceptanceCriteria(nextAcceptanceCriteria);
 
   const nextVerification =
-    patch.verification === undefined ? task.verification : patch.verification;
+    patch.verification === undefined
+      ? task.verification
+      : (redactSensitiveValue(patch.verification) as JsonObject);
   assertJsonObject(nextVerification, 'Task verification');
   if (
     patch.verification !== undefined &&
@@ -3119,7 +3145,10 @@ function applyTaskContractPatch(task: StoredTask, patch: TaskContractPatch): Sto
     );
   }
 
-  const nextConstraints = patch.constraints === undefined ? task.constraints : patch.constraints;
+  const nextConstraints =
+    patch.constraints === undefined
+      ? task.constraints
+      : (redactSensitiveValue(patch.constraints) as JsonObject);
   assertJsonObject(nextConstraints, 'Task constraints');
   if (patch.constraints !== undefined && !jsonValuePreserves(task.constraints, nextConstraints)) {
     throw new StorageError(
@@ -3332,7 +3361,7 @@ function assertCommandText(value: string, label: string, maxLength: number): voi
 
 function stringifyJson(value: unknown): string {
   try {
-    const serialized = JSON.stringify(value);
+    const serialized = JSON.stringify(redactSensitiveValue(value));
     if (serialized === undefined) throw new Error('Value is not JSON serializable.');
     return serialized;
   } catch (error) {
