@@ -258,9 +258,7 @@ class ClaudeAttachedSession implements AttachedSession {
             reason:
               signal !== null || this.stopRequested
                 ? 'interrupted'
-                : exitCode === 0 &&
-                    !this.toolFailed &&
-                    (this.terminalEvent !== undefined || !this.invalidOutput)
+                : exitCode === 0 && !this.toolFailed && this.terminalEvent !== undefined
                   ? 'completed'
                   : 'failed',
             ...(exitCode === null ? {} : { exitCode }),

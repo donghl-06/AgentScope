@@ -260,7 +260,7 @@ class CodexAppServerAttachedSession implements AttachedSession {
         this.finish(
           signal !== null || this.stopRequested
             ? 'interrupted'
-            : exitCode === 0
+            : exitCode === 0 && this.validCompletionObserved
               ? 'completed'
               : 'failed',
         );

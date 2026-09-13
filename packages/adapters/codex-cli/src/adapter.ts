@@ -325,9 +325,7 @@ class CodexAttachedSession implements AttachedSession {
             reason:
               signal !== null || this.stopRequested
                 ? 'interrupted'
-                : exitCode === 0 &&
-                    !this.commandFailed &&
-                    (this.terminalEvent !== undefined || !this.invalidOutput)
+                : exitCode === 0 && !this.commandFailed && this.terminalEvent !== undefined
                   ? 'completed'
                   : 'failed',
             ...(exitCode === null ? {} : { exitCode }),

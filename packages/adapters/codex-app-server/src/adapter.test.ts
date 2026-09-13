@@ -230,4 +230,19 @@ describe('Codex app-server adapter', () => {
     });
     expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
   });
+
+  it('does not claim completion when app-server exits before a turn completes', async () => {
+    const attached = await new CodexAppServerAdapter({
+      executable: process.execPath,
+      commandPrefix: ['-e', 'process.exit(0)'],
+    }).start({
+      sessionId: 'empty-output',
+      workspacePath: process.cwd(),
+      args: ['Empty output test'],
+    });
+    const events = [];
+    for await (const event of attached.events()) events.push(event);
+
+    expect(events.at(-1)?.payload).toMatchObject({ reason: 'failed' });
+  });
 });

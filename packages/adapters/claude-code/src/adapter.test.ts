@@ -121,4 +121,16 @@ describe('Claude Code adapter lifecycle', () => {
     });
     expect(events.at(-1)?.payload).toMatchObject({ reason: 'completed' });
   });
+
+  it('does not claim completion when the process exits without a terminal record', async () => {
+    const session = await new ClaudeCodeAdapter({ executable: process.execPath }).start({
+      sessionId: 'empty-output',
+      workspacePath,
+      args: ['-e', nodeScript([], 0)],
+    });
+    const events = [];
+    for await (const event of session.events()) events.push(event);
+
+    expect(events.at(-1)?.payload).toMatchObject({ reason: 'failed', exitCode: 0 });
+  });
 });
