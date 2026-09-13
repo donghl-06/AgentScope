@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   StoredGoal,
+  StoredGoalInstruction,
   StoredEvent,
   StoredObserverEvidence,
   StoredOrchestratorNotification,
@@ -948,6 +949,11 @@ function GoalPanel({
                   ) ?? 0}
                 </span>
               </div>
+              <GoalInstructionPanel
+                detail={selectedGoal}
+                onRefresh={onRefresh}
+                onReload={() => inspectGoal(selectedGoal.goal.id)}
+              />
               <ol className="goal-task-list">
                 {selectedGoal.tasks.map((task) => {
                   const taskDetail = selectedGoal.taskDetails?.find(
@@ -1048,6 +1054,205 @@ function GoalPanel({
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+function GoalInstructionPanel({
+  detail,
+  onRefresh,
+  onReload,
+}: {
+  detail: GoalDetail;
+  onRefresh: () => void;
+  onReload: () => Promise<void>;
+}) {
+  const [kind, setKind] = useState<StoredGoalInstruction['kind']>('general');
+  const [content, setContent] = useState('');
+  const [baseRevision, setBaseRevision] = useState(String(detail.goal.activeRevision));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
+  const isTerminal = ['COMPLETED', 'FAILED', 'ABORTED'].includes(detail.goal.status);
+  const instructions = (detail.instructions ?? [])
+    .slice()
+    .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id));
+
+  useEffect(() => {
+    setBaseRevision(String(detail.goal.activeRevision));
+    setError(undefined);
+    setSuccess(undefined);
+  }, [detail.goal.id, detail.goal.activeRevision]);
+
+  const submitInstruction = async (continueAfter: boolean) => {
+    if (submitting || isTerminal) return;
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      setError('Instruction content must not be empty.');
+      setSuccess(undefined);
+      return;
+    }
+    const parsedRevision = Number(baseRevision.trim());
+    if (!Number.isInteger(parsedRevision) || parsedRevision < 0) {
+      setError('作用 revision 必须是非负整数。');
+      setSuccess(undefined);
+      return;
+    }
+    setSubmitting(true);
+    setError(undefined);
+    setSuccess(undefined);
+    let submitted = false;
+    try {
+      await api.submitGoalInstruction(detail.goal.id, {
+        kind,
+        content,
+        baseRevision: parsedRevision,
+        expectedRevision: detail.goal.activeRevision,
+        idempotencyKey: createClientRequestId('instruction'),
+      });
+      submitted = true;
+      if (continueAfter) await api.continueGoal(detail.goal.id);
+      onRefresh();
+      await onReload();
+      setContent('');
+      setSuccess(
+        continueAfter
+          ? 'Instruction submitted; Continue was requested safely.'
+          : 'Instruction submitted and queued for the next safe boundary.',
+      );
+    } catch (cause) {
+      setError(
+        submitted
+          ? `Instruction was saved, but Continue could not be requested: ${formatError(cause)}`
+          : formatError(cause),
+      );
+      if (submitted) void onReload();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="goal-instruction-panel" aria-label="Human instructions">
+      <div className="goal-instruction-heading">
+        <div>
+          <span className="eyebrow">HUMAN INSTRUCTION</span>
+          <strong>Give Instruction</strong>
+          <small>
+            {isTerminal
+              ? 'Terminal Goals cannot receive new instructions.'
+              : 'Instructions are applied only at the next safe Task boundary.'}
+          </small>
+        </div>
+        <span className="goal-instruction-revision">
+          Active revision {detail.goal.activeRevision}
+        </span>
+      </div>
+      <form
+        className="goal-instruction-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitInstruction(false);
+        }}
+      >
+        <label>
+          <span>Type</span>
+          <select
+            value={kind}
+            onChange={(event) => setKind(event.target.value as StoredGoalInstruction['kind'])}
+            disabled={submitting || isTerminal}
+          >
+            <option value="general">General</option>
+            <option value="clarification">Clarification</option>
+            <option value="constraint">Constraint</option>
+            <option value="priority">Priority</option>
+            <option value="approval-context">Approval context</option>
+          </select>
+        </label>
+        <label>
+          <span>作用 revision</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={baseRevision}
+            onChange={(event) => setBaseRevision(event.target.value)}
+            disabled={submitting || isTerminal}
+            aria-describedby="goal-instruction-revision-help"
+          />
+        </label>
+        <label className="goal-instruction-content">
+          <span>Instruction</span>
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="Describe a concrete change or constraint for the next safe boundary."
+            rows={3}
+            maxLength={16_000}
+            disabled={submitting || isTerminal}
+            aria-describedby="goal-instruction-revision-help"
+          />
+        </label>
+        <small id="goal-instruction-revision-help" className="goal-instruction-help">
+          Submitted against revision {detail.goal.activeRevision}; a mismatch is rejected instead of
+          overwriting newer decisions.
+        </small>
+        <div className="goal-instruction-actions">
+          <button
+            className="quiet-button quiet-button-small"
+            type="submit"
+            disabled={submitting || isTerminal}
+          >
+            {submitting ? 'Submitting…' : 'Give Instruction'}
+          </button>
+          <button
+            className="quiet-button quiet-button-small"
+            type="button"
+            onClick={() => void submitInstruction(true)}
+            disabled={submitting || isTerminal || detail.goal.status === 'COMPLETED'}
+          >
+            {submitting ? 'Working…' : 'Submit & Continue'}
+          </button>
+        </div>
+      </form>
+      {error !== undefined && (
+        <p className="goal-instruction-feedback goal-instruction-error" role="alert">
+          {error}
+        </p>
+      )}
+      {success !== undefined && <p className="goal-instruction-feedback">{success}</p>}
+      <div className="goal-instruction-history">
+        <div className="goal-instruction-history-heading">
+          <span className="eyebrow">INSTRUCTION HISTORY</span>
+          <small>{instructions.length}</small>
+        </div>
+        {instructions.length === 0 ? (
+          <small className="goal-instruction-empty">No instructions recorded yet.</small>
+        ) : (
+          instructions.map((instruction) => (
+            <article
+              className={`goal-instruction-row goal-instruction-status-${instruction.status.toLowerCase()}`}
+              key={instruction.id}
+            >
+              <div className="goal-instruction-row-heading">
+                <strong>{instructionKindLabel(instruction.kind)}</strong>
+                <span>{statusLabel(instruction.status)}</span>
+                <small>{formatTimestamp(instruction.createdAt)}</small>
+              </div>
+              <p>{instruction.content}</p>
+              <small>
+                base revision {instruction.baseRevision}
+                {instruction.appliedRevision === undefined
+                  ? ''
+                  : ` · applied revision ${instruction.appliedRevision}`}
+              </small>
+              {instruction.decisionReason !== undefined && (
+                <small className="goal-instruction-reason">{instruction.decisionReason}</small>
+              )}
+            </article>
+          ))
+        )}
+      </div>
     </section>
   );
 }
@@ -1437,6 +1642,26 @@ function notificationKindLabel(kind: string): string {
     'recovery-failed': 'Recovery failed',
   };
   return labels[kind] ?? 'Orchestrator alert';
+}
+
+function instructionKindLabel(kind: StoredGoalInstruction['kind']): string {
+  const labels: Record<StoredGoalInstruction['kind'], string> = {
+    clarification: 'Clarification',
+    constraint: 'Constraint',
+    priority: 'Priority',
+    'approval-context': 'Approval context',
+    general: 'General instruction',
+  };
+  return labels[kind];
+}
+
+function formatError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : 'Unable to submit the instruction.';
+}
+
+function createClientRequestId(prefix: string): string {
+  const randomUUID = globalThis.crypto?.randomUUID;
+  return `${prefix}:${randomUUID === undefined ? `${Date.now()}-${Math.random().toString(36).slice(2)}` : randomUUID()}`;
 }
 
 function notificationStatusLabel(status: StoredOrchestratorNotification['status']): string {
