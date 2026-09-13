@@ -900,6 +900,181 @@ h3 {
   flex: 0 0 auto;
   align-self: end;
 }
+.recovery-panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #2b4565;
+  border-radius: 9px;
+  background: rgba(10, 25, 43, 0.52);
+}
+.recovery-panel details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+.recovery-panel details > summary::-webkit-details-marker {
+  display: none;
+}
+.recovery-panel details > summary::before {
+  content: '▸';
+  color: #7f9dc4;
+  font-size: 12px;
+}
+.recovery-panel details[open] > summary::before {
+  content: '▾';
+}
+.recovery-panel details > summary .eyebrow {
+  margin-bottom: 0;
+}
+.recovery-panel details > summary strong {
+  color: #dbe8f7;
+  font-size: 12px;
+}
+.recovery-panel-status {
+  margin-left: auto;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #25334a;
+  color: #b6c8df;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.recovery-panel-note,
+.recovery-panel-feedback {
+  margin: 9px 0 0;
+  color: #8299b7;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.recovery-panel-feedback {
+  color: #7ae0b8;
+}
+.recovery-panel-feedback.recovery-panel-error {
+  color: #ffacb9;
+}
+.recovery-action-row,
+.recovery-attempt-card,
+.recovery-approval-list,
+.recovery-decision-form,
+.recovery-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #223752;
+}
+.recovery-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.recovery-section-heading .eyebrow {
+  margin-bottom: 0;
+}
+.recovery-section-heading small,
+.recovery-attempt-card > small,
+.recovery-history-row small {
+  color: #8299b7;
+  font-size: 10px;
+}
+.recovery-attempt-card,
+.recovery-approval-row {
+  padding: 8px 9px;
+  border-left: 2px solid #e2b65e;
+  background: #10243c;
+}
+.recovery-attempt-card > p {
+  margin: 0;
+  color: #c5d7eb;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.recovery-attempt-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.recovery-approval-list {
+  border-top: 1px solid #223752;
+}
+.recovery-approval-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-left-color: #ff8295;
+}
+.recovery-approval-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.recovery-approval-copy strong {
+  overflow: hidden;
+  color: #cbdcf0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recovery-approval-copy small {
+  overflow: hidden;
+  color: #8299b7;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recovery-approval-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.recovery-decision-form label {
+  display: grid;
+  gap: 4px;
+  color: #8fa8c6;
+  font-size: 10px;
+}
+.recovery-decision-form label input:not([type='checkbox']) {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #334967;
+  border-radius: 7px;
+  background: #121f34;
+  color: #d7e5f6;
+  font: inherit;
+  font-size: 11px;
+}
+.recovery-confirmation {
+  display: block !important;
+  color: #b6c8df !important;
+  line-height: 1.4;
+}
+.recovery-confirmation input {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.recovery-expired {
+  color: #ff9aaa !important;
+}
+.recovery-history-row {
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px;
+  border-left: 2px solid #365b84;
+  background: #10243c;
+}
+.recovery-history-row strong {
+  overflow: hidden;
+  color: #cbdcf0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .goal-task-list li {
   display: grid;
   gap: 6px;
@@ -1719,6 +1894,13 @@ h3 {
     grid-column: 2;
     justify-content: flex-start;
   }
+  .recovery-approval-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .recovery-approval-actions {
+    flex-wrap: wrap;
+  }
   .notification-center-heading,
   .notification-row {
     align-items: flex-start;
@@ -1758,5 +1940,14 @@ h3 {
   }
   .goal-instruction-form {
     grid-template-columns: 1fr;
+  }
+  .recovery-panel details > summary,
+  .roadmap-editor details > summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .recovery-panel-status,
+  .roadmap-editor-revision {
+    margin-left: 0;
   }
 }

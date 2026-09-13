@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type {
   StoredGoal,
   StoredGoalInstruction,
+  StoredApprovalRequest,
   StoredEvent,
   StoredObserverEvidence,
   StoredOrchestratorNotification,
@@ -960,6 +961,11 @@ function GoalPanel({
                 onRefresh={onRefresh}
                 onReload={() => inspectGoal(selectedGoal.goal.id)}
               />
+              <RecoveryPanel
+                detail={selectedGoal}
+                onRefresh={onRefresh}
+                onReload={() => inspectGoal(selectedGoal.goal.id)}
+              />
               <ol className="goal-task-list">
                 {selectedGoal.tasks.map((task) => {
                   const taskDetail = selectedGoal.taskDetails?.find(
@@ -1848,6 +1854,322 @@ function RoadmapEditor({
   );
 }
 
+function RecoveryPanel({
+  detail,
+  onRefresh,
+  onReload,
+}: {
+  detail: GoalDetail;
+  onRefresh: () => void;
+  onReload: () => Promise<void>;
+}) {
+  const [reason, setReason] = useState('');
+  const [confirmStopped, setConfirmStopped] = useState(false);
+  const [busyAction, setBusyAction] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
+  const pendingApprovals = (detail.approvals ?? []).filter(
+    (approval) => approval.status === 'PENDING',
+  );
+  const failedAttempts = (detail.taskDetails ?? [])
+    .filter(({ task }) => ['FAILED', 'INTERRUPTED'].includes(task.status))
+    .flatMap(({ task, attempts, verifications }) =>
+      attempts
+        .filter((attempt) => ['FAILED', 'INTERRUPTED'].includes(attempt.status))
+        .map((attempt) => ({
+          task,
+          attempt,
+          verification: verifications
+            .slice()
+            .sort(
+              (left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id),
+            )
+            .find((verification) => verification.attemptId === attempt.id),
+        })),
+    )
+    .sort(
+      (left, right) =>
+        (right.attempt.endedAt ?? right.attempt.updatedAt) -
+          (left.attempt.endedAt ?? left.attempt.updatedAt) ||
+        right.attempt.id.localeCompare(left.attempt.id),
+    );
+  const latestFailure = failedAttempts[0];
+  const canContinue = ['PAUSED', 'NEEDS_HUMAN'].includes(detail.goal.status);
+  const isTerminal = ['COMPLETED', 'FAILED', 'ABORTED'].includes(detail.goal.status);
+  const hasRecovery = canContinue || pendingApprovals.length > 0 || latestFailure !== undefined;
+
+  useEffect(() => {
+    setError(undefined);
+    setSuccess(undefined);
+    setReason('');
+    setConfirmStopped(false);
+  }, [detail.goal.id, detail.goal.activeRevision]);
+
+  const confirmControl = (description: string): boolean => {
+    if (typeof globalThis.confirm !== 'function') return true;
+    return globalThis.confirm(description);
+  };
+
+  const reloadAfterAction = async () => {
+    onRefresh();
+    await onReload();
+  };
+
+  const actionError = (cause: unknown) => {
+    setError(formatError(cause));
+    setSuccess(undefined);
+  };
+
+  const continueGoal = async () => {
+    if (!canContinue || isTerminal || busyAction !== undefined) return;
+    if (detail.goal.status === 'NEEDS_HUMAN' && !confirmStopped) {
+      actionError(new Error('Confirm that the external provider process has stopped first.'));
+      return;
+    }
+    if (!confirmControl('Continue this Goal from its last safe boundary?')) return;
+    setBusyAction('continue');
+    try {
+      await api.continueGoal(detail.goal.id, {
+        ...(confirmStopped ? { confirmExternalProcessStopped: true } : {}),
+        idempotencyKey: createClientRequestId('goal-continue'),
+      });
+      await reloadAfterAction();
+      setSuccess('Continue was requested; the Orchestrator will resume from a verified boundary.');
+    } catch (cause) {
+      actionError(cause);
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const retryLatest = async () => {
+    if (latestFailure === undefined || isTerminal || busyAction !== undefined) return;
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length === 0) {
+      actionError(new Error('A reason is required before retrying a failed Task.'));
+      return;
+    }
+    if (!confirmStopped) {
+      actionError(new Error('Confirm that the external provider process has stopped first.'));
+      return;
+    }
+    if (!confirmControl(`Retry Task “${latestFailure.task.title}” from a new Attempt?`)) return;
+    setBusyAction(`retry:${latestFailure.task.id}`);
+    try {
+      await api.retryGoalTask(detail.goal.id, latestFailure.task.id, {
+        reason: trimmedReason,
+        confirmExternalProcessStopped: true,
+        idempotencyKey: createClientRequestId('task-retry'),
+      });
+      await reloadAfterAction();
+      setSuccess('A bounded retry was requested; the previous Attempt remains in the history.');
+    } catch (cause) {
+      actionError(cause);
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  const decideApproval = async (
+    approval: StoredApprovalRequest,
+    decision: 'approve' | 'reject',
+  ) => {
+    if (isTerminal || busyAction !== undefined) return;
+    if (approval.expiresAt !== undefined && approval.expiresAt <= Date.now()) {
+      actionError(new Error('This approval request has expired and cannot be decided.'));
+      return;
+    }
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length === 0) {
+      actionError(new Error('A reason is required for an approval decision.'));
+      return;
+    }
+    const actionLabel = decision === 'approve' ? 'approve' : 'reject';
+    if (!confirmControl(`Confirm that you want to ${actionLabel} this exact bounded scope?`))
+      return;
+    setBusyAction(`${decision}:${approval.id}`);
+    try {
+      if (decision === 'approve') {
+        await api.approveGoalApproval(detail.goal.id, approval.id, trimmedReason);
+      } else {
+        await api.rejectGoalApproval(detail.goal.id, approval.id, trimmedReason);
+      }
+      await reloadAfterAction();
+      setReason('');
+      setSuccess(
+        `Approval request ${actionLabel}d; the decision is recorded in the audit history.`,
+      );
+    } catch (cause) {
+      actionError(cause);
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
+
+  return (
+    <section className="recovery-panel" aria-label="Recovery and approval controls">
+      <details open={hasRecovery}>
+        <summary>
+          <span className="eyebrow">RECOVERY &amp; APPROVALS</span>
+          <strong>Safe recovery actions</strong>
+          <span className="recovery-panel-status">{statusLabel(detail.goal.status)}</span>
+        </summary>
+        <p className="recovery-panel-note">
+          {hasRecovery
+            ? goalRecoveryReason(detail)
+            : 'No pending recovery action or approval request is recorded.'}
+        </p>
+        {error !== undefined && (
+          <p className="recovery-panel-feedback recovery-panel-error" role="alert">
+            {error}
+          </p>
+        )}
+        {success !== undefined && <p className="recovery-panel-feedback">{success}</p>}
+        {canContinue && !isTerminal && (
+          <div className="recovery-action-row">
+            <button
+              className="quiet-button quiet-button-small"
+              type="button"
+              onClick={() => void continueGoal()}
+              disabled={
+                busyAction !== undefined ||
+                (detail.goal.status === 'NEEDS_HUMAN' && !confirmStopped)
+              }
+            >
+              {busyAction === 'continue' ? 'Continuing…' : 'Continue from boundary'}
+            </button>
+          </div>
+        )}
+        {latestFailure !== undefined && !isTerminal && (
+          <div className="recovery-attempt-card">
+            <div className="recovery-section-heading">
+              <span className="eyebrow">LATEST FAILED ATTEMPT</span>
+              <small>
+                {latestFailure.task.title} · Attempt {latestFailure.attempt.attemptNumber}
+              </small>
+            </div>
+            <p>
+              {latestFailure.attempt.workerResult?.summary ??
+                'The provider did not return a summary.'}
+            </p>
+            <small>
+              {statusLabel(latestFailure.attempt.status)} · changed files{' '}
+              {latestFailure.attempt.workerResult?.changedFiles.length ?? 0}
+              {latestFailure.verification === undefined
+                ? ''
+                : ` · verification ${statusLabel(latestFailure.verification.status)}: ${latestFailure.verification.reason}`}
+            </small>
+            <div className="recovery-attempt-actions">
+              <button
+                className="quiet-button quiet-button-small quiet-button-danger"
+                type="button"
+                onClick={() => void retryLatest()}
+                disabled={busyAction !== undefined || !confirmStopped}
+              >
+                {busyAction === `retry:${latestFailure.task.id}` ? 'Retrying…' : 'Retry Task'}
+              </button>
+            </div>
+          </div>
+        )}
+        {pendingApprovals.length > 0 && (
+          <div className="recovery-approval-list">
+            <div className="recovery-section-heading">
+              <span className="eyebrow">PENDING APPROVALS</span>
+              <small>{pendingApprovals.length}</small>
+            </div>
+            {pendingApprovals.map((approval) => {
+              const expired = approval.expiresAt !== undefined && approval.expiresAt <= Date.now();
+              const categories = Array.isArray(approval.scope.categories)
+                ? approval.scope.categories.filter(
+                    (value): value is string => typeof value === 'string',
+                  )
+                : [];
+              return (
+                <article className="recovery-approval-row" key={approval.id}>
+                  <div className="recovery-approval-copy">
+                    <strong>{approval.action}</strong>
+                    <small>
+                      {approval.riskLevel} risk · {shortId(approval.id)}
+                      {approval.taskId === undefined ? '' : ` · Task ${shortId(approval.taskId)}`}
+                    </small>
+                    {categories.length > 0 && <small>Scope: {categories.join(', ')}</small>}
+                    {approval.expiresAt !== undefined && (
+                      <small className={expired ? 'recovery-expired' : undefined}>
+                        {expired ? 'Expired' : `Expires ${formatTimestamp(approval.expiresAt)}`}
+                      </small>
+                    )}
+                  </div>
+                  <div className="recovery-approval-actions">
+                    <button
+                      className="quiet-button quiet-button-small"
+                      type="button"
+                      onClick={() => void decideApproval(approval, 'approve')}
+                      disabled={busyAction !== undefined || expired}
+                    >
+                      {busyAction === `approve:${approval.id}` ? 'Approving…' : 'Approve'}
+                    </button>
+                    <button
+                      className="quiet-button quiet-button-small quiet-button-danger"
+                      type="button"
+                      onClick={() => void decideApproval(approval, 'reject')}
+                      disabled={busyAction !== undefined || expired}
+                    >
+                      {busyAction === `reject:${approval.id}` ? 'Rejecting…' : 'Reject'}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        {(canContinue || latestFailure !== undefined || pendingApprovals.length > 0) &&
+          !isTerminal && (
+            <div className="recovery-decision-form">
+              <label>
+                <span>Decision / retry reason</span>
+                <input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Explain the bounded recovery decision."
+                  maxLength={4_000}
+                  disabled={busyAction !== undefined}
+                />
+              </label>
+              <label className="recovery-confirmation">
+                <input
+                  type="checkbox"
+                  checked={confirmStopped}
+                  onChange={(event) => setConfirmStopped(event.target.checked)}
+                  disabled={busyAction !== undefined}
+                />{' '}
+                I confirm the external provider process has stopped.
+              </label>
+            </div>
+          )}
+        {failedAttempts.length > 1 && (
+          <div className="recovery-history">
+            <div className="recovery-section-heading">
+              <span className="eyebrow">PREVIOUS ATTEMPTS</span>
+              <small>{failedAttempts.length - 1} older failed Attempt(s)</small>
+            </div>
+            {failedAttempts.slice(1, 5).map(({ task, attempt, verification }) => (
+              <div className="recovery-history-row" key={attempt.id}>
+                <strong>{task.title}</strong>
+                <small>
+                  Attempt {attempt.attemptNumber} · {statusLabel(attempt.status)} ·{' '}
+                  {verification === undefined
+                    ? 'verification unavailable'
+                    : statusLabel(verification.status)}
+                </small>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
+    </section>
+  );
+}
+
 function GoalHistoryList({
   goals,
   selectedGoalId,
@@ -2270,6 +2592,24 @@ function reconcileTaskOrder(
   const preserved = current.filter((taskId) => expectedSet.has(taskId));
   const missing = expected.filter((taskId) => !preserved.includes(taskId));
   return [...preserved, ...missing];
+}
+
+function goalRecoveryReason(detail: GoalDetail): string {
+  for (const event of detail.events.slice().reverse()) {
+    const reason = event.payload.reason;
+    if (typeof reason === 'string' && reason.trim().length > 0) return reason;
+  }
+  if (detail.goal.status === 'PAUSED') return 'The Goal is paused at a recoverable boundary.';
+  if (detail.goal.status === 'NEEDS_HUMAN') {
+    return 'The Goal needs an explicit human decision before it can continue.';
+  }
+  if (detail.approvals?.some((approval) => approval.status === 'PENDING')) {
+    return 'A bounded high-risk action is waiting for approval.';
+  }
+  if (detail.taskDetails?.some(({ task }) => ['FAILED', 'INTERRUPTED'].includes(task.status))) {
+    return 'A Task Attempt failed or was interrupted and can be reviewed.';
+  }
+  return 'Recovery controls are available when a Goal reaches a recoverable boundary.';
 }
 
 function notificationStatusLabel(status: StoredOrchestratorNotification['status']): string {

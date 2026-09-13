@@ -266,6 +266,73 @@ describe('DashboardApi', () => {
     );
   });
 
+  it('exposes recovery and approval controls with explicit request bodies', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'approval-1', status: 'APPROVED' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const api = new DashboardApi({ baseUrl: 'http://127.0.0.1:8787', fetch: request });
+
+    await api.listGoalApprovals('goal/1', { status: 'PENDING', limit: 20 });
+    await api.approveGoalApproval('goal/1', 'approval/1', 'Approve the exact bounded scope.');
+    await api.rejectGoalApproval('goal/1', 'approval/1', 'The requested scope is not needed.');
+    await api.retryGoalTask('goal/1', 'task/1', {
+      reason: 'Retry after the failed verification.',
+      confirmExternalProcessStopped: true,
+      idempotencyKey: 'retry-1',
+    });
+    await api.continueGoal('goal/1', {
+      confirmExternalProcessStopped: true,
+      idempotencyKey: 'continue-1',
+    });
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/approvals?status=PENDING&limit=20',
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/approvals/approval%2F1/approve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Approve the exact bounded scope.' }),
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/approvals/approval%2F1/reject',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: 'The requested scope is not needed.' }),
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      4,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/tasks/task%2F1/retry',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          reason: 'Retry after the failed verification.',
+          confirmExternalProcessStopped: true,
+          idempotencyKey: 'retry-1',
+        }),
+      }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      5,
+      'http://127.0.0.1:8787/api/goals/goal%2F1/continue',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          confirmExternalProcessStopped: true,
+          idempotencyKey: 'continue-1',
+        }),
+      }),
+    );
+  });
+
   it('loads the notification center page and updates read or dismissed state', async () => {
     const request = vi
       .fn<typeof fetch>()

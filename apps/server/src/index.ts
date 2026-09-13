@@ -676,6 +676,7 @@ export function createServer(options: ServerOptions): FastifyInstance {
           metrics: options.orchestratorRepository.listGoalMetricSnapshots(id),
           notifications: options.orchestratorRepository.listOrchestratorNotifications(id),
           instructions: options.orchestratorRepository.listInstructions(id),
+          approvals: options.orchestratorRepository.listApprovalRequests(id),
         });
       } catch (error) {
         return sendError(reply, error);

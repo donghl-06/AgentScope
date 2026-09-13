@@ -19,6 +19,8 @@ import type {
   InstructionKind,
   InstructionStatus,
   StoredGoalInstruction,
+  ApprovalStatus,
+  StoredApprovalRequest,
   RoadmapReorderResult,
   RoadmapTaskMutationResult,
   StoredRoadmapRevision,
@@ -97,6 +99,13 @@ export interface ReorderGoalTasksRequest {
   readonly idempotencyKey?: string;
 }
 
+export interface GoalControlReasonRequest {
+  readonly reason?: string;
+  readonly confirmExternalProcessStopped?: boolean;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
 export interface GoalDetail {
   readonly goal: StoredGoal;
   readonly tasks: readonly StoredTask[];
@@ -109,6 +118,7 @@ export interface GoalDetail {
   readonly metrics?: readonly StoredGoalMetricSnapshot[];
   readonly notifications?: readonly StoredOrchestratorNotification[];
   readonly instructions?: readonly StoredGoalInstruction[];
+  readonly approvals?: readonly StoredApprovalRequest[];
 }
 
 export interface SessionDetail extends StoredSession {
@@ -306,6 +316,62 @@ export class DashboardApi {
     );
   }
 
+  listGoalApprovals(
+    goalId: string,
+    options: { readonly status?: ApprovalStatus; readonly limit?: number } = {},
+  ): Promise<readonly StoredApprovalRequest[]> {
+    const query = new URLSearchParams();
+    if (options.status !== undefined) query.set('status', options.status);
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    return this.get<readonly StoredApprovalRequest[]>(
+      `/api/goals/${encodeURIComponent(goalId)}/approvals`,
+      query,
+    );
+  }
+
+  approveGoalApproval(
+    goalId: string,
+    approvalId: string,
+    reason?: string,
+  ): Promise<StoredApprovalRequest> {
+    return this.requestJson<StoredApprovalRequest>(
+      `/api/goals/${encodeURIComponent(goalId)}/approvals/${encodeURIComponent(approvalId)}/approve`,
+      'POST',
+      undefined,
+      reason === undefined ? {} : { reason },
+    );
+  }
+
+  rejectGoalApproval(
+    goalId: string,
+    approvalId: string,
+    reason?: string,
+  ): Promise<StoredApprovalRequest> {
+    return this.requestJson<StoredApprovalRequest>(
+      `/api/goals/${encodeURIComponent(goalId)}/approvals/${encodeURIComponent(approvalId)}/reject`,
+      'POST',
+      undefined,
+      reason === undefined ? {} : { reason },
+    );
+  }
+
+  retryGoalTask(
+    goalId: string,
+    taskId: string,
+    input: GoalControlReasonRequest = {},
+  ): Promise<{
+    readonly goalId: string;
+    readonly taskId: string;
+    readonly idempotencyKey?: string;
+  }> {
+    return this.requestJson(
+      `/api/goals/${encodeURIComponent(goalId)}/tasks/${encodeURIComponent(taskId)}/retry`,
+      'POST',
+      undefined,
+      input,
+    );
+  }
+
   listOrchestratorNotifications(
     filter: OrchestratorNotificationFilter = {},
   ): Promise<OrchestratorNotificationPage> {
@@ -343,9 +409,19 @@ export class DashboardApi {
     );
   }
 
-  continueGoal(goalId: string): Promise<{ goalId: string; goal: StoredGoal }> {
-    return this.mutate<{ goalId: string; goal: StoredGoal }>(
-      `/api/goals/${encodeURIComponent(goalId)}/continue`,
+  continueGoal(
+    goalId: string,
+    input: GoalControlReasonRequest = {},
+  ): Promise<{ goalId: string; goal: StoredGoal }> {
+    const pathname = `/api/goals/${encodeURIComponent(goalId)}/continue`;
+    if (Object.keys(input).length === 0) {
+      return this.mutate<{ goalId: string; goal: StoredGoal }>(pathname);
+    }
+    return this.requestJson<{ goalId: string; goal: StoredGoal }>(
+      pathname,
+      'POST',
+      undefined,
+      input,
     );
   }
 
