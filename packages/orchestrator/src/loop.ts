@@ -22,6 +22,7 @@ import {
   type StoredGoalInstruction,
   type StoredTask,
   type StoredVerificationRun,
+  type StoredApprovalRequest,
   type TaskContractPatch,
   type UpdateFutureTaskContractInput,
 } from '@agentscope/storage';
@@ -37,6 +38,13 @@ import { buildMemorySnapshot, compactExecutionMemory, rememberTaskOutcome } from
 import { maintainWorkingSet } from './working-set.js';
 import { ConservativePlanner, type Planner } from './planner.js';
 import { buildPlannerAuditInput, buildPlannerAuditOutput } from './planner-audit.js';
+import {
+  approvalScopeJson,
+  buildTaskApprovalScope,
+  findMatchingTaskApproval,
+  TASK_APPROVAL_ACTION,
+} from './approval.js';
+import { classifyTaskRisk, type RiskAssessment } from './risk.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
 import type { SerialWorkerRuntime, WorkerExecutionResult, WorkerRetryContext } from './worker.js';
@@ -77,6 +85,8 @@ export interface OrchestratorEngineOptions {
   readonly leaseOwnerId?: string;
   readonly leaseTtlMs?: number;
   readonly leaseHeartbeatMs?: number;
+  /** How long a newly requested Task approval remains actionable. */
+  readonly approvalTtlMs?: number;
 }
 
 export interface ControlCommandOptions {
@@ -176,6 +186,7 @@ export class OrchestratorEngine {
   private readonly now: () => number;
   private readonly leaseManager: GoalRunLeaseManager;
   private readonly leaseHeartbeatMs: number;
+  private readonly approvalTtlMs: number;
   private activeGoalId: string | undefined;
   private readonly controlRequests = new Map<
     string,
@@ -201,6 +212,7 @@ export class OrchestratorEngine {
       options.leaseHeartbeatMs ?? Math.max(1_000, Math.floor((options.leaseTtlMs ?? 30_000) / 3)),
       options.leaseTtlMs ?? 30_000,
     );
+    this.approvalTtlMs = validateApprovalTtl(options.approvalTtlMs ?? 30 * 60_000);
   }
 
   get active(): boolean {
@@ -271,6 +283,88 @@ export class OrchestratorEngine {
       this.rejectCommand(reservation.command, error);
       throw error;
     }
+  }
+
+  approveApproval(
+    goalId: string,
+    approvalId: string,
+    reason = 'Approved for the exact Task Contract scope.',
+  ): StoredApprovalRequest {
+    return this.resolveApproval(goalId, approvalId, 'APPROVED', reason);
+  }
+
+  rejectApproval(
+    goalId: string,
+    approvalId: string,
+    reason = 'Rejected by the user.',
+  ): StoredApprovalRequest {
+    return this.resolveApproval(goalId, approvalId, 'REJECTED', reason);
+  }
+
+  private resolveApproval(
+    goalId: string,
+    approvalId: string,
+    status: 'APPROVED' | 'REJECTED',
+    reason: string,
+  ): StoredApprovalRequest {
+    const repository = this.options.repository;
+    const goal = repository.getGoal(goalId);
+    const approval = repository.getApprovalRequest(approvalId);
+    if (approval.goalId !== goal.id) {
+      throw new OrchestratorCommandError(
+        `Approval ${approvalId} belongs to another Goal.`,
+        'invalid_request',
+      );
+    }
+    if (approval.status === status) return approval;
+    if (approval.status !== 'PENDING') {
+      throw new OrchestratorCommandError(
+        `Approval ${approvalId} is already ${approval.status}.`,
+        'approval_not_pending',
+      );
+    }
+    if (approval.expiresAt !== undefined && approval.expiresAt <= this.now()) {
+      const expired = repository.transitionApprovalRequest(
+        approval.id,
+        'EXPIRED',
+        'Approval expired before a decision was recorded.',
+        this.now(),
+      );
+      repository.appendEvent({
+        id: `${goal.id}:approval:${approval.id}:expired:${randomUUID()}`,
+        goalId: goal.id,
+        ...(approval.taskId === undefined ? {} : { taskId: approval.taskId }),
+        ...(approval.attemptId === undefined ? {} : { attemptId: approval.attemptId }),
+        type: 'goal.approval.resolved',
+        payload: {
+          approvalId: approval.id,
+          status: expired.status,
+          ...(expired.decisionReason === undefined ? {} : { reason: expired.decisionReason }),
+        },
+        confidence: 1,
+        timestamp: this.now(),
+      });
+      throw new OrchestratorCommandError(
+        `Approval ${approvalId} expired and must be requested again.`,
+        'approval_expired',
+      );
+    }
+    const resolved = repository.transitionApprovalRequest(approval.id, status, reason, this.now());
+    repository.appendEvent({
+      id: `${goal.id}:approval:${approval.id}:resolved:${randomUUID()}`,
+      goalId: goal.id,
+      ...(approval.taskId === undefined ? {} : { taskId: approval.taskId }),
+      ...(approval.attemptId === undefined ? {} : { attemptId: approval.attemptId }),
+      type: 'goal.approval.resolved',
+      payload: {
+        approvalId: approval.id,
+        status: resolved.status,
+        ...(resolved.decisionReason === undefined ? {} : { reason: resolved.decisionReason }),
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
+    return resolved;
   }
 
   async resumeGoal(goalId: string, options: ResumeGoalOptions = {}): Promise<GoalRunResult> {
@@ -839,6 +933,14 @@ export class OrchestratorEngine {
         return this.pauseForHuman(goal, tasks, 'A Task was left in VERIFYING during recovery.');
       }
       if (activeTask !== undefined) {
+        const approvalGate = this.ensureTaskApproval(goal, activeTask);
+        if (!approvalGate.allowed) {
+          return this.pauseForHuman(
+            repository.getGoal(goal.id),
+            repository.listTasks(goal.id),
+            approvalGate.reason,
+          );
+        }
         const activeAttempt = repository
           .listAttempts(activeTask.id)
           .find((attempt) => attempt.status === 'RUNNING');
@@ -1479,6 +1581,78 @@ export class OrchestratorEngine {
     } catch {
       // Preserve the original failure. A secondary persistence failure must not mask it.
     }
+  }
+
+  private ensureTaskApproval(
+    goal: StoredGoal,
+    task: StoredTask,
+  ): { readonly allowed: boolean; readonly reason: string } {
+    const repository = this.options.repository;
+    const assessment = classifyTaskRisk(task);
+    if (!assessment.requiresApproval) {
+      return { allowed: true, reason: 'Task risk is within the conservative local policy.' };
+    }
+    const scope = buildTaskApprovalScope(goal, task, assessment);
+    let matching = findMatchingTaskApproval(repository.listApprovalRequests(goal.id), scope);
+    if (matching?.status === 'APPROVED') {
+      return { allowed: true, reason: 'A matching approval covers this exact Task Contract.' };
+    }
+    if (matching?.status === 'PENDING') {
+      if (matching.expiresAt !== undefined && matching.expiresAt <= this.now()) {
+        matching = repository.transitionApprovalRequest(
+          matching.id,
+          'EXPIRED',
+          'Approval expired before the Worker boundary.',
+          this.now(),
+        );
+      } else {
+        if (task.status !== 'NEEDS_HUMAN')
+          repository.transitionTask(task.id, 'NEEDS_HUMAN', this.now());
+        repository.appendEvent({
+          id: `${goal.id}:approval:${matching.id}:waiting:${randomUUID()}`,
+          goalId: goal.id,
+          taskId: task.id,
+          type: 'goal.approval.waiting',
+          payload: { approvalId: matching.id, riskLevel: assessment.level },
+          confidence: 1,
+          timestamp: this.now(),
+        });
+        return {
+          allowed: false,
+          reason: `Task ${task.id} is waiting for approval ${matching.id} before the Worker can start.`,
+        };
+      }
+    }
+    const approval = repository.createApprovalRequest({
+      id: `${goal.id}:approval:${randomUUID()}`,
+      goalId: goal.id,
+      taskId: task.id,
+      riskLevel: assessment.level,
+      action: TASK_APPROVAL_ACTION,
+      scope: approvalScopeJson(scope),
+      expiresAt: this.now() + this.approvalTtlMs,
+      now: this.now(),
+    });
+    if (task.status !== 'NEEDS_HUMAN')
+      repository.transitionTask(task.id, 'NEEDS_HUMAN', this.now());
+    repository.appendEvent({
+      id: `${goal.id}:approval:${approval.id}:requested:${randomUUID()}`,
+      goalId: goal.id,
+      taskId: task.id,
+      type: 'goal.approval.requested',
+      payload: {
+        approvalId: approval.id,
+        riskLevel: assessment.level,
+        categories: assessment.categories,
+        reason: assessment.reasons.join(' '),
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
+    return {
+      allowed: false,
+      reason: `Task ${task.id} requires ${assessment.level} risk approval ${approval.id} before execution.`,
+    };
   }
 
   private async executeTask(
@@ -2196,6 +2370,13 @@ function validateMaxSteps(value: number): number {
 function validateLeaseHeartbeat(value: number, ttlMs: number): number {
   if (!Number.isInteger(value) || value < 1 || value >= ttlMs) {
     throw new RangeError('leaseHeartbeatMs must be a positive integer smaller than leaseTtlMs.');
+  }
+  return value;
+}
+
+function validateApprovalTtl(value: number): number {
+  if (!Number.isInteger(value) || value < 1_000 || value > 24 * 60 * 60_000) {
+    throw new RangeError('approvalTtlMs must be an integer between 1000ms and 24 hours.');
   }
   return value;
 }

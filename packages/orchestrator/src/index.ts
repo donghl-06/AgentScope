@@ -380,3 +380,4 @@ export * from './memory.js';
 export * from './working-set.js';
 export * from './planner-audit.js';
 export * from './risk.js';
+export * from './approval.js';

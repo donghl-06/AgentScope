@@ -222,6 +222,62 @@ describe('OrchestratorEngine', () => {
     );
   });
 
+  it('gates high-risk Tasks on an exact approval before starting a Worker', async () => {
+    await withEngine('PASS', async (engine, repository) => {
+      const goal = repository.createGoal({
+        id: 'goal-approval-gate',
+        workspace: projectState.workspace,
+        prompt: 'Safely remove generated data.',
+        provider: 'mock',
+      });
+      const task = repository.createTask({
+        id: 'goal-approval-gate:task:1',
+        goalId: goal.id,
+        title: 'Delete generated data',
+        objective: 'Remove the generated directory.',
+        acceptanceCriteria: ['Only the generated directory is removed.'],
+        sequence: 1,
+        tentative: false,
+      });
+      repository.createRoadmapRevision({
+        id: 'goal-approval-gate:roadmap:1',
+        goalId: goal.id,
+        source: 'planner',
+        reason: 'Initial locked destructive task.',
+        roadmap: [{ id: task.id, title: task.title, objective: task.objective, status: 'LOCKED' }],
+        items: [
+          {
+            taskId: task.id,
+            sequence: 1,
+            operation: 'added',
+            tentative: false,
+            snapshot: { title: task.title, objective: task.objective },
+          },
+        ],
+      });
+
+      const blocked = await engine.runGoal(goal.id);
+      expect(blocked.status).toBe('NEEDS_HUMAN');
+      expect(repository.listAttempts(task.id)).toHaveLength(0);
+      const approval = repository.listApprovalRequests(goal.id)[0];
+      expect(approval).toMatchObject({
+        action: 'execute-task',
+        riskLevel: 'CRITICAL',
+        status: 'PENDING',
+        scope: { taskId: task.id, activeRevision: 1 },
+      });
+
+      engine.approveApproval(goal.id, approval!.id, 'Approved for this exact test scope.');
+      const resumed = await engine.resumeGoal(goal.id, { confirmExternalProcessStopped: true });
+      expect(resumed.status).toBe('COMPLETED');
+      expect(repository.listAttempts(task.id)).toHaveLength(1);
+      expect(repository.getApprovalRequest(approval!.id).status).toBe('APPROVED');
+      expect(
+        repository.listEvents(goal.id).some((event) => event.type === 'goal.approval.requested'),
+      ).toBe(true);
+    });
+  });
+
   it('runs one serial Task and completes only after final verification', async () => {
     await withEngine('PASS', async (engine, repository) => {
       const result = await engine.createGoalAndRun({

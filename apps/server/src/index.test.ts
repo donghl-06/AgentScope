@@ -187,6 +187,72 @@ describe('server HTTP API', () => {
     });
   });
 
+  it('lists and resolves approval requests through HTTP', async () => {
+    const { client } = openStorage({ filename: ':memory:', migrate: true });
+    const repository = new StorageRepository(client);
+    const orchestratorRepository = new OrchestratorRepository(client);
+    const goal = orchestratorRepository.createGoal({
+      id: 'approval-api-goal',
+      workspace: 'D:/workspace',
+      prompt: 'Approve a risky task through HTTP.',
+      provider: 'mock',
+    });
+    const approval = orchestratorRepository.createApprovalRequest({
+      id: 'approval-api-1',
+      goalId: goal.id,
+      riskLevel: 'HIGH',
+      action: 'execute-task',
+      scope: {
+        goalId: goal.id,
+        taskId: 'approval-api-task',
+        activeRevision: 1,
+        contractHash: 'contract-hash',
+        categories: ['network'],
+      },
+    });
+    let received: unknown;
+    const engine = {
+      approveApproval: (goalId: string, approvalId: string, reason: string) => {
+        received = { goalId, approvalId, reason };
+        return orchestratorRepository.transitionApprovalRequest(approvalId, 'APPROVED', reason);
+      },
+      rejectApproval: (goalId: string, approvalId: string, reason: string) => {
+        received = { goalId, approvalId, reason };
+        return orchestratorRepository.transitionApprovalRequest(approvalId, 'REJECTED', reason);
+      },
+    } as unknown as OrchestratorEngine;
+    const app = createServer({
+      repository,
+      orchestratorRepository,
+      orchestratorEngine: engine,
+      recoverOnStart: false,
+    });
+    openApps.push({
+      close: async () => {
+        await app.close();
+        client.close();
+      },
+    });
+
+    expect(
+      (await app.inject(`/api/goals/${goal.id}/approvals?status=PENDING`)).json(),
+    ).toMatchObject([{ id: approval.id, status: 'PENDING' }]);
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/goals/${goal.id}/approvals/${approval.id}/approve`,
+      payload: { reason: 'Approve the exact network scope.' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(received).toEqual({
+      goalId: goal.id,
+      approvalId: approval.id,
+      reason: 'Approve the exact network scope.',
+    });
+    expect((await app.inject(`/api/goals/${goal.id}/approvals`)).json()).toMatchObject([
+      { id: approval.id, status: 'APPROVED', decisionReason: 'Approve the exact network scope.' },
+    ]);
+  });
+
   it('broadcasts orchestrator changes written by another process', async () => {
     const { client } = openStorage({ filename: ':memory:', migrate: true });
     const repository = new StorageRepository(client);

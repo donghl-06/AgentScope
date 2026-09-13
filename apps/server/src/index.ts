@@ -27,6 +27,7 @@ import {
   type StoredOrchestratorEvent,
   type InstructionStatus,
   type StoredVerificationRun,
+  type StoredApprovalRequest,
 } from '@agentscope/storage';
 
 import { LiveHub } from './live-hub.js';
@@ -122,6 +123,10 @@ const GoalTaskParamsSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   taskId: Type.String({ minLength: 1 }),
 });
+const GoalApprovalParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  approvalId: Type.String({ minLength: 1 }),
+});
 const GoalEventQuerySchema = Type.Object({
   after: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
@@ -158,6 +163,13 @@ const InstructionCreateSchema = Type.Object({
 const InstructionListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ minLength: 1 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const ApprovalListQuerySchema = Type.Object({
+  status: Type.Optional(Type.String({ minLength: 1 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+});
+const ApprovalDecisionSchema = Type.Object({
+  reason: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 })),
 });
 const TaskContractPatchSchema = Type.Partial(
   Type.Object({
@@ -891,6 +903,117 @@ export function createServer(options: ServerOptions): FastifyInstance {
           instruction,
           ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey }),
         });
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    '/api/goals/:id/approvals',
+    {
+      schema: {
+        params: GoalParamsSchema,
+        querystring: ApprovalListQuerySchema,
+        response: {
+          200: Type.Array(Type.Unknown()),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorRepository === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id } = request.params as { id: string };
+        const query = request.query as Record<string, unknown>;
+        const status = query.status === undefined ? undefined : String(query.status);
+        const limit = query.limit === undefined ? 100 : parsePositiveInteger(query.limit);
+        return reply.send(
+          options.orchestratorRepository.listApprovalRequests(id, {
+            ...(status === undefined ? {} : { status: status as StoredApprovalRequest['status'] }),
+            limit,
+          }),
+        );
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/approvals/:approvalId/approve',
+    {
+      schema: {
+        params: GoalApprovalParamsSchema,
+        body: ApprovalDecisionSchema,
+        response: {
+          200: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorEngine === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id, approvalId } = request.params as { id: string; approvalId: string };
+        const body = request.body as { readonly reason?: string };
+        return reply.send(
+          options.orchestratorEngine.approveApproval(
+            id,
+            approvalId,
+            body.reason ?? 'Approved for the exact Task Contract scope.',
+          ),
+        );
+      } catch (error) {
+        return sendError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    '/api/goals/:id/approvals/:approvalId/reject',
+    {
+      schema: {
+        params: GoalApprovalParamsSchema,
+        body: ApprovalDecisionSchema,
+        response: {
+          200: Type.Unknown(),
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          503: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (options.orchestratorEngine === undefined) {
+        return reply.code(503).send({
+          error: { code: 'orchestrator_unavailable', message: 'Orchestrator is not configured.' },
+        });
+      }
+      try {
+        const { id, approvalId } = request.params as { id: string; approvalId: string };
+        const body = request.body as { readonly reason?: string };
+        return reply.send(
+          options.orchestratorEngine.rejectApproval(
+            id,
+            approvalId,
+            body.reason ?? 'Rejected by the user.',
+          ),
+        );
       } catch (error) {
         return sendError(reply, error);
       }
