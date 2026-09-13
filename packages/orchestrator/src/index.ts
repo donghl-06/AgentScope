@@ -37,10 +37,17 @@ export interface ProjectState {
 }
 
 export interface ExecutionMemory {
+  /** A short, redacted description of the Goal carried between boundaries. */
+  readonly goalSummary?: string;
   readonly decisions: readonly ExecutionDecision[];
   readonly completedTaskIds: readonly string[];
+  readonly completedTaskSummaries?: readonly CompletedTaskSummary[];
   readonly failedApproaches: readonly string[];
+  readonly issues?: readonly ExecutionIssue[];
+  readonly questions?: readonly ExecutionQuestion[];
   readonly notes: readonly string[];
+  readonly sourceRefs?: readonly MemorySourceRef[];
+  readonly updatedAt?: number;
 }
 
 export interface ExecutionDecision {
@@ -49,6 +56,49 @@ export interface ExecutionDecision {
   readonly status: 'LOCKED' | 'STABLE' | 'TENTATIVE';
   readonly source: 'user' | 'planner' | 'verifier' | 'system';
   readonly recordedAt: number;
+  readonly sourceRefs?: readonly MemorySourceRef[];
+}
+
+export type MemorySourceKind =
+  | 'goal'
+  | 'instruction'
+  | 'task'
+  | 'attempt'
+  | 'verification'
+  | 'evidence'
+  | 'event'
+  | 'project-state'
+  | 'roadmap-revision';
+
+export interface MemorySourceRef {
+  readonly kind: MemorySourceKind;
+  readonly id: string;
+  readonly summary?: string;
+}
+
+export interface CompletedTaskSummary {
+  readonly taskId: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly verificationStatus?: 'PASS' | 'FAIL' | 'UNCERTAIN';
+  readonly recordedAt: number;
+  readonly sourceRefs: readonly MemorySourceRef[];
+}
+
+export interface ExecutionIssue {
+  readonly id: string;
+  readonly summary: string;
+  readonly status: 'OPEN' | 'RESOLVED';
+  readonly recordedAt: number;
+  readonly sourceRefs: readonly MemorySourceRef[];
+}
+
+export interface ExecutionQuestion {
+  readonly id: string;
+  readonly question: string;
+  readonly status: 'OPEN' | 'ANSWERED';
+  readonly recordedAt: number;
+  readonly sourceRefs: readonly MemorySourceRef[];
 }
 
 export interface WorkingSet {
@@ -318,3 +368,4 @@ export * from './recovery.js';
 export * from './lease.js';
 export * from './retry.js';
 export * from './instructions.js';
+export * from './memory.js';

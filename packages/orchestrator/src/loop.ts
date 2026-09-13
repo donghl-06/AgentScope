@@ -33,6 +33,7 @@ import {
   type ProjectState,
   type WorkingSet,
 } from './index.js';
+import { buildMemorySnapshot, rememberTaskOutcome } from './memory.js';
 import { ConservativePlanner, type Planner } from './planner.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
@@ -819,6 +820,7 @@ export class OrchestratorEngine {
         timestamp: this.now(),
       });
       tasks = repository.listTasks(goal.id);
+      goal = this.persistMemorySnapshot(goal, tasks, executionMemory, 'initial-plan');
     }
     if (goal.status === 'PLANNING')
       goal = repository.transitionGoal(goal.id, 'RUNNING', this.now());
@@ -894,6 +896,21 @@ export class OrchestratorEngine {
             instructionApplication.blockedReason,
           );
         }
+        const completedTask = repository.getTask(activeTask.id);
+        const latestVerification = repository.listVerificationRuns(activeTask.id).at(-1);
+        executionMemory = rememberTaskOutcome(
+          executionMemory,
+          completedTask,
+          latestVerification,
+          result.reason,
+          this.now(),
+        );
+        goal = this.persistMemorySnapshot(
+          repository.getGoal(goal.id),
+          repository.listTasks(goal.id),
+          executionMemory,
+          'after-attempt',
+        );
         if (result.next === 'HUMAN') {
           return this.pauseForHuman(
             repository.getGoal(goal.id),
@@ -1073,6 +1090,12 @@ export class OrchestratorEngine {
       } else {
         goal = repository.transitionGoal(goal.id, 'NEEDS_HUMAN', this.now());
       }
+      goal = this.persistMemorySnapshot(
+        goal,
+        repository.listTasks(goal.id),
+        executionMemory,
+        'final-verification',
+      );
       return { goal, tasks: repository.listTasks(goal.id), status: goal.status, lastVerification };
     }
     return this.pauseForHuman(
@@ -1168,6 +1191,51 @@ export class OrchestratorEngine {
       now: this.now(),
     });
     return this.options.repository.getGoal(goal.id);
+  }
+
+  private persistMemorySnapshot(
+    goal: StoredGoal,
+    tasks: readonly StoredTask[],
+    executionMemory: ExecutionMemory,
+    reason: string,
+  ): StoredGoal {
+    const repository = this.options.repository;
+    const verificationRuns = tasks.flatMap((task) => repository.listVerificationRuns(task.id));
+    const snapshot = buildMemorySnapshot({
+      goal,
+      tasks,
+      executionMemory,
+      verificationRuns,
+      reason,
+      now: this.now(),
+    });
+    repository.updateGoalDocuments(goal.id, { executionMemory: snapshot.memory }, this.now());
+    const updatedGoal = repository.getGoal(goal.id);
+    const previousSnapshot = repository.listMemorySnapshots(goal.id, 500).at(-1);
+    const memoryRevision = (previousSnapshot?.revision ?? 0) + 1;
+    const storedSnapshot = repository.createMemorySnapshot({
+      id: `${goal.id}:memory:${updatedGoal.activeRevision}:${randomUUID()}`,
+      goalId: goal.id,
+      revision: memoryRevision,
+      memory: snapshot.memory,
+      sources: snapshot.sources,
+      now: this.now(),
+    });
+    repository.appendEvent({
+      id: `${goal.id}:memory:${storedSnapshot.id}:event`,
+      goalId: goal.id,
+      type: 'goal.memory.snapshot',
+      payload: {
+        snapshotId: storedSnapshot.id,
+        revision: storedSnapshot.revision,
+        activeRoadmapRevision: updatedGoal.activeRevision,
+        reason,
+        sourceCount: storedSnapshot.sources.length,
+      },
+      confidence: 1,
+      timestamp: this.now(),
+    });
+    return updatedGoal;
   }
 
   private planRolling(
@@ -1598,13 +1666,12 @@ function rememberAppliedInstruction(
   recordedAt: number,
 ): ExecutionMemory {
   const decisions = Array.isArray(memory.decisions) ? memory.decisions : [];
-  const completedTaskIds = Array.isArray(memory.completedTaskIds) ? memory.completedTaskIds : [];
-  const failedApproaches = Array.isArray(memory.failedApproaches) ? memory.failedApproaches : [];
   const notes = Array.isArray(memory.notes) ? memory.notes : [];
   if (decisions.some((decision) => decision.id === `instruction:${instruction.id}`)) {
-    return { decisions, completedTaskIds, failedApproaches, notes };
+    return memory;
   }
   return {
+    ...memory,
     decisions: [
       ...decisions,
       {
@@ -1613,11 +1680,15 @@ function rememberAppliedInstruction(
         status: instruction.kind === 'constraint' ? 'STABLE' : 'TENTATIVE',
         source: instruction.source,
         recordedAt,
+        sourceRefs: [{ kind: 'instruction' as const, id: instruction.id }],
       },
     ].slice(-100),
-    completedTaskIds,
-    failedApproaches,
     notes: [...notes, `instruction:${instruction.id}:applied`].slice(-200),
+    sourceRefs: [
+      ...(memory.sourceRefs ?? []),
+      { kind: 'instruction' as const, id: instruction.id },
+    ].slice(-300),
+    updatedAt: recordedAt,
   };
 }
 
@@ -1661,11 +1732,42 @@ function mergeExecutionMemory(context: ExecutionMemory, persisted: JsonObject): 
   const decisions = [...context.decisions, ...persistedDecisions].filter(
     (decision, index, all) => all.findIndex((item) => item.id === decision.id) === index,
   );
+  const persistedSummaries = Array.isArray(candidate.completedTaskSummaries)
+    ? candidate.completedTaskSummaries
+    : [];
+  const persistedIssues = Array.isArray(candidate.issues) ? candidate.issues : [];
+  const persistedQuestions = Array.isArray(candidate.questions) ? candidate.questions : [];
+  const persistedSourceRefs = Array.isArray(candidate.sourceRefs) ? candidate.sourceRefs : [];
+  const mergedSummaries = [...(context.completedTaskSummaries ?? []), ...persistedSummaries].filter(
+    (summary, index, all) => all.findIndex((item) => item.taskId === summary.taskId) === index,
+  );
+  const mergedIssues = [...(context.issues ?? []), ...persistedIssues].filter(
+    (issue, index, all) => all.findIndex((item) => item.id === issue.id) === index,
+  );
+  const mergedQuestions = [...(context.questions ?? []), ...persistedQuestions].filter(
+    (question, index, all) => all.findIndex((item) => item.id === question.id) === index,
+  );
+  const mergedSourceRefs = [...(context.sourceRefs ?? []), ...persistedSourceRefs].filter(
+    (source, index, all) =>
+      all.findIndex((item) => item.kind === source.kind && item.id === source.id) === index,
+  );
+  const goalSummary =
+    typeof candidate.goalSummary === 'string' && candidate.goalSummary.length > 0
+      ? candidate.goalSummary
+      : context.goalSummary;
   return {
+    ...(goalSummary === undefined ? {} : { goalSummary }),
     decisions,
     completedTaskIds: [...new Set([...context.completedTaskIds, ...persistedCompleted])],
+    ...(mergedSummaries.length === 0 ? {} : { completedTaskSummaries: mergedSummaries }),
     failedApproaches: [...new Set([...context.failedApproaches, ...persistedFailed])],
+    ...(mergedIssues.length === 0 ? {} : { issues: mergedIssues }),
+    ...(mergedQuestions.length === 0 ? {} : { questions: mergedQuestions }),
     notes: [...new Set([...context.notes, ...persistedNotes])],
+    ...(mergedSourceRefs.length === 0 ? {} : { sourceRefs: mergedSourceRefs }),
+    ...(typeof candidate.updatedAt === 'number' || context.updatedAt !== undefined
+      ? { updatedAt: Math.max(context.updatedAt ?? 0, candidate.updatedAt ?? 0) }
+      : {}),
   };
 }
 
