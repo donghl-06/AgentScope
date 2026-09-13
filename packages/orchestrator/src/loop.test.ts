@@ -205,6 +205,9 @@ describe('OrchestratorEngine', () => {
           capturedAt: 2,
           relevantFiles: ['src/changed.ts'],
         });
+        expect(repository.getGoal('goal-context-refresh').workingSet).toMatchObject({
+          files: expect.arrayContaining(['src/changed.ts']),
+        });
         expect(
           repository
             .listEvents('goal-context-refresh')

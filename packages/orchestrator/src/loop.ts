@@ -34,6 +34,7 @@ import {
   type WorkingSet,
 } from './index.js';
 import { buildMemorySnapshot, rememberTaskOutcome } from './memory.js';
+import { maintainWorkingSet } from './working-set.js';
 import { ConservativePlanner, type Planner } from './planner.js';
 import { decideRepair } from './repair.js';
 import { verifyTask, type VerificationResult, type VerifyTaskOptions } from './verification.js';
@@ -820,7 +821,7 @@ export class OrchestratorEngine {
         timestamp: this.now(),
       });
       tasks = repository.listTasks(goal.id);
-      goal = this.persistMemorySnapshot(goal, tasks, executionMemory, 'initial-plan');
+      goal = this.persistMemorySnapshot(goal, tasks, executionMemory, workingSet, 'initial-plan');
     }
     if (goal.status === 'PLANNING')
       goal = repository.transitionGoal(goal.id, 'RUNNING', this.now());
@@ -908,6 +909,14 @@ export class OrchestratorEngine {
           projectState = refreshedAfterAttempt.projectState;
           executionMemory = refreshedAfterAttempt.executionMemory;
           workingSet = refreshedAfterAttempt.workingSet;
+          workingSet = maintainWorkingSet({
+            current: workingSet,
+            candidates: result.changedFiles,
+            changedFiles: result.changedFiles,
+            failureFiles: result.verification.status === 'FAIL' ? result.changedFiles : [],
+            goalPrompt: goal.prompt,
+            updatedAt: this.now(),
+          });
         }
         const completedTask = repository.getTask(activeTask.id);
         const latestVerification = repository.listVerificationRuns(activeTask.id).at(-1);
@@ -922,6 +931,7 @@ export class OrchestratorEngine {
           repository.getGoal(goal.id),
           repository.listTasks(goal.id),
           executionMemory,
+          workingSet,
           'after-attempt',
         );
         if (result.next === 'HUMAN') {
@@ -1107,6 +1117,7 @@ export class OrchestratorEngine {
         goal,
         repository.listTasks(goal.id),
         executionMemory,
+        workingSet,
         'final-verification',
       );
       return { goal, tasks: repository.listTasks(goal.id), status: goal.status, lastVerification };
@@ -1210,6 +1221,7 @@ export class OrchestratorEngine {
     goal: StoredGoal,
     tasks: readonly StoredTask[],
     executionMemory: ExecutionMemory,
+    workingSet: WorkingSet,
     reason: string,
   ): StoredGoal {
     const repository = this.options.repository;
@@ -1222,7 +1234,14 @@ export class OrchestratorEngine {
       reason,
       now: this.now(),
     });
-    repository.updateGoalDocuments(goal.id, { executionMemory: snapshot.memory }, this.now());
+    repository.updateGoalDocuments(
+      goal.id,
+      {
+        executionMemory: snapshot.memory,
+        workingSet: asJsonObject(workingSet),
+      },
+      this.now(),
+    );
     const updatedGoal = repository.getGoal(goal.id);
     const previousSnapshot = repository.getLatestMemorySnapshot(goal.id);
     const memoryRevision = (previousSnapshot?.revision ?? 0) + 1;
@@ -1446,6 +1465,7 @@ export class OrchestratorEngine {
     readonly next: 'CONTINUE' | 'HUMAN';
     readonly verification: VerificationResult;
     readonly reason: string;
+    readonly changedFiles: readonly string[];
   }> {
     const repository = this.options.repository;
     assertLease();
@@ -1506,6 +1526,7 @@ export class OrchestratorEngine {
         attempt.id,
         attemptNumber,
         failedWorkerVerification(reason),
+        [],
         assertLease,
       );
     }
@@ -1530,6 +1551,7 @@ export class OrchestratorEngine {
         next: 'HUMAN',
         verification: failedWorkerVerification('Worker was interrupted.'),
         reason: 'Worker was interrupted; human review is required before continuing.',
+        changedFiles: workerResult.changedFiles,
       };
     }
     assertLease();
@@ -1547,6 +1569,7 @@ export class OrchestratorEngine {
       attempt.id,
       attemptNumber,
       verification,
+      workerResult.changedFiles,
       assertLease,
     );
   }
@@ -1557,11 +1580,13 @@ export class OrchestratorEngine {
     attemptId: string,
     attemptNumber: number,
     verification: VerificationResult,
+    changedFiles: readonly string[],
     assertLease: () => void,
   ): {
     readonly next: 'CONTINUE' | 'HUMAN';
     readonly verification: VerificationResult;
     readonly reason: string;
+    readonly changedFiles: readonly string[];
   } {
     const repository = this.options.repository;
     assertLease();
@@ -1592,7 +1617,7 @@ export class OrchestratorEngine {
     });
     if (decision.action === 'COMPLETE') {
       repository.transitionTask(task.id, 'COMPLETED', this.now());
-      return { next: 'CONTINUE', verification, reason: decision.reason };
+      return { next: 'CONTINUE', verification, reason: decision.reason, changedFiles };
     }
     if (decision.action === 'RETRY') {
       repository.transitionTask(task.id, 'REPAIRING', this.now());
@@ -1605,10 +1630,10 @@ export class OrchestratorEngine {
         confidence: 1,
         timestamp: this.now(),
       });
-      return { next: 'CONTINUE', verification, reason: decision.reason };
+      return { next: 'CONTINUE', verification, reason: decision.reason, changedFiles };
     }
     repository.transitionTask(task.id, 'NEEDS_HUMAN', this.now());
-    return { next: 'HUMAN', verification, reason: decision.reason };
+    return { next: 'HUMAN', verification, reason: decision.reason, changedFiles };
   }
 
   private pauseForHuman(
@@ -1875,7 +1900,7 @@ function mergeWorkingSet(context: WorkingSet, persisted: JsonObject): WorkingSet
   ].filter(
     (instruction, index, all) => all.findIndex((item) => item.id === instruction.id) === index,
   );
-  return {
+  const merged: WorkingSet = {
     files: [...new Set([...context.files, ...persistedFiles])],
     directories: [...new Set([...context.directories, ...persistedDirectories])],
     rationale:
@@ -1887,7 +1912,9 @@ function mergeWorkingSet(context: WorkingSet, persisted: JsonObject): WorkingSet
         ? Math.max(context.updatedAt, candidate.updatedAt)
         : context.updatedAt,
     ...(appliedInstructions.length === 0 ? {} : { appliedInstructions }),
+    ...(Array.isArray(candidate.evictions) ? { evictions: candidate.evictions } : {}),
   };
+  return maintainWorkingSet({ current: merged, updatedAt: merged.updatedAt });
 }
 
 function isAppliedInstructionContext(value: unknown): value is AppliedInstructionContext {

@@ -108,6 +108,14 @@ export interface WorkingSet {
   readonly updatedAt: number;
   /** User instructions that were applied before the current Worker boundary. */
   readonly appliedInstructions?: readonly AppliedInstructionContext[];
+  /** Recent paths omitted by the bounded Working Set, with a deterministic reason. */
+  readonly evictions?: readonly WorkingSetEviction[];
+}
+
+export interface WorkingSetEviction {
+  readonly path: string;
+  readonly reason: 'sensitive-path' | 'file-capacity' | 'path-budget';
+  readonly recordedAt: number;
 }
 
 export interface AppliedInstructionContext {
@@ -369,3 +377,4 @@ export * from './lease.js';
 export * from './retry.js';
 export * from './instructions.js';
 export * from './memory.js';
+export * from './working-set.js';
