@@ -1,6 +1,8 @@
 # AgentScope Orchestrator 使用说明
 
-本文档对应 `orchestrator` 分支当前实现。Orchestrator 是在现有 Monitor 之上的串行自动执行层：用户提交一个较大的 Goal，系统创建路线图，逐个执行 Task，采集证据，独立验证，必要时有限重试，直到完成或进入人工介入状态。
+本文档对应 `codex/orchestrator-v1` 分支当前实现。Orchestrator 是在现有 Monitor 之上的串行自动执行层：用户提交一个较大的 Goal，系统创建路线图，逐个执行 Task，采集证据，独立验证，必要时有限重试，直到完成或进入人工介入状态。
+
+第一次使用或需要完整 V1 操作流程时，请先阅读[《AgentScope Orchestrator V1 使用指南》](orchestrator-v1-user-guide.md)。本文保留为命令速查和兼容说明。
 
 ## 1. 启动本地服务
 
@@ -91,3 +93,4 @@ TTY 会话仍然进入 Monitor 的 Session/Turn/Timeline 页面；Orchestrator G
 - Project Context 只读取 Git/manifest/README/目录和可发现命令摘要，过滤 `.env`、token、secret、credential、key 等敏感路径。
 - Verifier 只执行结构化 `executable + args` 命令，不拼接 shell 字符串；不安全或无法确认的结果显示为 `UNCERTAIN`。
 - Worker 不允许推送远程仓库；V0 不启用并行 Worker、DAG、worktree 或自动 merge。
+- 终态 Goal 可在详情页归档/恢复；归档只隐藏历史并写入审计事件，不删除关联数据。Session 的 Hide/Delete 仍是独立的清理操作。
